@@ -1,2 +1,8 @@
 __pycache__/
 *.pyc
+
+.ipynb_checkpoints/
+
+refs/
+
+CLAUDE.md
