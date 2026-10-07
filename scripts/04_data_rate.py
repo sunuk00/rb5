@@ -1,7 +1,7 @@
 """Estimate the data channel update period (Simulation mode only).
 
-Moves J6 slowly in Simulation mode, reads the data channel as fast as possible
-during the move, logs every sample to a CSV file, then prints:
+Moves J6 +60 deg and back in Simulation mode, reads the data channel as fast as possible
+during the moves, logs every sample to a CSV file, then prints:
   - read interval:   time between our consecutive reads
   - change interval: time between reads where jnt_ref actually changed
 If we read faster than the controller updates, the change interval approximates
@@ -61,48 +61,52 @@ def main():
     robot.set_speed_bar(rc, config.SPEED)
     rc.error().throw_if_not_empty()
 
-    # 2. Target relative to the current commanded pose (jnt_ref; jnt_ang is frozen in Simulation)
+    # 2. Out and back, relative to the current commanded pose (jnt_ref; jnt_ang is frozen in Simulation)
     q_now = np.array(sdata.jnt_ref, dtype=float)
-    q_target = q_now.copy()
-    q_target[JOINT_INDEX] += DELTA_DEG
+    q_out = q_now.copy()
+    q_out[JOINT_INDEX] += DELTA_DEG
+    targets = [q_out, q_now]
     print("Mode: Simulation")
     print("Current (jnt_ref):", q_now)
-    print("Target:           ", q_target)
+    print("Move 1 target:    ", q_out)
+    print("Move 2 target:    ", q_now)
 
-    # 3. Send the move, then read as fast as possible until it ends
-    robot.flush(rc)
-    robot.move_j(rc, q_target, JOINT_SPEED, JOINT_ACC)
-    rc.error().throw_if_not_empty()
-
+    # 3. For each move: send it, then read as fast as possible until it ends
     rows = []
     missed = 0
-    seen_moving = False
-    t_end = None
     t_start = time.perf_counter()
-    while True:
-        data = data_channel.request_data(1.0)
-        t = time.perf_counter()
-        if data is None:
-            missed += 1
-        else:
-            s = data.sdata
-            rows.append([t - t_start, s.time, s.robot_state, *s.jnt_ref, *s.jnt_ang])
-            if s.robot_state == STATE_MOVING:
-                seen_moving = True
-            elif seen_moving and t_end is None:
-                t_end = t + TAIL_S
-        if t_end is not None and t >= t_end:
-            break
-        if t - t_start > TIMEOUT_S:
-            print(f"warning: stopped recording after {TIMEOUT_S} s timeout")
-            break
-    if not seen_moving:
-        print("warning: robot_state never reported moving (3)")
+    for move_id, q_target in enumerate(targets, 1):
+        robot.flush(rc)
+        robot.move_j(rc, q_target, JOINT_SPEED, JOINT_ACC)
+        rc.error().throw_if_not_empty()
+
+        seen_moving = False
+        t_end = None
+        t_move = time.perf_counter()
+        while True:
+            data = data_channel.request_data(1.0)
+            t = time.perf_counter()
+            if data is None:
+                missed += 1
+            else:
+                s = data.sdata
+                rows.append([t - t_start, move_id, s.time, s.robot_state, *s.jnt_ref, *s.jnt_ang])
+                if s.robot_state == STATE_MOVING:
+                    seen_moving = True
+                elif seen_moving and t_end is None:
+                    # Tail only after the last move; otherwise go straight to the next move
+                    t_end = t + (TAIL_S if move_id == len(targets) else 0.0)
+            if t_end is not None and t >= t_end:
+                break
+            if t - t_move > TIMEOUT_S:
+                raise SystemExit(f"Move {move_id} did not finish within {TIMEOUT_S} s.")
+        if not seen_moving:
+            print(f"warning: move {move_id}: robot_state never reported moving (3)")
 
     # 4. Save CSV
     DATA_DIR.mkdir(exist_ok=True)
     path = DATA_DIR / f"04_data_rate_{datetime.now():%Y%m%d_%H%M%S}.csv"
-    header = (["pc_time_s", "ctrl_time_s", "robot_state"]
+    header = (["pc_time_s", "move", "ctrl_time_s", "robot_state"]
               + [f"jnt_ref_{i + 1}" for i in range(6)]
               + [f"jnt_ang_{i + 1}" for i in range(6)])
     with open(path, "w", newline="") as f:
@@ -113,25 +117,29 @@ def main():
     # 5. Statistics
     arr = np.array(rows, dtype=float)
     pc_t = arr[:, 0]
-    ctrl_t = arr[:, 1]
-    state = arr[:, 2]
-    jnt_ref = arr[:, 3:9]
+    move = arr[:, 1]
+    ctrl_t = arr[:, 2]
+    state = arr[:, 3]
+    jnt_ref = arr[:, 4:10]
+    moving = state == STATE_MOVING
 
     read_iv = np.diff(pc_t)
 
-    # Samples (during the move) where jnt_ref differs from the previous sample
-    changed = np.any(jnt_ref[1:] != jnt_ref[:-1], axis=1) & (state[1:] == STATE_MOVING)
-    change_t = pc_t[1:][changed]
-    change_iv = np.diff(change_t)
-
-    # Same idea using the controller's own clock
-    moving = state == STATE_MOVING
-    ctrl_moving = ctrl_t[moving]
-    ctrl_iv = np.diff(np.unique(ctrl_moving))
-
+    # Per move: samples (while moving) where jnt_ref differs from the previous sample.
+    # Intervals are taken within one move only, so the pause between moves is not counted.
+    change_iv = []
+    ctrl_iv = []
     print(f"\nSamples: {len(rows)}  (missed reads: {missed})  duration: {pc_t[-1]:.2f} s")
-    print(f"Move duration (robot_state == 3): "
-          f"{(pc_t[moving][-1] - pc_t[moving][0]) if moving.any() else 0:.2f} s")
+    for move_id in range(1, len(targets) + 1):
+        idx = np.where(move == move_id)[0]
+        m_idx = idx[moving[idx]]
+        if len(m_idx) > 0:
+            print(f"Move {move_id} duration (robot_state == 3): {pc_t[m_idx[-1]] - pc_t[m_idx[0]]:.2f} s")
+        i = idx[1:]
+        changed = np.any(jnt_ref[i] != jnt_ref[i - 1], axis=1) & moving[i]
+        change_iv.extend(np.diff(pc_t[i][changed]))
+        # Same idea using the controller's own clock
+        ctrl_iv.extend(np.diff(np.unique(ctrl_t[m_idx])))
     print(f"Saved: {path.relative_to(ROOT)}\n")
     print("Read interval (PC clock, all samples):")
     print("  " + stats_ms(read_iv))
