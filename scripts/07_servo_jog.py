@@ -284,7 +284,10 @@ def run_loop(kbd, robot, rc, data_channel, simulation, jog_speed, ctx):
         if delay > 0:
             time.sleep(delay)
         else:
-            next_t = time.monotonic()
+            # Overran: wait a full period from now instead of starting the next cycle at once,
+            # so two servo commands are never sent back to back
+            next_t = time.monotonic() + PERIOD_S
+            time.sleep(PERIOD_S)
     return done
 
 
