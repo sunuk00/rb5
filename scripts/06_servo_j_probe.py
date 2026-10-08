@@ -4,8 +4,8 @@ The meaning of move_servo_j(joint, t1, t2, gain, alpha) is not documented in ref
 so this script streams J6 targets with given parameters and records how jnt_ref follows.
 
 Phases (J6 only, targets relative to the current jnt_ref):
-    1 ramp   2.0 s   target += RAMP_SPEED * t, sent every PERIOD_S
-    2 hold   1.0 s   same target, still sent every PERIOD_S
+    1 ramp   2.0 s   target += RAMP_SPEED * t, sent every --period (default 10 ms)
+    2 hold   1.0 s   same target, still sent every --period
     3 ramp   1.0 s   ramp again
     4 cut    2.0 s   stop sending (like releasing a jog key)
     5 finish         move_speed_j(zeros), enable ACK, poll until stopped (as in examples/move_servo_j.cpp)
@@ -31,7 +31,6 @@ import config  # noqa: E402
 
 JOINT_INDEX = 5            # J6 (wrist 3)
 RAMP_SPEED = 5.0           # deg/s
-PERIOD_S = 0.01            # servo command period
 PHASES = [(1, "ramp", 2.0), (2, "hold", 1.0), (3, "ramp", 1.0), (4, "cut", 2.0)]
 STOP_TIMEOUT_S = 10.0
 DATA_DIR = ROOT / "data"
@@ -87,7 +86,9 @@ def analyze(arr, phase_start, q0):
     m = phase == 2
     if m.any():
         hold = target[m][-1]
-        print(f"Phase 2 hold : error at end {ref[m][-1] - hold:+.3f} deg, "
+        off = np.nonzero(np.abs(ref[m] - hold) > 1e-3)[0]   # samples not yet within 0.001 deg
+        settle = t[m][min(off[-1] + 1, m.sum() - 1)] - phase_start[2] if len(off) else 0.0
+        print(f"Phase 2 hold : settled after {settle * 1000:.0f} ms, error at end {ref[m][-1] - hold:+.3f} deg, "
               f"max beyond target {np.max(ref[m] - hold):+.3f} deg")
 
     # Phase 4: after the last command, how long and how far does it keep moving?
@@ -111,6 +112,7 @@ def main():
     parser.add_argument("--t2", type=float, default=0.1)
     parser.add_argument("--gain", type=float, default=1.0)
     parser.add_argument("--alpha", type=float, default=1.0)
+    parser.add_argument("--period", type=float, default=0.01, help="servo command period (s)")
     args = parser.parse_args()
     params = (args.t1, args.t2, args.gain, args.alpha)
     np.set_printoptions(precision=3, suppress=True)
@@ -130,7 +132,7 @@ def main():
     print("Mode: Simulation   speed bar", config.SPEED)
     print(f"move_servo_j params: t1={args.t1} t2={args.t2} gain={args.gain} alpha={args.alpha}")
     print("Start (jnt_ref):", q_start)
-    print(f"J6 will be streamed {RAMP_SPEED} deg/s up to {total:+.1f} deg, every {PERIOD_S * 1000:.0f} ms")
+    print(f"J6 will be streamed {RAMP_SPEED} deg/s up to {total:+.1f} deg, every {args.period * 1000:.0f} ms")
 
     shared = {"phase": 0, "target": q_start[JOINT_INDEX]}
     t0 = time.perf_counter()
@@ -156,7 +158,7 @@ def main():
                     shared["target"] = target[JOINT_INDEX]
                     robot.move_servo_j(rc, target, *params)
                     sent += 1
-                next_t += PERIOD_S
+                next_t += args.period
                 time.sleep(max(0.0, next_t - time.perf_counter()))
 
         # Finish the same way as examples/move_servo_j.cpp, but poll instead of an event wait
@@ -187,7 +189,7 @@ def main():
 
     # Save CSV
     DATA_DIR.mkdir(exist_ok=True)
-    tag = "_".join(f"{p:g}" for p in params)
+    tag = "_".join(f"{p:g}" for p in params) + f"_p{args.period * 1000:g}ms"
     path = DATA_DIR / f"06_servo_{tag}_{datetime.now():%Y%m%d_%H%M%S}.csv"
     with open(path, "w", newline="") as f:
         writer = csv.writer(f)
