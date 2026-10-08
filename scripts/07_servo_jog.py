@@ -25,9 +25,11 @@ Note: evdev reads the keyboard device directly, so keys pressed while another
 window has focus are read too.
 """
 import argparse
+import csv
 import sys
 import termios
 import time
+from datetime import datetime
 from pathlib import Path
 
 import evdev
@@ -35,7 +37,8 @@ from evdev import ecodes
 import numpy as np
 import rbpodo as rb
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 import config  # noqa: E402
 
 KEYBOARD_NAME = "AT Translated Set 2 keyboard"   # laptop keyboard
@@ -61,6 +64,7 @@ HOLD_ON_EXIT_S = 0.3       # keep sending the frozen target this long before end
 JOINT_SPEED = 70.0         # move_j speed for the return to HOME (deg/s), scaled by the speed bar
 JOINT_ACC = 20.0           # move_j acceleration (deg/s^2)
 HOME_TIMEOUT_S = 300.0     # give up waiting for the return-home move after this long
+DATA_DIR = ROOT / "data"
 
 ARROW_KEYS = [ecodes.KEY_LEFT, ecodes.KEY_RIGHT, ecodes.KEY_UP, ecodes.KEY_DOWN]
 DONE_KEYS = [ecodes.KEY_D, ecodes.KEY_O, ecodes.KEY_N, ecodes.KEY_E]
@@ -152,7 +156,11 @@ def emergency_stop(robot, rc):
 
 
 def run_loop(kbd, robot, rc, data_channel, simulation, jog_speed, ctx):
-    """Fixed-rate loop. Returns True if "done" was typed. ctx["target"] holds the servo target."""
+    """Fixed-rate loop. Returns True if "done" was typed.
+
+    ctx["target"] holds the servo target; ctx["cycles"] gets one row per cycle:
+    (cycle, time since start, loop interval, servo send interval), intervals in seconds or None.
+    """
     selected = 0               # joint index 0..5 -> J1..J6
     left = right = False       # held state of the Left / Right keys
     press_cycle = {}           # cycle at which Left / Right was pressed, to report hold time
@@ -174,7 +182,12 @@ def run_loop(kbd, robot, rc, data_channel, simulation, jog_speed, ctx):
     t_start = time.monotonic()
     next_t = t_start
     cycle = 0
+    prev_cycle_t = None
     while not done:
+        t_cycle = time.monotonic()
+        loop_interval = None if prev_cycle_t is None else t_cycle - prev_cycle_t
+        prev_cycle_t = t_cycle
+        send_interval = None
         events = []            # what happened this cycle; a line is printed only if not empty
 
         # 1. Process every key event queued since the last cycle, without waiting
@@ -240,7 +253,10 @@ def run_loop(kbd, robot, rc, data_channel, simulation, jog_speed, ctx):
                 t_release = now
 
             send_servo(robot, rc, target)
-            last_send = time.monotonic()
+            t_send = time.monotonic()
+            if last_send is not None:
+                send_interval = t_send - last_send
+            last_send = t_send
 
             if moving and direction == 0 and np.max(np.abs(target - q)) < SETTLED_DEG:
                 moving = False
@@ -259,6 +275,8 @@ def run_loop(kbd, robot, rc, data_channel, simulation, jog_speed, ctx):
             print(f"[{cycle:5d} | {time.monotonic() - t_start:6.2f} s]  selected J{selected + 1}  |  "
                   f"{joint_txt}  |  {', '.join(events)}")
 
+        ctx["cycles"].append((cycle, t_cycle - t_start, loop_interval, send_interval))
+
         # 4. Sleep until the next cycle (absolute schedule, so timing errors do not accumulate)
         cycle += 1
         next_t += PERIOD_S
@@ -268,6 +286,31 @@ def run_loop(kbd, robot, rc, data_channel, simulation, jog_speed, ctx):
         else:
             next_t = time.monotonic()
     return done
+
+
+def report_intervals(rows, mode_name):
+    """Print loop / send interval statistics and save every cycle's intervals to CSV."""
+    if len(rows) < 2:
+        return
+    limit_ms = MAX_GAP_S * 1000
+    print()
+    for name, col in (("Loop interval", 2), ("Servo send interval", 3)):
+        ms = np.array([r[col] for r in rows if r[col] is not None]) * 1000
+        if len(ms) == 0:
+            continue
+        print(f"{name:<20}: mean {ms.mean():6.2f} ms   min {ms.min():6.2f} ms   max {ms.max():6.2f} ms   "
+              f"(n={len(ms)}, over {limit_ms:.0f} ms: {np.sum(ms > limit_ms)})")
+
+    DATA_DIR.mkdir(exist_ok=True)
+    path = DATA_DIR / f"07_servo_jog_{mode_name}_{datetime.now():%Y%m%d_%H%M%S}.csv"
+    with open(path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["cycle", "time_s", "loop_interval_ms", "send_interval_ms"])
+        for cycle, t, loop_iv, send_iv in rows:
+            writer.writerow([cycle, f"{t:.4f}",
+                             "" if loop_iv is None else f"{loop_iv * 1000:.3f}",
+                             "" if send_iv is None else f"{send_iv * 1000:.3f}"])
+    print(f"Saved: {path.relative_to(ROOT)}")
 
 
 def return_home(robot, rc, data_channel, simulation):
@@ -338,7 +381,7 @@ def main():
     print("[cycle | time]  selected joint  |  its current angle (lead = target - angle)  |  events\n")
 
     old_term = disable_echo()
-    ctx = {"target": None}
+    ctx = {"target": None, "cycles": []}
     done = False
     error = None
     if robot is not None:
@@ -358,6 +401,9 @@ def main():
                 emergency_stop(robot, rc)
         restore_terminal(old_term)
         kbd.close()
+
+    mode_name = "sim" if args.sim else "real" if args.real else "keyboard"
+    report_intervals(ctx["cycles"], mode_name)
 
     if done and robot is not None and error is None:
         return_home(robot, rc, data_channel, simulation)
