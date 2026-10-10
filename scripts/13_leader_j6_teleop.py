@@ -4,7 +4,9 @@ Based on 08_servo_jog_fast.py. Each 20 ms cycle:
   1. read leader arm ID 6 (J6_Wrist_Yaw2_R) and the right tool (ID 128) button, read-only
   2. clutch: button = (raw >> 8) & 0xff; 1 = pressed, 0 = released, anything else = failed read
   3. while the clutch is engaged: target = RB5 start + (leader now - leader start),
-     limited per cycle and to a range around the RB5 J6 angle at script start
+     limited per cycle and to a range around the RB5 J6 angle at script start.
+     When the per-cycle limit cuts a step, the excess is dropped (the leader start is shifted),
+     so the robot does not keep catching up after the hand stops.
   4. send move_servo_j(target) every cycle; released clutch = frozen target = robot stops
 
 Clutch debounce: a press counts after 2 consecutive pressed reads. 1-2 failed reads keep the last
@@ -326,7 +328,12 @@ def run_loop(leader, robot, rc, reader, limits, ctx):
             desired = rb5_start + (reading[1] - leader_start)
             step = desired - target[RB5_JOINT]
             if abs(step) > max_step:
-                step = np.sign(step) * max_step
+                limited = np.sign(step) * max_step
+                # Drop the excess instead of catching up later: shift the leader start so that,
+                # for this leader angle, the desired value equals where the target actually goes.
+                # The robot then stops soon after the hand stops (hand-robot offset changes instead).
+                leader_start += step - limited
+                step = limited
                 flags["rate"] = True
             new = target[RB5_JOINT] + step
             if new < low or new > high:
