@@ -2,12 +2,12 @@
 
 Based on 08_servo_jog_fast.py. Each 20 ms cycle:
   1. read leader arm ID 6 (J6_Wrist_Yaw2_R) and the right tool (ID 128) button, read-only
-  2. clutch: button = (raw >> 8) & 0xff; 255 = pressed, 0 = released, anything else = failed read
+  2. clutch: button = (raw >> 8) & 0xff; 1 = pressed, 0 = released, anything else = failed read
   3. while the clutch is engaged: target = RB5 start + (leader now - leader start),
      limited per cycle and to a range around the RB5 J6 angle at script start
   4. send move_servo_j(target) every cycle; released clutch = frozen target = robot stops
 
-Clutch debounce: a press counts after 2 consecutive 255 reads. 1-2 failed reads keep the last
+Clutch debounce: a press counts after 2 consecutive pressed reads. 1-2 failed reads keep the last
 state; 3 failed reads in a row count as released. The clutch always starts released, and if the
 button is held at start it must be released once before a press is accepted.
 
@@ -66,7 +66,7 @@ TOOL_READ_PAUSE_S = 100e-6 # rby1-sdk ReadButtonStatus sleeps 100 us after the r
 TICKS_PER_REV = 4096       # rad = raw / 4096 * 2 * pi (rby1-sdk dynamixel_bus.cpp)
 
 # --- Clutch
-BUTTON_PRESSED = 255
+BUTTON_PRESSED = 1         # raw 0x00000100 when held (confirmed with 12)
 BUTTON_RELEASED = 0
 PRESS_CONFIRM_READS = 2
 FAILS_TO_RELEASE = 3
