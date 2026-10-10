@@ -9,8 +9,11 @@ Leader arm, one dynamixel_sdk PortHandler for the whole run:
     dynamixel_bus.cpp). The arm then holds that pose with the same weak torque.
     During teleop, writes happen only when a clutch changes state (CLAUDE.md safety rule):
       pressed  -> torque off for that arm (free to move by hand)
-      released -> goal position = the angles just read, then torque on (holds that pose with the
-                  current limit set at startup; operating mode is not written again)
+      released -> goal position = the angles just read, then torque on, for the shoulder and elbow
+                  joints only (holds that pose with the current limit set at startup; operating mode
+                  is not written again)
+    Wrist joints (IDs 4-6, 11-13) have torque only during the startup alignment and are switched
+    off right after it (they buzzed while holding; docs/decisions.md).
     All joints get torque off when the script ends.
     Reads: joints 0..13 with GroupSyncRead (address 132), tools 128 / 129 with separate reads +
     100 us pause (rby1-sdk ReadButtonStatus). Angle: deg = raw * 360 / 4096.
@@ -100,6 +103,8 @@ ALIGN_WARN_DEG = 90.0      # warn and ask again when a joint must move more than
 
 ARMS = ("right", "left")
 LEADER_SLICE = {"right": slice(0, 7), "left": slice(7, 14)}
+WRIST_IDS = [4, 5, 6, 11, 12, 13]                      # always torque off after the alignment
+HOLD_SLICE = {"right": slice(0, 4), "left": slice(7, 11)}   # shoulder 3 + elbow, held while released
 STATUS_EVERY = 25          # status line every this many cycles (2 Hz)
 DATA_DIR = ROOT / "data"
 CLEAR_LINE = "\r\x1b[2K"
@@ -396,8 +401,8 @@ def run_loop(dev, stream, rstate, idx, lim, ctx):
                 if leader_last is None:
                     ev += ", WARNING: no leader reading, arm not held"
                 else:
-                    dev.hold_at(JOINT_IDS[LEADER_SLICE[arm]], leader_last[LEADER_SLICE[arm]])
-                    ev += ", leader holds this pose"
+                    dev.hold_at(JOINT_IDS[HOLD_SLICE[arm]], leader_last[HOLD_SLICE[arm]])
+                    ev += ", leader shoulder/elbow hold this pose"
             if ev:
                 event(f"[{time.monotonic() - t_start:7.2f} s] {arm} clutch {ev}")
 
@@ -565,8 +570,10 @@ def align_leader(leader):
     print(f"Alignment done. {'ID':>3} {'target':>8} {'actual':>8} {'diff':>7}")
     for i in JOINT_IDS:
         print(f"                {i:>3} {target[i]:8.2f} {q_after[i]:8.2f} {q_after[i] - target[i]:+7.2f}")
-    print("The leader arm now holds this pose with weak torque. Pressing an arm's button turns its torque off\n"
-          "(hold the arm: it can drop), releasing it holds the arm where it is.")
+    leader.torque_off(WRIST_IDS)
+    print(f"Wrist joints {WRIST_IDS} torque off (they stay off).")
+    print("Shoulders and elbows hold this pose with weak torque. Pressing an arm's button turns its torque off\n"
+          "(hold the arm: it can drop), releasing it holds that arm's shoulder and elbow where they are.")
     return True
 
 

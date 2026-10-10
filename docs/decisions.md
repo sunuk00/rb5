@@ -72,6 +72,24 @@ Dynamixel behavior, not checked in a document). Check that the arm holds after t
 **Rejected alternatives:** example 35's current control with gravity-compensation torque while the
 button is held (needs the dynamics model in the loop); writing every cycle (not needed for holding).
 
+## 2026-10-10 — 14: leader wrist joints always torque off after the alignment
+
+**Decision:** Wrist joints (IDs 4-6, 11-13) have torque only during the 6 s startup alignment and are
+switched off right after it. On clutch release only the shoulder and elbow joints (IDs 0-3, 7-10)
+hold their pose.
+
+**Reason:** While holding, right wrist IDs 4 and 6 oscillated by +/-0.18-0.26 deg (2-3 encoder
+ticks) and changed direction on 90-97 of 158 cycles (`data/14_leader_rby1_20261010_112745.csv`);
+the user reported strong vibration. The wrists are light, so letting them hang is acceptable.
+
+**Notes:** Position gains read at 11:30 (before a leader power cycle): D 6500 (XM540-W150) /
+4000 (XM430-W210), I 0, P 800. Our code never writes address 80. The cause of the vibration is not
+confirmed (high D gain is a guess). The left shoulder (ID 7) drifting while held (7.4 -> 18.2 deg in
+3.3 s) is a separate open issue.
+
+**Rejected / deferred:** raise the shoulder current limit (B, on hold until the left/right
+difference is understood); D gain experiment (C, not now); example 35 gravity compensation (D).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
