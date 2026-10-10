@@ -2,8 +2,10 @@
 # This example does not run in simulation.
 ######################################################################
 # RB_Cobot copy (step 15): refs/rby1-sdk/examples/python/35_leader_arm_teleop_with_monitor.py with
-# ONLY the gripper usage removed (no /dev/rby1_gripper in this setup) and the leader arm URDF path
-# pointed at refs/rby1-sdk. The Gripper class is left in place but never created.
+# the gripper usage removed (no /dev/rby1_gripper in this setup), the leader arm URDF path pointed at
+# refs/rby1-sdk, and simulator fixes: the "12v" power device (absent; the simulator has only "main")
+# replaced by the --power pattern, and a failed tool flange voltage setting only warns.
+# The Gripper class is left in place but never created.
 # Full difference: docs/15_example35_nogripper.diff
 ######################################################################
 # This example initializes the robot, gripper, and leader arm connected to a UPC, moves the robot to a
@@ -1003,7 +1005,7 @@ def main(address, model_name, power, servo, control_mode, align_duration=DEFAULT
 
         cm_state = robot.get_control_manager_state()
         is_cm_enabled = (cm_state.state == rby.ControlManagerState.State.Enabled)
-        is_12v_on = robot.is_power_on("12v")
+        is_12v_on = robot.is_power_on(power)  # RB_Cobot copy: no "12v" device in the simulator (only "main")
 
         # Major Fault prevention: Power cannot be toggled while Control Manager is Enabled
         if is_cm_enabled and not is_12v_on:
@@ -1037,9 +1039,14 @@ def main(address, model_name, power, servo, control_mode, align_duration=DEFAULT
             sys.exit(1)
 
         for arm in ["right", "left"]:
-            if not robot.set_tool_flange_output_voltage(arm, 12):
-                logging.error(f"Failed to set tool flange output voltage ({arm}) as 12v")
-                sys.exit(1)
+            # RB_Cobot copy: on the simulator a failure only warns (original: logging.error + sys.exit(1))
+            try:
+                ok = robot.set_tool_flange_output_voltage(arm, 12)
+            except Exception as e:
+                ok = False
+                logging.warning(f"set_tool_flange_output_voltage({arm}, 12) raised: {e}")
+            if not ok:
+                logging.warning(f"Failed to set tool flange output voltage ({arm}) as 12v; continuing (simulator)")
 
         robot.set_parameter("joint_position_command.cutoff_frequency", "3")
         print("[Step 1/5] Robot 12V power & Servos are ON and Control Manager is Enabled.")
@@ -1066,7 +1073,7 @@ def main(address, model_name, power, servo, control_mode, align_duration=DEFAULT
         logging.error("Please check the connector status or motor malfunctions.")
         try:
             robot.disable_control_manager()
-            robot.power_off("12v")
+            robot.power_off(power)  # RB_Cobot copy: was "12v"
         except Exception:
             pass
         leader_arm.close()
@@ -1465,7 +1472,7 @@ def main(address, model_name, power, servo, control_mode, align_duration=DEFAULT
                     robot.disable_control_manager()
                     time.sleep(0.2)
                 print("Powering off 12V...")
-                robot.power_off("12v")
+                robot.power_off(power)  # RB_Cobot copy: was "12v"
             except Exception as e:
                 logging.error(f"Error managing control manager / 12V power: {e}")
 

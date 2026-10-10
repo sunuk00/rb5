@@ -1,21 +1,24 @@
 Source: refs/rby1-sdk/examples/python/35_leader_arm_teleop_with_monitor.py (rby1-sdk 0.10.0, sha256 prefix 376a1317bb3bf475)
-Copy:   scripts/15_example35_nogripper.py (step 15). Changes: header note, URDF path, gripper usage removed.
+Copy:   scripts/15_example35_nogripper.py (step 15). Changes: header note, URDF path, gripper usage removed,
+        simulator fixes: "12v" -> --power pattern, tool flange voltage failure only warns.
 
 --- a/refs/rby1-sdk/examples/python/35_leader_arm_teleop_with_monitor.py
 +++ b/scripts/15_example35_nogripper.py
-@@ -1,6 +1,11 @@
+@@ -1,6 +1,13 @@
  ################################ Note ################################
  # This example does not run in simulation.
  ######################################################################
 +# RB_Cobot copy (step 15): refs/rby1-sdk/examples/python/35_leader_arm_teleop_with_monitor.py with
-+# ONLY the gripper usage removed (no /dev/rby1_gripper in this setup) and the leader arm URDF path
-+# pointed at refs/rby1-sdk. The Gripper class is left in place but never created.
++# the gripper usage removed (no /dev/rby1_gripper in this setup), the leader arm URDF path pointed at
++# refs/rby1-sdk, and simulator fixes: the "12v" power device (absent; the simulator has only "main")
++# replaced by the --power pattern, and a failed tool flange voltage setting only warns.
++# The Gripper class is left in place but never created.
 +# Full difference: docs/15_example35_nogripper.diff
 +######################################################################
  # This example initializes the robot, gripper, and leader arm connected to a UPC, moves the robot to a
  # ready pose, and streams teleoperation commands that map leader arm joint motion and trigger input to
  # robot arm and gripper control. See --help for arguments.
-@@ -40,7 +45,7 @@
+@@ -40,7 +47,7 @@
  
  SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
  # URDF_PATH = os.path.join(SCRIPT_DIR, "models", "leader_arm", "model.urdf")
@@ -24,7 +27,43 @@ Copy:   scripts/15_example35_nogripper.py (step 15). Changes: header note, URDF 
  LEADER_ARM_DEVICE_NAME = rby.upc.resolve_leader_arm_device_name()
  
  GRIPPER_DIRECTION = False
-@@ -1079,18 +1084,8 @@
+@@ -998,7 +1005,7 @@
+ 
+         cm_state = robot.get_control_manager_state()
+         is_cm_enabled = (cm_state.state == rby.ControlManagerState.State.Enabled)
+-        is_12v_on = robot.is_power_on("12v")
++        is_12v_on = robot.is_power_on(power)  # RB_Cobot copy: no "12v" device in the simulator (only "main")
+ 
+         # Major Fault prevention: Power cannot be toggled while Control Manager is Enabled
+         if is_cm_enabled and not is_12v_on:
+@@ -1032,9 +1039,14 @@
+             sys.exit(1)
+ 
+         for arm in ["right", "left"]:
+-            if not robot.set_tool_flange_output_voltage(arm, 12):
+-                logging.error(f"Failed to set tool flange output voltage ({arm}) as 12v")
+-                sys.exit(1)
++            # RB_Cobot copy: on the simulator a failure only warns (original: logging.error + sys.exit(1))
++            try:
++                ok = robot.set_tool_flange_output_voltage(arm, 12)
++            except Exception as e:
++                ok = False
++                logging.warning(f"set_tool_flange_output_voltage({arm}, 12) raised: {e}")
++            if not ok:
++                logging.warning(f"Failed to set tool flange output voltage ({arm}) as 12v; continuing (simulator)")
+ 
+         robot.set_parameter("joint_position_command.cutoff_frequency", "3")
+         print("[Step 1/5] Robot 12V power & Servos are ON and Control Manager is Enabled.")
+@@ -1061,7 +1073,7 @@
+         logging.error("Please check the connector status or motor malfunctions.")
+         try:
+             robot.disable_control_manager()
+-            robot.power_off("12v")
++            robot.power_off(power)  # RB_Cobot copy: was "12v"
+         except Exception:
+             pass
+         leader_arm.close()
+@@ -1079,18 +1091,8 @@
  
      robot.start_state_update(robot_state_callback, 1 / Settings.leader_arm_loop_period)
  
@@ -45,7 +84,7 @@ Copy:   scripts/15_example35_nogripper.py (step 15). Changes: header note, URDF 
  
      # ===== 5. LEADER ARM POSTURE ALIGNMENT TO READY POSE =====
      target_leader_ready_q = np.concatenate([
-@@ -1169,12 +1164,7 @@
+@@ -1169,12 +1171,7 @@
          if left_q is None:
              left_q = state.q_joint[7:14]
  
@@ -59,7 +98,7 @@ Copy:   scripts/15_example35_nogripper.py (step 15). Changes: header note, URDF 
  
          # 2. Leader Arm Torque Calculation (100% Gravity Compensation matching 20_state_check)
          ma_input = LeaderArm.ControlInput()
-@@ -1457,12 +1447,7 @@
+@@ -1457,12 +1454,7 @@
              except Exception as e:
                  logging.warning(f"Error closing leader arm: {e}")
  
@@ -73,7 +112,16 @@ Copy:   scripts/15_example35_nogripper.py (step 15). Changes: header note, URDF 
              try:
                  robot.stop_state_update()
              except Exception as e:
-@@ -1494,11 +1479,6 @@
+@@ -1480,7 +1472,7 @@
+                     robot.disable_control_manager()
+                     time.sleep(0.2)
+                 print("Powering off 12V...")
+-                robot.power_off("12v")
++                robot.power_off(power)  # RB_Cobot copy: was "12v"
+             except Exception as e:
+                 logging.error(f"Error managing control manager / 12V power: {e}")
+ 
+@@ -1494,11 +1486,6 @@
                  logging.warning(f"Error closing leader arm: {e}")
  
              try:
@@ -85,7 +133,7 @@ Copy:   scripts/15_example35_nogripper.py (step 15). Changes: header note, URDF 
                  robot.stop_state_update()
              except Exception:
                  pass
-@@ -1529,7 +1509,6 @@
+@@ -1529,7 +1516,6 @@
      # =========================================================
      if not leader_arm.start_control(leader_arm_control_loop, safety_function=hardware_fault_safety_cb):
          logging.error("Failed to start leader arm control.")
