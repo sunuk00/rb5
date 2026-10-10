@@ -37,7 +37,8 @@ import rby1_sdk as rby
 ROOT = Path(__file__).resolve().parent.parent
 
 # --- Loop and RB-Y1 command stream
-PERIOD_S = 0.01            # 100 Hz, as Settings.leader_arm_loop_period in example 35
+PERIOD_S = 0.02            # 50 Hz. Example 35 uses 100 Hz, but one cycle here takes about 11.6 ms
+                           # (leader 7.2 ms + send_command 4.2 ms, measured), so 10 ms does not fit
 MINIMUM_TIME_S = PERIOD_S * 1.01   # example 35: max(minimum_time, leader_arm_loop_period * 1.01)
 CONTROL_HOLD_TIME_S = 0.5  # chosen: a stopped stream does not keep a command alive for long
 READY_MINIMUM_TIME_S = 5.0 # example 35: move_j(robot, READY_POSE[model.model_name], 5)
@@ -49,7 +50,7 @@ POWER_PATTERN = ".*"                                  # example 35 --power defau
 SERVO_PATTERN = "torso_.*|right_arm_.*|left_arm_.*"   # example 35 --servo default
 
 # --- Safety
-MAX_STEP_DEG = 0.3         # per joint per cycle (30 deg/s)
+MAX_STEP_DEG = 0.6         # per joint per cycle (30 deg/s at 50 Hz, same as 13 Simulation)
 RANGE_DEG = 45.0           # per joint, around the pose after the READY move
 MAX_GAP_S = 1.5 * PERIOD_S # a send gap longer than this freezes the targets for that cycle
 MAX_LATE_CYCLES = 3
@@ -74,7 +75,7 @@ FAILS_TO_RELEASE = 3
 
 ARMS = ("right", "left")
 LEADER_SLICE = {"right": slice(0, 7), "left": slice(7, 14)}
-STATUS_EVERY = 50          # status line every this many cycles (2 Hz)
+STATUS_EVERY = 25          # status line every this many cycles (2 Hz)
 DATA_DIR = ROOT / "data"
 CLEAR_LINE = "\r\x1b[2K"
 
@@ -241,7 +242,7 @@ def prepare_simulator(robot):
 
 
 def run_loop(dev, stream, rstate, idx, lim, ctx):
-    """100 Hz loop. ctx["target"][arm] holds the 7-joint targets (deg), ctx["rows"] the CSV rows."""
+    """Fixed-period loop. ctx["target"][arm] holds the 7-joint targets (deg), ctx["rows"] the CSV rows."""
     q0, _ = rstate.latest()
     base = {arm: q0[idx[arm]] for arm in ARMS}     # range is fixed around the pose after the READY move
     low = {arm: np.maximum(base[arm] - RANGE_DEG, lim["q_lo"][idx[arm]]) for arm in ARMS}
