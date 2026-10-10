@@ -7,8 +7,11 @@ Leader arm, one dynamixel_sdk PortHandler for the whole run:
     -> torque on, then cosine interpolation to the RB-Y1 READY arm pose in ALIGN_DURATION_S with goal
     current = ALIGN_TORQUE_NM (example 35 move_leader_arm_to_pose; conversions from rby1-sdk
     dynamixel_bus.cpp). The arm then holds that pose with the same weak torque.
-    During teleop the ONLY write is torque off: once per arm, at that arm's first clutch press,
-    and for all joints when the script ends.
+    During teleop, writes happen only when a clutch changes state (CLAUDE.md safety rule):
+      pressed  -> torque off for that arm (free to move by hand)
+      released -> goal position = the angles just read, then torque on (holds that pose with the
+                  current limit set at startup; operating mode is not written again)
+    All joints get torque off when the script ends.
     Reads: joints 0..13 with GroupSyncRead (address 132), tools 128 / 129 with separate reads +
     100 us pause (rby1-sdk ReadButtonStatus). Angle: deg = raw * 360 / 4096.
 Clutch per arm (128 -> right arm, 129 -> left arm), same debounce as 13:
@@ -180,8 +183,20 @@ class LeaderArm:
             raise RuntimeError(f"sync write to address {address} failed: {self.ph.getTxRxResult(result)}")
 
     def torque_off(self, ids):
-        """The only write allowed during teleop."""
+        """Teleop write on clutch press (and at the end): torque off."""
         self._sync_write(ADDR_TORQUE_ENABLE, 1, {i: [0] for i in ids})
+
+    def hold_at(self, ids, angles_deg):
+        """Teleop write on clutch release: goal position = angles_deg, THEN torque on.
+
+        The goal position must be written first: with torque on, the motor moves to whatever goal
+        position is stored (the READY pose or an older hold pose). Operating mode 5 and the goal
+        current from the startup alignment are not written again.
+        """
+        pos = {i: list(int(np.radians(a) * 4096.0 / 2.0 / 3.141592).to_bytes(4, "little", signed=True))
+               for i, a in zip(ids, angles_deg)}
+        self._sync_write(ADDR_GOAL_POSITION, 4, pos)
+        self._sync_write(ADDR_TORQUE_ENABLE, 1, {i: [1] for i in ids})
 
     def align_to(self, target_deg, duration_s, torque_nm):
         """Startup only: move the joints to target_deg (14 values) like example 35 move_leader_arm_to_pose."""
@@ -335,7 +350,6 @@ def run_loop(dev, stream, rstate, idx, lim, ctx):
     ctx["clutch"] = clutch
     robot_start = {arm: None for arm in ARMS}
     leader_start = {arm: None for arm in ARMS}
-    torque_released = {arm: False for arm in ARMS}   # leader torque switched off at the first press
     leader_last = None
     leader_fails = leader_fail_total = leader_reads = 0
     flags_prev = {(arm, k): False for arm in ARMS for k in ("rate", "range")}
@@ -372,14 +386,18 @@ def run_loop(dev, stream, rstate, idx, lim, ctx):
                     clutch[arm].engaged = False
                     ev = "press ignored (no leader reading yet)"
                 else:
-                    if not torque_released[arm]:
-                        # Only allowed teleop write: torque off for this arm's 7 joints
-                        dev.torque_off(JOINT_IDS[LEADER_SLICE[arm]])
-                        torque_released[arm] = True
-                        event(f"[{time.monotonic() - t_start:7.2f} s] {arm} leader arm torque off (free to move)")
+                    # Teleop write on press: torque off for this arm's 7 joints
+                    dev.torque_off(JOINT_IDS[LEADER_SLICE[arm]])
                     robot_start[arm] = target[arm].copy()
                     leader_start[arm] = leader_last[LEADER_SLICE[arm]].copy()
-                    ev = "engaged"
+                    ev = "engaged, leader torque off (free to move)"
+            elif ev is not None and ev.startswith("released"):
+                # Teleop write on release: hold the leader arm where it is now
+                if leader_last is None:
+                    ev += ", WARNING: no leader reading, arm not held"
+                else:
+                    dev.hold_at(JOINT_IDS[LEADER_SLICE[arm]], leader_last[LEADER_SLICE[arm]])
+                    ev += ", leader holds this pose"
             if ev:
                 event(f"[{time.monotonic() - t_start:7.2f} s] {arm} clutch {ev}")
 
@@ -547,8 +565,8 @@ def align_leader(leader):
     print(f"Alignment done. {'ID':>3} {'target':>8} {'actual':>8} {'diff':>7}")
     for i in JOINT_IDS:
         print(f"                {i:>3} {target[i]:8.2f} {q_after[i]:8.2f} {q_after[i] - target[i]:+7.2f}")
-    print("The leader arm now holds this pose with weak torque; its torque turns off at that arm's first "
-          "clutch press.\nHold the arm when you press the button: it can drop once the torque is off.")
+    print("The leader arm now holds this pose with weak torque. Pressing an arm's button turns its torque off\n"
+          "(hold the arm: it can drop), releasing it holds the arm where it is.")
     return True
 
 

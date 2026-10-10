@@ -51,6 +51,27 @@ instead of 112, about 0.63 Nm on those motors (+27 %).
 
 **Rejected alternatives:** keep Rainbow's per-ID array (wrong for IDs 3 and 10 on this hardware).
 
+## 2026-10-10 — 14: leader arm holds its pose while the clutch is released (rule changed)
+
+**Decision:** Per arm, on clutch press: torque off (move freely by hand). On clutch release
+(including "released" after 3 failed button reads): goal position = the joint angles just read,
+then torque on, so the arm holds that pose with the startup current limit (0.5 Nm). Operating mode
+(5) and goal current are not written again during teleop. CLAUDE.md safety rule changed from
+"the only allowed write is torque off" to these two transition writes.
+
+**Reason:** With torque off after the first press, the leader arm dropped whenever the button was
+not held, so the pose could not be kept between clutch presses (same idea as example 35 lines
+1198-1203: position hold while the button is released).
+
+**Order:** the goal position must be written before torque on; otherwise the motor moves to the
+stored goal (the READY pose or an older hold pose).
+
+**Assumption to verify:** torque off does not clear operating mode or goal current (general
+Dynamixel behavior, not checked in a document). Check that the arm holds after the first release.
+
+**Rejected alternatives:** example 35's current control with gravity-compensation torque while the
+button is held (needs the dynamics model in the loop); writing every cycle (not needed for holding).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
