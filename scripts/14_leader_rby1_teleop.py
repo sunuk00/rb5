@@ -2,9 +2,15 @@
 
 RB-Y1 SIMULATOR ONLY (model M, default address localhost:50051). Run in the `rby1` conda env.
 
-Leader arm (read-only: ping / read only, nothing is written to the Dynamixel bus):
-    joints 0..13 with GroupSyncRead (address 132), tools 128 / 129 with separate reads + 100 us pause
-    (rby1-sdk dynamixel_bus.cpp ReadButtonStatus). Angle: deg = raw * 360 / 4096.
+Leader arm, one dynamixel_sdk PortHandler for the whole run:
+    Startup alignment (writes, before teleop): torque off -> operating mode 5 (current-based position)
+    -> torque on, then cosine interpolation to the RB-Y1 READY arm pose in ALIGN_DURATION_S with goal
+    current = ALIGN_TORQUE_NM (example 35 move_leader_arm_to_pose; conversions from rby1-sdk
+    dynamixel_bus.cpp). The arm then holds that pose with the same weak torque.
+    During teleop the ONLY write is torque off: once per arm, at that arm's first clutch press,
+    and for all joints when the script ends.
+    Reads: joints 0..13 with GroupSyncRead (address 132), tools 128 / 129 with separate reads +
+    100 us pause (rby1-sdk ReadButtonStatus). Angle: deg = raw * 360 / 4096.
 Clutch per arm (128 -> right arm, 129 -> left arm), same debounce as 13:
     button = (raw >> 8) & 0xff; 1 = pressed, 0 = released, anything else = failed read.
     A press counts after 2 consecutive pressed reads; 3 failed reads in a row count as released.
@@ -30,7 +36,7 @@ from datetime import datetime
 from pathlib import Path
 
 import dynamixel_sdk.port_handler as dxl_port_handler
-from dynamixel_sdk import COMM_SUCCESS, GroupSyncRead, PacketHandler, PortHandler
+from dynamixel_sdk import COMM_SUCCESS, GroupSyncRead, GroupSyncWrite, PacketHandler, PortHandler
 import numpy as np
 import rby1_sdk as rby
 
@@ -73,6 +79,22 @@ BUTTON_RELEASED = 0
 PRESS_CONFIRM_READS = 2
 FAILS_TO_RELEASE = 3
 
+# --- Leader arm alignment (writes before teleop only). Addresses: rby1-sdk dynamixel_bus.h, confirmed in
+# dynamixel_sdk's ROBOTIS control tables xm430_w210.model / xm540_w150.model
+ADDR_OPERATING_MODE = 11   # 1 byte
+ADDR_TORQUE_ENABLE = 64    # 1 byte
+ADDR_GOAL_CURRENT = 102    # 2 bytes
+ADDR_GOAL_POSITION = 116   # 4 bytes
+CURRENT_BASED_POSITION_MODE = 5   # rby1-sdk kCurrentBasedPositionControlMode
+CURRENT_UNIT_MA = 2.69     # rby1-sdk: raw = torque / torque_constant * 1000 / 2.69
+# Torque constant (Nm/A) by model number read with ping. Rainbow's leader_arm.cpp uses
+# {1.6591 x3, 1.3043 x4} per arm by ID; here it is chosen per ID from the actual model (docs/decisions.md).
+# 1130 = XM540-W150, 1030 = XM430-W210 (dynamixel_easy_sdk/control_table/dynamixel.model)
+TORQUE_CONSTANT_BY_MODEL = {1130: 1.6591, 1030: 1.3043}
+ALIGN_DURATION_S = 6.0
+ALIGN_TORQUE_NM = 0.5      # example 35: goal_torque=0.5
+ALIGN_WARN_DEG = 90.0      # warn and ask again when a joint must move more than this
+
 ARMS = ("right", "left")
 LEADER_SLICE = {"right": slice(0, 7), "left": slice(7, 14)}
 STATUS_EVERY = 25          # status line every this many cycles (2 Hz)
@@ -102,25 +124,37 @@ def read_latency_timer(port_name):
 
 
 class LeaderArm:
-    """Read-only access to the 14 leader arm joints and both tool buttons."""
+    """Leader arm on one dynamixel_sdk PortHandler: reads, startup alignment, and torque off."""
 
     def __init__(self, port_name):
         self.port = PortHandler(port_name)
         self.ph = PacketHandler(PROTOCOL_VERSION)
         self.sync = None
+        self.models = {}           # ID -> model number from ping
+        self.torque_on = False     # True after the alignment enabled torque
 
     def open(self):
         if not self.port.openPort():
             raise SystemExit(f"Failed to open {self.port.getPortName()}")
         if not self.port.setBaudRate(BAUDRATE):
             raise SystemExit(f"Failed to set baud rate {BAUDRATE}")
-        missing = [i for i in JOINT_IDS + list(TOOL_IDS.values()) if self.ph.ping(self.port, i)[1] != COMM_SUCCESS]
+        missing = []
+        for dxl_id in JOINT_IDS + list(TOOL_IDS.values()):
+            model, result, _ = self.ph.ping(self.port, dxl_id)
+            if result == COMM_SUCCESS:
+                self.models[dxl_id] = model
+            else:
+                missing.append(dxl_id)
         if missing:
             raise SystemExit(f"Leader arm IDs {missing} did not answer the ping.")
+        unknown = {i: self.models[i] for i in JOINT_IDS if self.models[i] not in TORQUE_CONSTANT_BY_MODEL}
+        if unknown:
+            raise SystemExit(f"No torque constant for joint models {unknown}; not writing to the leader arm.")
         self.sync = GroupSyncRead(self.port, self.ph, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION)
         for dxl_id in JOINT_IDS:
             self.sync.addParam(dxl_id)
 
+    # ---- reads
     def read_joints_deg(self):
         """Return 14 joint angles (deg), or None if the sync read failed."""
         result = self.sync.txRxPacket()
@@ -134,6 +168,51 @@ class LeaderArm:
         value, result, _ = self.ph.read4ByteTxRx(self.port, tool_id, ADDR_PRESENT_POSITION)
         time.sleep(TOOL_READ_PAUSE_S)
         return value if result == COMM_SUCCESS else None
+
+    # ---- writes
+    def _sync_write(self, address, size, id_bytes):
+        """One GroupSyncWrite; id_bytes maps ID -> list of `size` bytes (little endian)."""
+        writer = GroupSyncWrite(self.port, self.ph, address, size)
+        for dxl_id, data in id_bytes.items():
+            writer.addParam(dxl_id, data)
+        result = writer.txPacket()
+        if result != COMM_SUCCESS:
+            raise RuntimeError(f"sync write to address {address} failed: {self.ph.getTxRxResult(result)}")
+
+    def torque_off(self, ids):
+        """The only write allowed during teleop."""
+        self._sync_write(ADDR_TORQUE_ENABLE, 1, {i: [0] for i in ids})
+
+    def align_to(self, target_deg, duration_s, torque_nm):
+        """Startup only: move the joints to target_deg (14 values) like example 35 move_leader_arm_to_pose."""
+        start_deg = self.read_joints_deg()
+        if start_deg is None:
+            raise SystemExit("Could not read the leader arm before alignment.")
+        # Same order as rby1-sdk / example 35: torque off -> operating mode -> torque on
+        self._sync_write(ADDR_TORQUE_ENABLE, 1, {i: [0] for i in JOINT_IDS})
+        self._sync_write(ADDR_OPERATING_MODE, 1, {i: [CURRENT_BASED_POSITION_MODE] for i in JOINT_IDS})
+        self._sync_write(ADDR_TORQUE_ENABLE, 1, {i: [1] for i in JOINT_IDS})
+        self.torque_on = True
+        # Goal current from torque: rby1-sdk dynamixel_bus.cpp:501, torque constant by actual model
+        current = {}
+        for i in JOINT_IDS:
+            raw = int(torque_nm / TORQUE_CONSTANT_BY_MODEL[self.models[i]] * 1000.0 / CURRENT_UNIT_MA)
+            current[i] = list(raw.to_bytes(2, "little", signed=True))
+        t0 = time.monotonic()
+        next_t = t0
+        while True:
+            ratio = min((time.monotonic() - t0) / duration_s, 1.0)
+            s_curve = 0.5 * (1.0 - np.cos(np.pi * ratio))          # example 35 cosine S-curve
+            cmd_deg = start_deg + s_curve * (target_deg - start_deg)
+            # Goal position: rby1-sdk GroupSyncWriteSendPosition, (int)(rad * 4096 / 2 / 3.141592)
+            pos = {i: list(int(np.radians(cmd_deg[i]) * 4096.0 / 2.0 / 3.141592).to_bytes(4, "little", signed=True))
+                   for i in JOINT_IDS}
+            self._sync_write(ADDR_GOAL_CURRENT, 2, current)
+            self._sync_write(ADDR_GOAL_POSITION, 4, pos)
+            if ratio >= 1.0:
+                break
+            next_t += PERIOD_S
+            time.sleep(max(0.0, next_t - time.monotonic()))
 
     def close(self):
         self.port.closePort()
@@ -256,6 +335,7 @@ def run_loop(dev, stream, rstate, idx, lim, ctx):
     ctx["clutch"] = clutch
     robot_start = {arm: None for arm in ARMS}
     leader_start = {arm: None for arm in ARMS}
+    torque_released = {arm: False for arm in ARMS}   # leader torque switched off at the first press
     leader_last = None
     leader_fails = leader_fail_total = leader_reads = 0
     flags_prev = {(arm, k): False for arm in ARMS for k in ("rate", "range")}
@@ -292,6 +372,11 @@ def run_loop(dev, stream, rstate, idx, lim, ctx):
                     clutch[arm].engaged = False
                     ev = "press ignored (no leader reading yet)"
                 else:
+                    if not torque_released[arm]:
+                        # Only allowed teleop write: torque off for this arm's 7 joints
+                        dev.torque_off(JOINT_IDS[LEADER_SLICE[arm]])
+                        torque_released[arm] = True
+                        event(f"[{time.monotonic() - t_start:7.2f} s] {arm} leader arm torque off (free to move)")
                     robot_start[arm] = target[arm].copy()
                     leader_start[arm] = leader_last[LEADER_SLICE[arm]].copy()
                     ev = "engaged"
@@ -415,7 +500,59 @@ def main():
     dxl_port_handler.LATENCY_TIMER = 1
     leader = LeaderArm(args.port)
     leader.open()
+    try:
+        if not align_leader(leader):
+            return
+        teleop(args, leader)
+    finally:
+        # Whatever happened, leave the leader arm without torque
+        if leader.torque_on:
+            try:
+                leader.torque_off(JOINT_IDS)
+                print("Leader arm torque off (all joints).")
+            except Exception as e:
+                print(f"WARNING: leader arm torque off failed: {e}")
+        leader.close()
 
+
+MODEL_NAMES = {1130: "XM540-W150", 1030: "XM430-W210"}
+
+
+def align_leader(leader):
+    """Move the leader arm to the RB-Y1 READY arm pose (startup only). Returns False if cancelled."""
+    q = leader.read_joints_deg()
+    if q is None:
+        raise SystemExit("Could not read the leader arm.")
+    target = np.array(READY_RIGHT_DEG + READY_LEFT_DEG)
+    delta = target - q
+    print(f"Leader arm alignment to the RB-Y1 READY arm pose: {ALIGN_DURATION_S:.0f} s, "
+          f"goal current from {ALIGN_TORQUE_NM} Nm")
+    print(f"{'ID':>3} {'model':<11} {'now':>8} {'target':>8} {'move':>8}")
+    for i in JOINT_IDS:
+        mark = "   <-- more than %.0f deg" % ALIGN_WARN_DEG if abs(delta[i]) > ALIGN_WARN_DEG else ""
+        print(f"{i:>3} {MODEL_NAMES[leader.models[i]]:<11} {q[i]:8.1f} {target[i]:8.1f} {delta[i]:+8.1f}{mark}")
+    big = [i for i in JOINT_IDS if abs(delta[i]) > ALIGN_WARN_DEG]
+    if big:
+        print(f"WARNING: joints {big} move more than {ALIGN_WARN_DEG:.0f} deg (check cables, e.g. wrist rotation).")
+        if input("Type 'yes' to accept these large moves: ") != "yes":
+            print("Cancelled. Turn those joints closer to the target by hand and run again.")
+            return False
+    print("Keep hands away from the leader arm path.")
+    if input("The REAL leader arm will move. Type 'yes' to continue: ") != "yes":
+        print("Cancelled.")
+        return False
+    leader.align_to(target, ALIGN_DURATION_S, ALIGN_TORQUE_NM)
+    time.sleep(0.5)
+    q_after = leader.read_joints_deg()
+    print(f"Alignment done. {'ID':>3} {'target':>8} {'actual':>8} {'diff':>7}")
+    for i in JOINT_IDS:
+        print(f"                {i:>3} {target[i]:8.2f} {q_after[i]:8.2f} {q_after[i] - target[i]:+7.2f}")
+    print("The leader arm now holds this pose with weak torque; its torque turns off at that arm's first "
+          "clutch press.\nHold the arm when you press the button: it can drop once the torque is off.")
+    return True
+
+
+def teleop(args, leader):
     # RB-Y1 simulator
     robot = rby.create_robot(args.address, "m")
     if not robot.connect():
@@ -474,7 +611,6 @@ def main():
             except Exception as e:
                 event(f"hold on exit failed: {e}")
         robot.stop_state_update()
-        leader.close()
 
     DATA_DIR.mkdir(exist_ok=True)
     path = DATA_DIR / f"14_leader_rby1_{datetime.now():%Y%m%d_%H%M%S}.csv"
