@@ -425,7 +425,12 @@ def main():
     idx = {"right": list(model.right_arm_idx), "left": list(model.left_arm_idx)}
     dyn = robot.get_dynamics()
     dyn_state = dyn.make_state([], model.robot_joint_names)
-    lim = {"q_lo": np.degrees(dyn.get_limit_q_lower(dyn_state)), "q_hi": np.degrees(dyn.get_limit_q_upper(dyn_state)),
+    # Convert only the arm joint limits to degrees (wheel limits are huge and overflow np.degrees)
+    arm_idx = idx["right"] + idx["left"]
+    q_lo, q_hi = np.full(model.robot_dof, np.nan), np.full(model.robot_dof, np.nan)
+    q_lo[arm_idx] = np.degrees(np.asarray(dyn.get_limit_q_lower(dyn_state))[arm_idx])
+    q_hi[arm_idx] = np.degrees(np.asarray(dyn.get_limit_q_upper(dyn_state))[arm_idx])
+    lim = {"q_lo": q_lo, "q_hi": q_hi,
            "qdot": dyn.get_limit_qdot_upper(dyn_state), "qddot": dyn.get_limit_qddot_upper(dyn_state)}
 
     print(f"RB-Y1 SIMULATOR {args.address} (model M)   leader {args.port}   loop {PERIOD_S * 1000:.0f} ms   "
