@@ -82,9 +82,11 @@ hold their pose.
 ticks) and changed direction on 90-97 of 158 cycles (`data/14_leader_rby1_20261010_112745.csv`);
 the user reported strong vibration. The wrists are light, so letting them hang is acceptable.
 
-**Notes:** Position gains read at 11:30 (before a leader power cycle): D 6500 (XM540-W150) /
-4000 (XM430-W210), I 0, P 800. Our code never writes address 80. The cause of the vibration is not
-confirmed (high D gain is a guess). The left shoulder (ID 7) drifting while held (7.4 -> 18.2 deg in
+**Notes:** Position gains read before (11:30) and after (11:32) a leader arm power cycle are the
+same: D 6500 (XM540-W150) / 4000 (XM430-W210), I 0, P 800. So these are the power-up values of these
+motors, not written by any program (our code never writes address 80). The power cycle was real:
+goal current changed from 112 / 142 (ours) to 1000. Operating mode 5 persisted (EEPROM). The cause of
+the vibration is not confirmed (high D gain is still only a guess). The left shoulder (ID 7) drifting while held (7.4 -> 18.2 deg in
 3.3 s) is a separate open issue.
 
 **Rejected / deferred:** raise the shoulder current limit (B, on hold until the left/right
