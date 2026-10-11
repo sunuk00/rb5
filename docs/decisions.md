@@ -142,6 +142,32 @@ period after every slow `send_command` (about 20-25 ms gaps at 100 Hz). RB-Y1 co
 a separate sender thread (does not remove the slow `send_command` calls); rby1_sdk C++ reads (no speed
 gain, and its port cannot be closed from Python).
 
+## 2026-10-12 — 17/18: TCP pose sources and the move_servo_l probe
+
+**Facts from 17 (read-only, Simulation, `scripts/17_tcp_read_compare.py`):** `get_tcp_info`, `tcp_pos`
+and `calc_fk_tcp(jnt_ref)` equal `tcp_ref` (difference 0.000). So `get_tcp_info` returns the current
+TCP pose (not the TCP setting), and `calc_fk_tcp` / `tcp_ref` share the base frame and mm / deg units.
+
+**TCP offset:** a TCP offset of (0, -187, -40) mm, orientation offset 0, is set on the controller.
+Derived as R^T (tcp - tfc) with R = Rz(rz) Ry(ry) Rx(rx) (ZY'X''); an XYZ order gives non-round
+numbers. Who set it, and when, is not known. This is separate from the tool mass (0 kg).
+
+**Rotation convention source:** Rainbow rb_cobot_docs, UI Script 1.10 Units ("Z-Y'-X'' Euler angle
+(Degree)") and 7.35 Servo L ("Desired Cartesian posture in mm,deg unit (ZY'X'' Euler)"). The t1 / t2 /
+gain / alpha text of 7.35 is identical to 7.34 Servo J. The frame of `move_servo_l` is not stated.
+
+**Decision (18):** probe `move_servo_l` in Simulation with step targets, one experiment per run, in
+the order hold -> z +1 mm -> rz +1 deg (t1 = send period 0.02 s, t2 0.1, gain 1, alpha 1; 1.0 s of
+the same target; end with move_speed_j(0) as in 13).
+
+**Interpretation rule:** "no motion" in the hold experiment cannot be told apart from "command
+ignored". The hold result is read together with the z +1 mm experiment as the positive control: only
+if z moves by the expected 1 mm does hold's "no motion" show that the command is an absolute pose in
+the base frame.
+
+**Rejected alternatives:** ramping the step over 10 cycles (not needed in Simulation; a step shows
+the response time directly).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
