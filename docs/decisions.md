@@ -200,6 +200,33 @@ position stays fixed). The hold result counts because z (positive control) moved
   (about 100 deg/s) for a 1 deg TCP command. A real-robot Cartesian teleop needs a joint speed limit
   and a guard on J5 near 0.
 
+## 2026-10-12 — 18 rz away from J5 = 0: wrist singularity hypothesis supported
+
+**Result (Simulation, user run, `data/18_servo_l_rz_20261012_075518.csv`):** start J5 = 31.26 deg (not
+45, see below). rz +0.9995 deg, position change < 0.001 mm, max joint change 0.838 deg, no safety stop,
+within 0.01 mm / 0.01 deg at 60 ms, max joint step per cycle 0.26 deg (at J5 = 3.68: about 2 deg).
+
+| | J1 | J2 | J3 | J4 | J5 | J6 |
+|---|---|---|---|---|---|---|
+| measured change [deg] | +0.716 | -0.731 | +0.838 | +0.091 | +0.257 | -0.231 |
+| DH model prediction | +0.729 | -0.748 | +0.843 | +0.095 | +0.245 | -0.222 |
+
+The large J4 / J6 motion at J5 = 3.68 deg (J4 +6.06, J6 -4.98 before the stop) is gone at
+J5 = 31 deg, and the DH model predicts both runs. Conclusion: the 18 rz joint motion was caused by
+the wrist singularity at J5 = 0.
+
+## 2026-10-12 — 19: move_j speed is scaled by the speed bar
+
+**Observation:** 19 moved J5 by 41.3 deg with move_j(10 deg/s, 20 deg/s^2) and speed bar 0.1. The
+expected 4.1 s was wrong: after 30 s J5 was at 31.26 deg (27.6 deg, about 0.9 deg/s average) and the
+script sent task_stop. This fits an effective speed of 10 x 0.1 = 1 deg/s (plus acceleration time).
+02 moved only 2 deg, so it was not noticed there. The UI Script docs (5.41 set_speed_bar) only say
+"Set the overall speed control bar" and do not state the scaling; it is inferred from this run.
+Servo commands are not scaled (06).
+
+**Consequence:** with the speed bar at 0.1 (CLAUDE.md), a move_j speed argument of v gives about
+0.1 v. Timeouts and expected durations must use the scaled speed.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
