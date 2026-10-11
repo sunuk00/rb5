@@ -99,8 +99,8 @@ def main():
             if time.monotonic() - t0 > timeout_s:
                 robot.task_stop(rc)
                 raise SystemExit(f"Move not finished in {timeout_s:.1f} s; task_stop sent.")
-        print(f"Move took {time.monotonic() - t0:.1f} s (expected about {expected_s:.1f} s)")
             time.sleep(0.01)
+        print(f"Move took {time.monotonic() - t0:.1f} s (expected about {expected_s:.1f} s)")
     else:
         print("Warning: the move did not report a start within 0.5 s.")
 
