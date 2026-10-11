@@ -92,6 +92,56 @@ the vibration is not confirmed (high D gain is still only a guess). The left sho
 **Rejected / deferred:** raise the shoulder current limit (B, on hold until the left/right
 difference is understood); D gain experiment (C, not now); example 35 gravity compensation (D).
 
+## 2026-10-11 — 14: leader thread + Fast Sync Read; --period 0.02 (default) / 0.01; C++ not needed
+
+**Decision:** During teleop a LeaderThread owns the leader port: Fast Sync Read of the 14 joints +
+both buttons, as fast as it can, and it runs the clutch writes requested by the main loop. The main
+loop only computes targets and calls `send_command`. `--period 0.02` (50 Hz) stays the default;
+`--period 0.01` (100 Hz) is an option to test.
+
+**Measurements (latency_timer 1 ms, 500 reads each, 0 failures):**
+
+| Read of 14 joints | mean | p99 |
+|---|---|---|
+| dynamixel_sdk GroupSyncRead (previous 14) | 4.65 ms | 7.31 ms |
+| dynamixel_sdk Fast Sync Read | 2.05 ms | 4.42 ms |
+| rby1_sdk (C++) group_fast_sync_read | 2.14 ms | 4.66 ms |
+| rby1_sdk get_motor_states (pos+vel+current) | 5.32 ms | 9.09 ms |
+| rby1_sdk read_button_status x2 | 2.22 ms | 5.86 ms |
+
+Fast Sync Read and Sync Read values agree within 1 tick. 100 Hz on the simulator, 300 cycles, arms
+holding their pose:
+
+| | single loop (fast sync + buttons + send) | thread split |
+|---|---|---|
+| main loop work mean / p99 | 8.93 / 14.72 ms | 4.13 / 9.86 ms |
+| send interval mean / max | 10.52 / 21.94 ms | 10.00 / 16.50 ms |
+| intervals over 15 ms | 21 / 299 | 10 / 299 |
+| leader update (thread) | - | 4.53 ms mean (about 220 Hz), age at send 2.4 ms mean |
+
+**Why no C++ (rby1_sdk) reads:** C++ fast sync read (2.14 ms) is no faster than Python Fast Sync
+Read (2.05 ms). The time is spent on the bus (USB-serial + 2 Mbps transaction), not in Python. The
+leader thread's reads were as fast as alone (1.94 ms), so the GIL was not a problem.
+
+**Late-send limit:** 50 Hz keeps the tested 30 ms (1.5 x period). 100 Hz uses 20 ms (2 x period)
+because `send_command` alone sometimes takes about 10 ms (p99 9.8 ms in both layouts). A cycle is
+"late" if the gap before sending OR the end-to-end interval between commands (which includes a slow
+`send_command`) is over the limit; targets are frozen only when it is known before sending. Every
+cycle logs `late`, `late_before_send`, `late_send`, `send_interval_ms`, `send_call_ms` and the RB-Y1
+joint angles, so jumps at late cycles can be checked. 3 late cycles in a row stop the run.
+
+**Overrun policy changed for 14:** after an overrun the next cycle starts at once (the 20 ms limit was
+measured this way). The 07/08 rule "wait a full period after an overrun" would add up to one more
+period after every slow `send_command` (about 20-25 ms gaps at 100 Hz). RB-Y1 commands carry
+`minimum_time`, so two commands close together are not the jump risk that RB5 `move_servo_j` had.
+
+**Clutch debounce is time based:** 40 ms of pressed reads to engage, 60 ms of failed reads to release
+(2 / 3 cycles at 50 Hz as before, 4 / 6 at 100 Hz). Only new leader samples are counted.
+
+**Rejected alternatives:** single loop with Fast Sync Read (7 % of intervals over 15 ms at 100 Hz);
+a separate sender thread (does not remove the slow `send_command` calls); rby1_sdk C++ reads (no speed
+gain, and its port cannot be closed from Python).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

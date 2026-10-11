@@ -15,8 +15,11 @@ Leader arm, one dynamixel_sdk PortHandler for the whole run:
     Wrist joints (IDs 4-6, 11-13) have torque only during the startup alignment and are switched
     off right after it (they buzzed while holding; docs/decisions.md).
     All joints get torque off when the script ends.
-    Reads: joints 0..13 with GroupSyncRead (address 132), tools 128 / 129 with separate reads +
-    100 us pause (rby1-sdk ReadButtonStatus). Angle: deg = raw * 360 / 4096.
+    Reads: joints 0..13 with Fast Sync Read (address 132; one status packet for all joints, about
+    2 ms instead of 4.7 ms), tools 128 / 129 with separate reads + 100 us pause (rby1-sdk
+    ReadButtonStatus). Angle: deg = raw * 360 / 4096.
+    During teleop a LeaderThread owns the port: it reads as fast as it can (about 220 Hz) and runs
+    the clutch writes requested by the main loop, so the main loop only computes and sends.
 Clutch per arm (128 -> right arm, 129 -> left arm), same debounce as 13:
     button = (raw >> 8) & 0xff; 1 = pressed, 0 = released, anything else = failed read.
     A press counts after 2 consecutive pressed reads; 3 failed reads in a row count as released.
@@ -27,14 +30,18 @@ Mapping per arm, per joint (13 "B" policy): target = robot start + (leader now -
 RB-Y1: power_on / servo_on / enable_control_manager (simulator only), then move to READY_POSE with
     move_j-style send_command (examples/python/35_leader_arm_teleop_with_monitor.py), then stream both
     arm targets every cycle with minimum_time = 1.01 * period and control_hold_time = 0.5 s.
+Period: --period 0.02 (50 Hz, default) or 0.01 (100 Hz, to be tested). Speed limit 30 deg/s, clutch
+    debounce 40 ms / 60 ms and the late-send limit (30 ms at 50 Hz, 20 ms at 100 Hz) follow it.
 
 Usage:
-    python scripts/14_leader_rby1_teleop.py
+    python scripts/14_leader_rby1_teleop.py                  # 50 Hz
+    python scripts/14_leader_rby1_teleop.py --period 0.01    # 100 Hz
 Stop with Ctrl+C. Each run is logged to data/14_leader_rby1_<time>.csv
 """
 import argparse
 import csv
 import os
+import queue
 import sys
 import threading
 import time
@@ -49,8 +56,8 @@ import rby1_sdk as rby
 ROOT = Path(__file__).resolve().parent.parent
 
 # --- Loop and RB-Y1 command stream
-PERIOD_S = 0.02            # 50 Hz. Example 35 uses 100 Hz, but one cycle here takes about 11.6 ms
-                           # (leader 7.2 ms + send_command 4.2 ms, measured), so 10 ms does not fit
+PERIOD_CHOICES = (0.02, 0.01)
+PERIOD_S = 0.02            # loop period, set by set_period() from --period (default 50 Hz)
 MINIMUM_TIME_S = PERIOD_S * 1.01   # example 35: max(minimum_time, leader_arm_loop_period * 1.01)
 CONTROL_HOLD_TIME_S = 0.5  # chosen: a stopped stream does not keep a command alive for long
 READY_MINIMUM_TIME_S = 5.0 # example 35: move_j(robot, READY_POSE[model.model_name], 5)
@@ -62,13 +69,19 @@ POWER_PATTERN = ".*"                                  # example 35 --power defau
 SERVO_PATTERN = "torso_.*|right_arm_.*|left_arm_.*"   # example 35 --servo default
 
 # --- Safety
-MAX_STEP_DEG = 0.6         # per joint per cycle (30 deg/s at 50 Hz, same as 13 Simulation)
+MAX_SPEED_DEG_S = 30.0     # per joint (same as 13 Simulation); MAX_STEP_DEG = speed * period
+MAX_STEP_DEG = MAX_SPEED_DEG_S * PERIOD_S
 RANGE_DEG = 45.0           # per joint, around the pose after the READY move
-MAX_GAP_S = 1.5 * PERIOD_S # a send gap longer than this freezes the targets for that cycle
+# A send gap longer than this freezes the targets for that cycle. 50 Hz keeps the tested 1.5 x period;
+# 100 Hz uses 2 x period because send_command alone sometimes takes ~10 ms (measured, docs/decisions.md)
+MAX_GAP_BY_PERIOD = {0.02: 0.030, 0.01: 0.020}
+MAX_GAP_S = MAX_GAP_BY_PERIOD[PERIOD_S]
 MAX_LATE_CYCLES = 3
 MAX_STATE_AGE_S = 0.1      # RB-Y1 state older than this freezes the targets
 MAX_STALE_CYCLES = 3
-MAX_LEADER_FAILS = 3       # leader joint sync read failures in a row -> stop
+MAX_LEADER_FAILS = 3       # leader joint read failures in a row (new samples) -> stop
+MAX_LEADER_AGE_S = 0.05    # newest leader sample older than this freezes the targets
+MAX_OLD_LEADER_CYCLES = 3  # this many cycles in a row with an old leader sample -> stop
 HOLD_ON_EXIT_S = 0.3
 
 # --- Leader arm (rby1-sdk dynamixel_bus.h, leader_arm.cpp)
@@ -82,8 +95,12 @@ TOOL_READ_PAUSE_S = 100e-6
 TICKS_PER_REV = 4096
 BUTTON_PRESSED = 1
 BUTTON_RELEASED = 0
-PRESS_CONFIRM_READS = 2
-FAILS_TO_RELEASE = 3
+# Clutch debounce is time based: a press needs PRESS_CONFIRM_S of pressed reads, failed reads for
+# FAIL_RELEASE_S count as released. Converted to main-loop cycles by set_period (2 / 3 at 50 Hz, 4 / 6 at 100 Hz).
+PRESS_CONFIRM_S = 0.04
+FAIL_RELEASE_S = 0.06
+PRESS_CONFIRM_READS = round(PRESS_CONFIRM_S / PERIOD_S)
+FAILS_TO_RELEASE = round(FAIL_RELEASE_S / PERIOD_S)
 
 # --- Leader arm alignment (writes before teleop only). Addresses: rby1-sdk dynamixel_bus.h, confirmed in
 # dynamixel_sdk's ROBOTIS control tables xm430_w210.model / xm540_w150.model
@@ -105,7 +122,7 @@ ARMS = ("right", "left")
 LEADER_SLICE = {"right": slice(0, 7), "left": slice(7, 14)}
 WRIST_IDS = [4, 5, 6, 11, 12, 13]                      # always torque off after the alignment
 HOLD_SLICE = {"right": slice(0, 4), "left": slice(7, 11)}   # shoulder 3 + elbow, held while released
-STATUS_EVERY = 25          # status line every this many cycles (2 Hz)
+STATUS_EVERY = round(0.5 / PERIOD_S)   # status line at 2 Hz
 DATA_DIR = ROOT / "data"
 CLEAR_LINE = "\r\x1b[2K"
 
@@ -129,6 +146,18 @@ def read_latency_timer(port_name):
         return int(Path(f"/sys/bus/usb-serial/devices/{dev}/latency_timer").read_text().strip())
     except OSError:
         return None
+
+
+def set_period(period):
+    """Set the loop period and every value derived from it."""
+    global PERIOD_S, MINIMUM_TIME_S, MAX_STEP_DEG, MAX_GAP_S, PRESS_CONFIRM_READS, FAILS_TO_RELEASE, STATUS_EVERY
+    PERIOD_S = period
+    MINIMUM_TIME_S = PERIOD_S * 1.01
+    MAX_STEP_DEG = MAX_SPEED_DEG_S * PERIOD_S
+    MAX_GAP_S = MAX_GAP_BY_PERIOD[PERIOD_S]
+    PRESS_CONFIRM_READS = round(PRESS_CONFIRM_S / PERIOD_S)
+    FAILS_TO_RELEASE = round(FAIL_RELEASE_S / PERIOD_S)
+    STATUS_EVERY = round(0.5 / PERIOD_S)
 
 
 class LeaderArm:
@@ -164,8 +193,8 @@ class LeaderArm:
 
     # ---- reads
     def read_joints_deg(self):
-        """Return 14 joint angles (deg), or None if the sync read failed."""
-        result = self.sync.txRxPacket()
+        """Return 14 joint angles (deg), or None if the read failed. Fast Sync Read (one status packet)."""
+        result = self.sync.fastSyncRead()
         if result != COMM_SUCCESS or not all(
                 self.sync.isAvailable(i, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION) for i in JOINT_IDS):
             return None
@@ -238,8 +267,65 @@ class LeaderArm:
         self.port.closePort()
 
 
+class LeaderThread(threading.Thread):
+    """Owns the leader arm port during teleop.
+
+    Reads joints + both buttons as fast as it can and keeps the newest sample. Writes requested by the
+    main loop (clutch press -> torque off, release -> hold) are run here between reads, so only this
+    thread ever touches the port while teleop runs.
+    """
+
+    def __init__(self, dev):
+        super().__init__(daemon=True)
+        self.dev = dev
+        self.lock = threading.Lock()
+        self.sample = None         # (seq, receive time, 14 joint angles or None, {arm: button raw or None})
+        self.requests = queue.Queue()
+        self.stop_event = threading.Event()
+        self.error = None
+
+    def run(self):
+        seq = 0
+        try:
+            while not self.stop_event.is_set():
+                while True:
+                    try:
+                        kind, ids, angles = self.requests.get_nowait()
+                    except queue.Empty:
+                        break
+                    if kind == "off":
+                        self.dev.torque_off(ids)
+                    elif kind == "hold":
+                        self.dev.hold_at(ids, angles)
+                joints = self.dev.read_joints_deg()
+                raws = {arm: self.dev.read_button_raw(TOOL_IDS[arm]) for arm in ARMS}
+                seq += 1
+                with self.lock:
+                    self.sample = (seq, time.monotonic(), joints, raws)
+        except Exception as e:     # reported to the main loop, which stops
+            self.error = e
+
+    def latest(self):
+        with self.lock:
+            return self.sample
+
+    def request(self, kind, ids, angles=None):
+        self.requests.put((kind, list(ids), None if angles is None else list(angles)))
+
+    def wait_first(self, timeout_s=2.0):
+        t0 = time.monotonic()
+        while self.sample is None:
+            if self.error or time.monotonic() - t0 > timeout_s:
+                raise SystemExit(f"Leader thread got no sample ({self.error}).")
+            time.sleep(0.005)
+
+    def stop(self):
+        self.stop_event.set()
+        self.join(2.0)
+
+
 class Clutch:
-    """Debounced clutch from a tool button (same rules as 13)."""
+    """Debounced clutch from a tool button (same rules as 13, counts follow the period)."""
 
     def __init__(self):
         self.engaged = False
@@ -340,8 +426,8 @@ def prepare_simulator(robot):
         raise SystemExit("enable_control_manager failed")
 
 
-def run_loop(dev, stream, rstate, idx, lim, ctx):
-    """Fixed-period loop. ctx["target"][arm] holds the 7-joint targets (deg), ctx["rows"] the CSV rows."""
+def run_loop(lt, stream, rstate, idx, lim, ctx):
+    """Fixed-period main loop. ctx["target"][arm] holds the 7-joint targets (deg), ctx["rows"] the CSV rows."""
     q0, _ = rstate.latest()
     base = {arm: q0[idx[arm]] for arm in ARMS}     # range is fixed around the pose after the READY move
     low = {arm: np.maximum(base[arm] - RANGE_DEG, lim["q_lo"][idx[arm]]) for arm in ARMS}
@@ -356,10 +442,12 @@ def run_loop(dev, stream, rstate, idx, lim, ctx):
     robot_start = {arm: None for arm in ARMS}
     leader_start = {arm: None for arm in ARMS}
     leader_last = None
-    leader_fails = leader_fail_total = leader_reads = 0
+    last_seq = None
+    raws = {arm: None for arm in ARMS}
+    leader_fails = leader_fail_total = leader_samples = 0
     flags_prev = {(arm, k): False for arm in ARMS for k in ("rate", "range")}
     last_send = None
-    late_cycles = stale_cycles = 0
+    late_cycles = stale_cycles = old_cycles = 0
     prev_cycle_t = None
 
     t_start = next_t = time.monotonic()
@@ -369,39 +457,49 @@ def run_loop(dev, stream, rstate, idx, lim, ctx):
         interval = None if prev_cycle_t is None else t_cycle - prev_cycle_t
         prev_cycle_t = t_cycle
 
-        # 1. Leader arm: 14 joints, then both buttons
-        leader_reads += 1
-        leader = dev.read_joints_deg()
-        if leader is None:
-            leader_fails += 1
-            leader_fail_total += 1
-            if leader_fails >= MAX_LEADER_FAILS:
-                raise StopRequest(f"{MAX_LEADER_FAILS} leader joint read failures in a row")
-        else:
-            leader_fails = 0
-            leader_last = leader
-        raws = {arm: dev.read_button_raw(TOOL_IDS[arm]) for arm in ARMS}
+        # 1. Newest leader sample from the leader thread (no waiting)
+        if lt.error:
+            raise RuntimeError(f"leader thread stopped: {lt.error}")
+        seq, t_sample, joints, sample_raws = lt.latest()
+        leader_age = t_cycle - t_sample
+        new = seq != last_seq
+        last_seq = seq
+        if new:
+            leader_samples += 1
+            raws = sample_raws
+            if joints is None:
+                leader_fails += 1
+                leader_fail_total += 1
+                if leader_fails >= MAX_LEADER_FAILS:
+                    raise StopRequest(f"{MAX_LEADER_FAILS} leader joint read failures in a row")
+            else:
+                leader_fails = 0
+                leader_last = joints
+        old = leader_age > MAX_LEADER_AGE_S
+        old_cycles = old_cycles + 1 if old else 0
+        if old_cycles >= MAX_OLD_LEADER_CYCLES:
+            raise RuntimeError(f"{MAX_OLD_LEADER_CYCLES} cycles in a row with a leader sample older than "
+                               f"{MAX_LEADER_AGE_S * 1000:.0f} ms")
 
-        # 2. Clutches
-        buttons = {}
+        # 2. Clutches (only new button reads count) -> write requests run by the leader thread
         for arm in ARMS:
-            buttons[arm], ev = clutch[arm].update(raws[arm])
+            ev = None
+            if new:
+                _, ev = clutch[arm].update(raws[arm])
             if ev == "engaged":
                 if leader_last is None:
                     clutch[arm].engaged = False
                     ev = "press ignored (no leader reading yet)"
                 else:
-                    # Teleop write on press: torque off for this arm's 7 joints
-                    dev.torque_off(JOINT_IDS[LEADER_SLICE[arm]])
+                    lt.request("off", JOINT_IDS[LEADER_SLICE[arm]])        # press: torque off this arm
                     robot_start[arm] = target[arm].copy()
                     leader_start[arm] = leader_last[LEADER_SLICE[arm]].copy()
                     ev = "engaged, leader torque off (free to move)"
             elif ev is not None and ev.startswith("released"):
-                # Teleop write on release: hold the leader arm where it is now
                 if leader_last is None:
                     ev += ", WARNING: no leader reading, arm not held"
                 else:
-                    dev.hold_at(JOINT_IDS[HOLD_SLICE[arm]], leader_last[HOLD_SLICE[arm]])
+                    lt.request("hold", JOINT_IDS[HOLD_SLICE[arm]], leader_last[HOLD_SLICE[arm]])   # release: hold
                     ev += ", leader shoulder/elbow hold this pose"
             if ev:
                 event(f"[{time.monotonic() - t_start:7.2f} s] {arm} clutch {ev}")
@@ -409,33 +507,33 @@ def run_loop(dev, stream, rstate, idx, lim, ctx):
         # 3. RB-Y1 state and timing checks
         q, state_age = rstate.latest()
         now = time.monotonic()
-        late = last_send is not None and now - last_send > MAX_GAP_S
-        late_cycles = late_cycles + 1 if late else 0
-        if late_cycles >= MAX_LATE_CYCLES:
-            raise RuntimeError(f"{MAX_LATE_CYCLES} late cycles in a row")
+        gap = None if last_send is None else now - last_send
+        late = gap is not None and gap > MAX_GAP_S     # known before sending: freeze the targets
         stale = state_age > MAX_STATE_AGE_S
         stale_cycles = stale_cycles + 1 if stale else 0
         if stale_cycles >= MAX_STALE_CYCLES:
             raise RuntimeError(f"{MAX_STALE_CYCLES} stale RB-Y1 state cycles in a row")
         if late:
-            event(f"late: {(now - last_send) * 1000:.0f} ms since last send, targets frozen")
+            event(f"late: {gap * 1000:.0f} ms since last send, targets frozen")
         if stale:
             event(f"stale RB-Y1 state: {state_age * 1000:.0f} ms old, targets frozen")
+        if old:
+            event(f"old leader sample: {leader_age * 1000:.0f} ms, targets frozen")
 
         # 4. Targets per arm, per joint (B policy: drop the excess of the speed limit)
         flags = {(arm, k): False for arm in ARMS for k in ("rate", "range")}
         for arm in ARMS:
-            if not (clutch[arm].engaged and leader is not None and not late and not stale):
+            if not (clutch[arm].engaged and leader_last is not None and not late and not stale and not old):
                 continue
-            desired = robot_start[arm] + (leader[LEADER_SLICE[arm]] - leader_start[arm])
+            desired = robot_start[arm] + (leader_last[LEADER_SLICE[arm]] - leader_start[arm])
             step = desired - target[arm]
             limited = np.clip(step, -MAX_STEP_DEG, MAX_STEP_DEG)
             if np.any(limited != step):
                 leader_start[arm] += step - limited
                 flags[(arm, "rate")] = True
-            new = target[arm] + limited
-            clipped = np.clip(new, low[arm], high[arm])
-            if np.any(clipped != new):
+            new_target = target[arm] + limited
+            clipped = np.clip(new_target, low[arm], high[arm])
+            if np.any(clipped != new_target):
                 flags[(arm, "range")] = True
             target[arm] = clipped
         for key, on in flags.items():
@@ -451,19 +549,33 @@ def run_loop(dev, stream, rstate, idx, lim, ctx):
                                                lim["qdot"][idx["right"]], lim["qddot"][idx["right"]]))
         body.set_left_arm_command(arm_command(target["left"], MINIMUM_TIME_S, CONTROL_HOLD_TIME_S,
                                               lim["qdot"][idx["left"]], lim["qddot"][idx["left"]]))
+        t_send = time.monotonic()
         stream.send_command(rby.RobotCommandBuilder().set_command(
             rby.ComponentBasedCommandBuilder().set_body_command(body)))
-        last_send = time.monotonic()
+        t_sent = time.monotonic()
+        send_call = t_sent - t_send
+        # End-to-end interval between commands; also catches a slow send_command itself
+        send_interval = None if last_send is None else t_sent - last_send
+        last_send = t_sent
+        late_send = send_interval is not None and send_interval > MAX_GAP_S
+        late_any = late or late_send
+        late_cycles = late_cycles + 1 if late_any else 0
+        if late_send and not late:
+            event(f"late send: {send_interval * 1000:.0f} ms between commands (send_command {send_call * 1000:.0f} ms)")
 
         row = [f"{t_cycle - t_start:.4f}", "" if interval is None else f"{interval * 1000:.3f}",
-               f"{state_age * 1000:.2f}", int(late), int(stale)]
+               "" if send_interval is None else f"{send_interval * 1000:.3f}", f"{send_call * 1000:.3f}",
+               f"{leader_age * 1000:.2f}", int(new), f"{state_age * 1000:.2f}", int(late_any), int(late),
+               int(late_send), int(stale), int(old)]
         for arm in ARMS:
             row += ["" if raws[arm] is None else raws[arm], int(clutch[arm].engaged),
                     int(flags[(arm, "rate")]), int(flags[(arm, "range")])]
-        row += ["" if leader is None else f"{v:.3f}" for v in (leader if leader is not None else [None] * 14)]
+        row += ["" if leader_last is None else f"{v:.3f}" for v in (leader_last if leader_last is not None else [None] * 14)]
         row += [f"{v:.3f}" for arm in ARMS for v in target[arm]]
         row += [f"{v:.3f}" for arm in ARMS for v in q[idx[arm]]]
         ctx["rows"].append(row)
+        if late_cycles >= MAX_LATE_CYCLES:          # after logging, so the last late cycle is in the CSV
+            raise RuntimeError(f"{MAX_LATE_CYCLES} late cycles in a row")
 
         # 6. Status line
         if cycle % STATUS_EVERY == 0:
@@ -472,18 +584,18 @@ def run_loop(dev, stream, rstate, idx, lim, ctx):
                 f"{CLEAR_LINE}R {'ENGAGED' if clutch['right'].engaged else 'free   '}  "
                 f"L {'ENGAGED' if clutch['left'].engaged else 'free   '}  |  button read fail "
                 f"R {rate['right']:4.1f}% L {rate['left']:4.1f}%  leader joint read fail "
-                f"{100.0 * leader_fail_total / max(leader_reads, 1):4.1f}%")
+                f"{100.0 * leader_fail_total / max(leader_samples, 1):4.1f}%")
             sys.stdout.flush()
 
-        # 7. Sleep until the next cycle; after an overrun wait a full period (08)
+        # 7. Sleep until the next cycle. After an overrun the next cycle starts at once (the 20 ms
+        #    late limit at 100 Hz was measured this way); the late check above still freezes targets.
         cycle += 1
         next_t += PERIOD_S
         delay = next_t - time.monotonic()
         if delay > 0:
             time.sleep(delay)
         else:
-            next_t = time.monotonic() + PERIOD_S
-            time.sleep(PERIOD_S)
+            next_t = time.monotonic()
 
 
 def hold_and_stop(stream, target, idx, lim):
@@ -500,7 +612,8 @@ def hold_and_stop(stream, target, idx, lim):
         time.sleep(PERIOD_S)
 
 
-CSV_HEADER = (["t_s", "cycle_interval_ms", "state_age_ms", "late", "stale"]
+CSV_HEADER = (["t_s", "cycle_interval_ms", "send_interval_ms", "send_call_ms", "leader_age_ms", "leader_new",
+               "state_age_ms", "late", "late_before_send", "late_send", "stale", "leader_old"]
               + [f"{arm}_{k}" for arm in ARMS for k in ("button_raw", "clutch", "speed_limited", "range_limited")]
               + [f"leader_{i}_deg" for i in JOINT_IDS]
               + [f"target_{arm}_{j}_deg" for arm in ARMS for j in range(7)]
@@ -511,7 +624,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--address", default="localhost:50051", help="RB-Y1 simulator address")
     parser.add_argument("--port", default="/dev/ttyUSB0", help="leader arm USB-serial device")
+    parser.add_argument("--period", type=float, default=0.02, choices=PERIOD_CHOICES,
+                        help="loop period in seconds (0.02 = 50 Hz default, 0.01 = 100 Hz)")
     args = parser.parse_args()
+    set_period(args.period)
     np.set_printoptions(precision=1, suppress=True)
 
     # Leader arm (read-only)
@@ -597,7 +713,9 @@ def teleop(args, leader):
            "qdot": dyn.get_limit_qdot_upper(dyn_state), "qddot": dyn.get_limit_qddot_upper(dyn_state)}
 
     print(f"RB-Y1 SIMULATOR {args.address} (model M)   leader {args.port}   loop {PERIOD_S * 1000:.0f} ms   "
-          f"max {MAX_STEP_DEG} deg/cycle   range +/-{RANGE_DEG:.0f} deg   hold {CONTROL_HOLD_TIME_S} s")
+          f"max {MAX_STEP_DEG:g} deg/cycle ({MAX_SPEED_DEG_S:g} deg/s)   range +/-{RANGE_DEG:.0f} deg   "
+          f"hold {CONTROL_HOLD_TIME_S} s   late limit {MAX_GAP_S * 1000:.0f} ms   "
+          f"clutch {PRESS_CONFIRM_READS} press / {FAILS_TO_RELEASE} fail cycles")
     prepare_simulator(robot)
 
     q_now = np.degrees(np.array(robot.get_state().position))
@@ -620,9 +738,12 @@ def teleop(args, leader):
 
     stream = robot.create_command_stream(priority=1)
     ctx = {"target": None, "rows": [], "clutch": None}
+    lt = LeaderThread(leader)      # from here until lt.stop(), only this thread uses the leader port
+    lt.start()
     print("Clutch: right handle -> right arm, left handle -> left arm (hold to follow). Ctrl+C to stop.\n")
     try:
-        run_loop(leader, stream, rstate, idx, lim, ctx)
+        lt.wait_first()
+        run_loop(lt, stream, rstate, idx, lim, ctx)
     except KeyboardInterrupt:
         event("Interrupted.")
     except StopRequest as e:
@@ -630,6 +751,9 @@ def teleop(args, leader):
     except Exception as e:
         event(f"Error: {e}")
     finally:
+        lt.stop()                  # the leader port goes back to the main thread (torque off in main)
+        if lt.is_alive():
+            event("WARNING: leader thread did not stop within 2 s")
         if ctx["target"] is not None:
             try:
                 hold_and_stop(stream, ctx["target"], idx, lim)
