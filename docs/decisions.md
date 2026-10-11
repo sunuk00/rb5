@@ -168,6 +168,38 @@ the base frame.
 **Rejected alternatives:** ramping the step over 10 cycles (not needed in Simulation; a step shows
 the response time directly).
 
+## 2026-10-12 — 18 results: move_servo_l convention confirmed; wrist singularity near J5 = 0
+
+**Results (Simulation, user runs, `data/18_servo_l_{hold,z,rz}_20261012_0742*.csv`):**
+hold: no change. z +1 mm: change (0, 0, +1.000). rz +1 deg: rz +1.000, position change 0, but joints
+moved up to 6.06 deg (J4 +6.06, J6 -4.98) and the 3 deg joint limit stopped the run. Start J5 = 3.68 deg.
+
+**Conclusion:** `move_servo_l(pnt[x, y, z, rx, ry, rz], ...)` is an absolute TCP pose in the base frame,
+mm and deg, ZY'X'' Euler (R = Rz Ry Rx), and an orientation change rotates about the TCP (the TCP
+position stays fixed). The hold result counts because z (positive control) moved exactly 1 mm.
+
+**Wrist singularity evidence:**
+- Rainbow analytic IK (rb_cobot_docs, technical_docs/analytic_inverse_kinematics) computes
+  `th6 = atan2(.../sin(th5), .../sin(th5))`: undefined at th5 = 0 (and 180). The same page also
+  writes `R = Rz * Ry * Rx`, and the tool axis is the flange Y axis (`P05 = P06 + d6*Y06`), which fits
+  the -187 mm Y component of the TCP offset.
+- The manual only describes singularities in general terms (area above/below the base, "rapid joint
+  speeds or cause the robot to stop" for Cartesian motion, manual 1.7 Robot Work Area); it does not
+  name J5 = 0.
+- Model check with the RB5-850 DH table (technical_docs/dh_parameters): FK matches 17's TFC within
+  2 mm in position and 0.0002 in rotation matrix elements. Joint change needed for rz +1 deg at the 18
+  start pose (J5 = 3.68): J4 +8.0, J6 -6.2, J2 -3.8 deg (observed before the stop: J4 +6.06, J6 -4.98).
+  Max joint change by J5: 0 deg -> singular, 1 deg -> 32, 3.68 -> 8.0, 10 -> 2.4, 20 -> 1.0, 45 -> 1.0,
+  90 -> 1.5 deg.
+
+**Observations to remember:**
+- The TCP reached rz +1 at 80 ms while J4 and J6 kept moving in opposite directions: near J5 = 0,
+  J4 + / J6 - barely changes the orientation, so a large joint motion is a nearly invisible TCP motion.
+- The safety check is done once per cycle before sending, so the joints went 1.8 deg past the 3 deg
+  limit (4.24 at the check -> 6.06 final) after the stop. In 20 ms a joint moved up to 2 deg
+  (about 100 deg/s) for a 1 deg TCP command. A real-robot Cartesian teleop needs a joint speed limit
+  and a guard on J5 near 0.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
