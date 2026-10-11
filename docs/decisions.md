@@ -227,6 +227,30 @@ Servo commands are not scaled (06).
 **Consequence:** with the speed bar at 0.1 (CLAUDE.md), a move_j speed argument of v gives about
 0.1 v. Timeouts and expected durations must use the scaled speed.
 
+## 2026-10-12 — 20: leader arm FK with rby1_sdk.dynamics; tip = wrist center
+
+**Decision:** Leader arm FK uses `rby1_sdk.dynamics` on `refs/rby1-sdk/models/leader_arm/model.urdf`
+(as example 35), with all 14 joints passed to `make_state`. The "tip" is the Link_6R / Link_6L origin,
+the intersection of the three wrist axes (center of the J5 motor axis from outside). A handle tip
+offset is not in the URDF; it is to be measured and added later. Orientation is shown as ZY'X'' Euler
+(same as the RB5). Left arm joints are read too (read-only) for the left-right distance check.
+
+**Reason:** Rainbow's own URDF parser, same code path as example 35; a numpy evaluation of the URDF
+chain is used only as a startup self-test (max difference 6e-8 over 50 random poses).
+
+**Pitfall found:** with only the 7 right-arm joints in `make_state`, `set_q` silently ignored J3..J6
+(J0..J2 applied, no error). The script stops if the self-test fails.
+
+**Ruler check (user, 2026-10-12):**
+- V2 left-right wrist center distance, arms hanging: ruler 302 mm, screen 305 mm (pass, +/-5 mm).
+- V3 right arm, J2 near 0, elbow -20 -> -94 deg: screen dx +181.9, dy -18.5, dz +169.1 mm; measured
+  height change about 169 mm (measured in inches, converted) (pass).
+- With J2 about -100 deg, bending the elbow moves the wrist sideways (-y), on screen and on the arm.
+- Leader Base frame confirmed: x forward, y left, z up.
+- Not done: V1 (link lengths), V4 (handle tilt with a phone inclinometer).
+
+**Rejected alternatives:** direct numpy FK as the main path (kept as the self-test only).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
