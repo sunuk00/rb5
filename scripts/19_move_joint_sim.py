@@ -6,7 +6,9 @@ The target is the current jnt_ref with only the chosen joint changed.
 Checks:
   before: controller reports Simulation, robot not moving, |change| <= 60 deg.
           Prints current / target joints and the controller's FK (calc_fk_tcp) of both.
-  during: move_j at 10 deg/s, 20 deg/s^2, speed bar 0.1; task_stop if not finished in 30 s.
+  during: move_j(10 deg/s, 20 deg/s^2) with speed bar 0.1. The controller scales the move_j speed by
+          the speed bar (seen in the first run: about 1 deg/s), so the expected time uses
+          speed x speed bar; task_stop if not finished in 1.5 x expected + 5 s.
   after:  the joint within 0.05 deg of the target, other joints changed less than 0.05 deg,
           no controller error messages.
 
@@ -29,7 +31,8 @@ import config  # noqa: E402
 SPEED_DEG_S = 10.0         # same as 02
 ACC_DEG_S2 = 20.0
 MAX_CHANGE_DEG = 60.0
-MOVE_TIMEOUT_S = 30.0
+TIMEOUT_FACTOR = 1.5       # move timeout = factor x expected time + margin
+TIMEOUT_MARGIN_S = 5.0
 TOL_DEG = 0.05
 TIMEOUT_S = 1.0
 
@@ -75,8 +78,14 @@ def main():
     if abs(change) > MAX_CHANGE_DEG:
         raise SystemExit(f"J{args.joint} change {change:.2f} deg is over {MAX_CHANGE_DEG} deg. Not starting.")
 
+    # Trapezoid profile: distance / speed + speed / acceleration. Acceleration is assumed to be scaled
+    # by the speed bar too (not confirmed); that gives the longer, safer estimate.
+    speed = SPEED_DEG_S * config.SPEED
+    expected_s = abs(change) / speed + speed / (ACC_DEG_S2 * config.SPEED)
+    timeout_s = TIMEOUT_FACTOR * expected_s + TIMEOUT_MARGIN_S
     print(f"Mode: Simulation   move_j J{args.joint}: {q_now[idx]:.3f} -> {args.to:.3f} deg "
-          f"({change:+.3f} deg, {SPEED_DEG_S} deg/s, about {abs(change) / SPEED_DEG_S:.1f} s)")
+          f"({change:+.3f} deg at {SPEED_DEG_S} deg/s x speed bar {config.SPEED} = {speed:.2f} deg/s, "
+          f"about {expected_s:.1f} s, timeout {timeout_s:.1f} s)")
     print(f"Current joints {q_now}")
     print(f"Target joints  {q_target}")
     print(f"Current TCP (calc_fk_tcp) {fk(robot, rc, q_now)}")
@@ -87,9 +96,10 @@ def main():
     if robot.wait_for_move_started(rc, 0.5).type() == rb.ReturnType.Success:
         t0 = time.monotonic()
         while robot.get_robot_state(rc)[1] == rb.RobotState.Moving:
-            if time.monotonic() - t0 > MOVE_TIMEOUT_S:
+            if time.monotonic() - t0 > timeout_s:
                 robot.task_stop(rc)
-                raise SystemExit(f"Move not finished in {MOVE_TIMEOUT_S} s; task_stop sent.")
+                raise SystemExit(f"Move not finished in {timeout_s:.1f} s; task_stop sent.")
+        print(f"Move took {time.monotonic() - t0:.1f} s (expected about {expected_s:.1f} s)")
             time.sleep(0.01)
     else:
         print("Warning: the move did not report a start within 0.5 s.")
