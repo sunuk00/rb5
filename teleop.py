@@ -91,7 +91,13 @@ def main():
     from teleop.rb5 import RB5
     rb5 = RB5(s.robot.ip, s.servo)
     rb5.set_mode(real, s.robot.speed_bar)
+    reached, waited = rb5.wait_for_mode(real)
+    print(f"Controller mode after the switch: {'Real' if not rb5.reports_simulation() else 'Simulation'} "
+          f"({'reached' if reached else 'NOT reached'} after {waited:.1f} s)")
     problems = preflight.check_robot_mode(real, rb5.reports_simulation(), rb5.is_moving(), rb5.error_text())
+    if not reached:
+        problems.append("the mode did not change within 3 s after set_operation_mode; check the tablet "
+                        "(is Real mode allowed / is another program setting the mode?)")
     offset, rot_offset = rb5.tcp_offset()
     problems += preflight.check_tcp_offset(offset, rot_offset, s.tcp)
     if problems:

@@ -86,6 +86,17 @@ class RB5:
     def reports_simulation(self):
         return self.sdata().real_vs_simulation_mode == 1
 
+    def wait_for_mode(self, real, timeout_s=3.0):
+        """After set_mode: poll the data channel until it reports the requested mode (the flag may follow
+        the command with a delay). Returns (reached, seconds waited)."""
+        t0 = time.monotonic()
+        while True:
+            if self.reports_simulation() != real:
+                return True, time.monotonic() - t0
+            if time.monotonic() - t0 > timeout_s:
+                return False, time.monotonic() - t0
+            time.sleep(0.05)
+
     def is_moving(self):
         return self.robot.get_robot_state(self.rc)[1] == self.rb.RobotState.Moving
 
