@@ -9,7 +9,7 @@ Each 20 ms cycle:
   4. limits, in this order:
      - speed: at most MAX_STEP_MM per cycle, scaled down near the wrist singularity (below)
      - joint speed: the DH model predicts the joint motion dq = J^-1 dx; if max |dq| is over
-       MAX_DQ_DEG per cycle the step is scaled down
+       MAX_DQ_DEG per cycle for that joint (wrist J4-J6 2, others 1 deg/cycle) the step is scaled down
      - the cut part of the step is dropped (B: the leader start is shifted), so the robot stops soon
        after the hand stops; with --max-lag-mm (C) only the lag beyond that length is dropped
      - range: a cylinder piece about the base z axis (not dropped): radius CYL_R_MIN..CYL_R_MAX,
@@ -79,7 +79,9 @@ SERVO_ALPHA = 1.0
 # --- Limits
 MAX_SPEED_MM_S = 200.0     # largest allowed --speed-mm-s (Simulation)
 MAX_STEP_MM = 1.0          # per cycle (50 mm/s); set from --speed-mm-s in main()
-MAX_DQ_DEG = 1.0           # predicted joint motion per cycle (50 deg/s)
+# Predicted joint motion per cycle, per joint (Simulation): J1-J3 1 deg (50 deg/s), wrist J4-J6 2 deg
+# (100 deg/s). Real values to be set later from the RB5 specification (decisions 2026-10-12).
+MAX_DQ_DEG = np.array([1.0, 1.0, 1.0, 2.0, 2.0, 2.0])
 CYL_R_MIN = 450.0          # TCP horizontal radius from the base z axis [mm]; J3 limit at low z inside
 CYL_R_MAX = 550.0          # ready pose at r 500 (object on the table, z 0); see decisions 2026-10-12
 CYL_Z_HALF = 150.0         # z range around the TCP z at script start [mm] (Real: set from table + gripper)
@@ -337,10 +339,11 @@ def plan_step(target, desired, tcp_pos, q, model, cyl, yaw):
 
     # Joint speed limit on the combined motion (nearly linear in a step this small); both parts are
     # scaled by the same factor
-    max_dq = np.abs(model.predict(q, lead_p + limited, jac, lead_y + ylimited)).max()
-    lead_dq = np.abs(model.predict(q, lead_p, jac, lead_y)).max()
-    if max_dq > MAX_DQ_DEG and max_dq > lead_dq:
-        f = max(0.0, (MAX_DQ_DEG - lead_dq) / (max_dq - lead_dq))
+    dq_step = np.abs(model.predict(q, lead_p + limited, jac, lead_y + ylimited))
+    dq_lead = np.abs(model.predict(q, lead_p, jac, lead_y))
+    over = (dq_step > MAX_DQ_DEG) & (dq_step > dq_lead)
+    if np.any(over):
+        f = max(0.0, np.min((MAX_DQ_DEG[over] - dq_lead[over]) / (dq_step[over] - dq_lead[over])))
         limited, ylimited = limited * f, ylimited * f
         flags["jspeed"] = True
     new = target + limited
@@ -674,7 +677,7 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
                   "shslow": f"shoulder margin below {SHOULDER_SLOW_MM:.0f} mm: slower",
                   "elslow": f"J3 within {ELBOW_SLOW_DEG:.0f} deg of straight: slower",
                   "jlslow": f"a joint within {JOINT_LIMIT_SLOW_DEG:.0f} deg of its limit: slower",
-                  "jspeed": f"joint speed limit ({MAX_DQ_DEG} deg/cycle predicted)",
+                  "jspeed": f"joint speed limit ({MAX_DQ_DEG.tolist()} deg/cycle predicted)",
                   "range": f"range limit (cylinder r {CYL_R_MIN:.0f}..{CYL_R_MAX:.0f} mm, "
                            f"z +/-{CYL_Z_HALF:.0f} mm, azimuth +/-{CYL_AZ_HALF_DEG:.0f} deg)",
                   "lead": f"target waits for robot (lead limit {MAX_LEAD_MM} mm)",
@@ -844,7 +847,7 @@ def main():
           f"J5 {singular_distance(q0[4]):.1f} deg from singular, shoulder margin {rb5_model.shoulder_margin(q0):.1f} mm, "
           f"J3 {singular_distance(q0[2]):.1f} deg from straight, joint limit margin {joint_limit_margin(q0)[0]:.1f} deg "
           f"(J{joint_limit_margin(q0)[1]})")
-    print(f"Limits: {MAX_STEP_MM} mm/cycle ({MAX_STEP_MM / PERIOD_S:.0f} mm/s), {MAX_DQ_DEG} deg/cycle joints, "
+    print(f"Limits: {MAX_STEP_MM} mm/cycle ({MAX_STEP_MM / PERIOD_S:.0f} mm/s), {MAX_DQ_DEG.tolist()} deg/cycle joints, "
           f"cylinder r {CYL_R_MIN:.0f}..{CYL_R_MAX:.0f} mm / z +/-{CYL_Z_HALF:.0f} mm / "
           f"azimuth +/-{CYL_AZ_HALF_DEG:.0f} deg, lead {MAX_LEAD_MM} mm, J5 slow < {J5_SLOW_DEG:.0f} / stop < {J5_STOP_DEG:.0f} deg, "
           f"shoulder slow < {SHOULDER_SLOW_MM:.0f} / stop < {SHOULDER_STOP_MM:.0f} mm, "

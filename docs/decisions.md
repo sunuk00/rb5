@@ -657,6 +657,19 @@ descend (hand dz < -30 mm, |dJ6| < 10 deg), combined.
   joint speed limit (1 deg/cycle predicted for any joint) caps J6. Yaw speed limited 32 %, joint speed
   limited 37 % of engaged cycles; 110 deg of yaw dropped in total.
 
+## 2026-10-12 — 21: joint speed limit per joint (Simulation)
+
+**Decision:** the predicted joint motion limit is per joint: J1-J3 1 deg/cycle (50 deg/s), wrist J4-J6
+2 deg/cycle (100 deg/s), Simulation only. The step (position and yaw together) is scaled by the
+smallest factor over the joints that exceed their limit. **Real values are to be set later from the
+RB5 specification** (the manual gives "Velocity Joint: Max 180 deg/s, Tool: 1 m/s" for the E series;
+per-joint values for this RB5-850 (N) still have to be found).
+
+**Reason:** in 115603 the RB5 yaw reached only 48 deg/s because a yaw step at ready pose D is mostly J6
+(0.92 deg per deg) and the common 1 deg/cycle limit capped it. Fake test after the change: fast twist
+-> 1.80 deg/cycle (the 90 deg/s yaw limit), C 18.0 then 33.0 deg (+15 lag), B 18.0. Old fake tests
+unchanged.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
