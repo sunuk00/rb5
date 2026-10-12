@@ -8,19 +8,17 @@ its own step, with the lab, not as part of a Simulation session.
 - [ ] **Collision detection**: currently Off. Decide with the lab whether to turn it on and at what
       sensitivity before Real teleop.
 - [ ] **Tool mass**: currently 0 kg. Set it for the real tool (gripper / Allegro Hand) if the lab agrees.
-- [ ] **TCP offset**: the controller has (0, -187, -40) mm, orientation 0 (17). The lab is checking
-      what it should be. Put the confirmed value in `tcp.expected_offset_mm`; the teleop compares it
-      with get_tcp_info / get_tfc_info at start (tolerance 1 mm).
+- [ ] **TCP offset**: the controller has (0, -187, -40) mm, orientation 0 (17). PROVISIONAL: real.yaml
+      expects exactly this (refuses if it changes). Replace with the lab's confirmed value.
 - [x] **J3 limit**: +/-165 (user checked on the teach pendant, 2026-10-12); set in both settings files.
 - [ ] Joint limits set on the controller (setup page), if any are narrower than the teleop's.
 
 ## Workspace
 - [ ] **Base +x direction**: confirm with `scripts/22_base_axis_check.py` and a tape (manual
       Appendix F: +Y toward the cable connector, so +X is 90 deg clockwise from it seen from above).
-- [ ] **Ready pose for Real** (`ready_pose.joints_deg`): J1 from the table direction; tool down, wrist
-      outside (like pose D); check the margins with the DH model as done for D.
-- [ ] **z lower bound** (`range.z_min_abs_mm`): table height + gripper length + margin, in the base
-      frame (z 0 = base bottom). The cylinder never goes below it.
+- [x] **Ready pose for Real**: the pose set by the user on the real RB5 (2026-10-12), margins checked.
+- [ ] **z lower bound** (`range.z_min_abs_mm`): PROVISIONAL 30 mm. Replace with table height + gripper
+      length + margin, in the base frame (z 0 = base bottom). The cylinder never goes below it.
 - [ ] Range (`range.*`): narrow first (z -50 / +50, azimuth +/-30 in real.yaml) and centered on the Real
       ready pose (r_min / r_max must contain its TCP radius); widen only after runs look right.
 - [ ] Nothing in the reach of the robot along the ready-pose move (large wrist turns are warned).

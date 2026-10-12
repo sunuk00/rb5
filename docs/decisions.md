@@ -762,6 +762,31 @@ had 0 at rest; the reason is not known.
 wants. Hysteresis and the failure rule are unchanged (closed above 0.6, open below 0.4, keep the
 value on a failed read). Replaces `grip_close = trigger / 1000` from the cleanup step 2.
 
+## 2026-10-12 — Sim: speed 400 mm/s and lag 50 mm; Real: provisional values for a first test
+
+**Why the RB5 stopped near x 500 (runs 130330 scale 1.5, 130757 scale 2.0):** r 600 (x about 590) was
+reached only at the z upper bound (z 215); with z <= 100 the max x was 476 / 491 mm. The hand was
+faster than 200 mm/s / scale in 50 % / 73 % of the engaged cycles (p50 134-172 mm/s), so C dropped
+4.0 / 1.8 m of hand motion per run; one press moved the RB5 0.13-0.97 x the hand instead of 1.5-2.0.
+Reaching forward also raised the leader wrist (desired z up to 370), clipped at the z upper bound.
+
+**Sim change:** `mapping.speed_mm_s` 200 -> 400 (schema maximum raised to 400; Real stays capped at
+50), `mapping.max_lag_mm` 30 -> 50 (schema maximum). The per-joint speed limit stays as the guard.
+The user's own edit `mapping.scale: 2.0` is kept.
+
+**Real (user wants to test now; table height, gripper length and TCP can come later):**
+- `ready_pose.joints_deg` = the pose the user set on the real RB5, read again from jnt_ang:
+  (178.969, 8.514, -138.775, 46.535, -87.239, 56.265); TCP (356.7, 84.6, 64.6), r 366.6.
+- `range.z_min_abs_mm` 30.0 and `tcp.expected_offset_mm` (0, -187, -40) are PROVISIONAL placeholders:
+  the floor keeps the TCP at z >= 30 mm, the TCP check refuses the start if the controller's TCP
+  changes. Both are to be replaced (table height + gripper length + margin; the lab's TCP).
+- Range r 340-420, z start -40 / +50 (floor 30 -> 30 .. 112.6 mm), azimuth +/-30; speeds unchanged
+  (20 mm/s, yaw 15 deg/s, joints 0.2 deg/cycle = 10 deg/s, B). DH grid over the range (27 points):
+  J5 >= 84.3 deg, shoulder >= 215.7 mm, elbow >= 34.0 deg, joint limit >= 19.0 deg (inner low corner,
+  slow but no stop), <= 0.257 deg/mm (5.1 deg/s at 20 mm/s).
+- Not done and not changed by the code: collision detection is Off and tool mass is 0 kg on the
+  controller; move_servo_l has not been used on the real robot before (18 was Simulation).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

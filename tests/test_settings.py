@@ -40,12 +40,16 @@ class TestSettings(unittest.TestCase):
         self.assertEqual(len(s.ready_pose.joints_deg), 6)
         self.assertEqual(s.runtime.cpu_cores, (0, 11))
 
-    def test_real_file_is_valid_but_refused_until_tbd_values_are_set(self):
+    def test_real_refused_while_tbd_values_are_null(self):
+        d = raw(REAL)
+        for sec, key in (("range", "z_min_abs_mm"), ("tcp", "expected_offset_mm"), ("ready_pose", "joints_deg")):
+            d[sec][key] = None
         with self.assertRaises(SettingsError) as cm:
-            load_settings(REAL, real=True)
+            load_settings(write_tmp(d), real=True)
         problems = "\n".join(cm.exception.problems)
         for key in ("range.z_min_abs_mm", "tcp.expected_offset_mm", "ready_pose.joints_deg"):
             self.assertIn(key, problems)
+        load_settings(REAL, real=True)   # the file itself has provisional values now
         # With the TBD values filled in, the conservative file passes the Real limits
         d = raw(REAL)
         d["range"]["z_min_abs_mm"] = 30.0

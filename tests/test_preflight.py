@@ -96,5 +96,15 @@ class TestCurrentSimSettings(unittest.TestCase):
         self.assertEqual(problems, [])
 
 
+    def test_real_ready_pose_is_a_valid_start(self):
+        s, _ = load_settings(ROOT / "configs" / "real.yaml", real=True)
+        model, watch = RB5Model(s.tcp.expected_offset_mm), Watch(s.safety)
+        q = np.array(s.ready_pose.joints_deg)
+        p, r = model.tcp(q)
+        from teleop.kinematics import zyx_from_rot
+        problems, _ = check_start_pose(np.r_[p, zyx_from_rot(r)], q, model, watch, s)
+        self.assertEqual(problems, [])
+
+
 if __name__ == "__main__":
     unittest.main()

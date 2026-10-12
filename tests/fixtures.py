@@ -15,6 +15,7 @@ def test_raw():
     d = copy.deepcopy(RAW_SIM)
     d["mapping"]["scale"] = 0.5
     d["mapping"]["max_lag_mm"] = 30.0
+    d["mapping"]["speed_mm_s"] = 200.0
     d["range"].update(r_min_mm=450.0, r_max_mm=550.0, z_below_mm=150.0, z_above_mm=150.0, azimuth_half_deg=90.0,
                       z_min_abs_mm=None)
     d["safety"]["joint_limit_deg"] = [360.0, 360.0, 150.0, 360.0, 360.0, 360.0]

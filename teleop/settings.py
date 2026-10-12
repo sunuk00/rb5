@@ -59,7 +59,7 @@ SCHEMA = {
     "mapping": {
         "scale": _num(0.1, 2.0),
         "frame_yaw_deg": _num(-180.0, 180.0),
-        "speed_mm_s": _num(1.0, 200.0),
+        "speed_mm_s": _num(1.0, 400.0),               # Real is capped at 50 (REAL_MAX)
         "lead_per_step": _num(1.0, 5.0),
         "max_lag_mm": _num(0.0, 50.0),
     },
