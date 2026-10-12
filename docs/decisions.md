@@ -597,6 +597,48 @@ The handle tilted 30-130 deg from straight down and turned by 15-55 deg during t
 handle point also picks up wrist rotation (its dz is 1.1-1.6x the wrist dz). Effect: none without
 the habit, about 25 % with it. Decision: keep the wrist center; next step is orientation (yaw) mapping.
 
+## 2026-10-12 — Yaw mapping: RB5 yaw change = leader J6 change (method B)
+
+**Decision:** for top-down grasping only the rotation about the base z axis is mapped. RB5 yaw =
+start + (leader J6 now - leader J6 at the clutch press), applied as rz in move_servo_l (rx, ry fixed,
+the tool keeps pointing down; servo_l rotates about the TCP, 18). Limits: 90 deg/s (1.8 deg/cycle),
++/-90 deg around the start rz, lead 3.6 deg, C lag 15 deg (B with `--max-lag-mm 0`). The joint
+predictions (singularities, joint limits, joint speed) include the yaw. `--no-yaw` keeps the start
+orientation.
+
+**Reason (offline, logged leader joints of 112319 and 113617, no robot):**
+
+"Fake yaw" at the lowest point of each descent (> 30 mm, no twist intended):
+
+| run | (A) twist about base z of R_now R_start^T | (B) leader J6 change |
+|---|---|---|
+| 112319 (20 descents) | median 6.7, max 28.0 deg | median 3.0, max 26.5 deg |
+| 113617 (10 descents) | median 4.1, max 64.1 deg | median 0.4, max 10.6 deg |
+
+|A - B| by handle tilt from straight down (all engaged samples, both runs):
+
+| tilt | samples | median | p90 | max |
+|---|---|---|---|---|
+| 0-30 deg | 390 | 2.5 | 5.8 | 9.1 |
+| 30-60 deg | 1244 | 2.5 | 10.5 | 28.2 |
+| 60-90 deg | 1515 | 3.4 | 23.1 | 67.3 |
+| 90-120 deg | 893 | 4.8 | 28.2 | 57.5 |
+| > 120 deg | 134 | 9.9 | 23.2 | 45.1 |
+
+The handle was tilted 30-120 deg in 86 % of the samples (held nearly horizontal). B is quieter in the
+descents; A follows the true rotation about vertical but picks up wrist bending (e.g. -64 deg when J4
+and J5 moved -26 / +59 deg). With the handle near vertical the two agree. Accepted trade-off of B: a
+J6 twist with a tilted handle is a rotation about a non-vertical axis but still drives the RB5 yaw;
+"twist the handle = turn the gripper" is the operating rule.
+
+**Fake tests (DH fake robot following position and orientation, scale 0.5, ready pose D):** twist
++/-45 deg -> target and TCP yaw +/-45.00 deg, position change 0.0005 mm; descend 100 mm without twist
+-> yaw 0.0000; pick mimic (down + 30 deg) -> yaw 30.00 at the bottom and after returning; fast twist
+90 deg in 10 cycles -> C 10.8 then 25.8 (+15 lag), B 10.8; range +120 -> 90.00, back to 60.00;
+release freezes yaw; `--no-yaw` 0; J6 crossing +/-180 -> +20.00. Note: the yaw step was 1.08 deg/cycle,
+not 1.8: at D a yaw step is mostly J6 (0.92 deg per deg), so the joint speed limit (1 deg/cycle
+predicted) caps the yaw at about 54 deg/s.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

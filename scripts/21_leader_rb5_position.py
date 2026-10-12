@@ -29,7 +29,10 @@ Each 20 ms cycle:
   C (catch-up up to a lag): with --max-lag-mm L > 0 the part cut by the speed / joint / singularity
      limits is kept and caught up later while the lag (desired - target) is at most L; only the part
      beyond L is dropped. L = 0 is B (drop all of the cut part). Release drops the lag.
-  6. send move_servo_l(target x, y, z, fixed rx, ry, rz) every cycle (released clutch = frozen target).
+  yaw: RB5 yaw (rotation about base z, TCP fixed) = start + (leader J6 now - leader J6 at press);
+     the tool stays pointing down (rx, ry fixed). 90 deg/s, +/-90 deg around the start rz, C lag 15 deg
+     (B with --max-lag-mm 0). The joint predictions include the yaw part. --no-yaw turns it off.
+  6. send move_servo_l(target x, y, z, rx, ry, start rz + yaw) every cycle (released clutch = frozen target).
      Just before sending, the gap since the previous send is checked; over MAX_GAP_S the cycle is
      "late" and the target is frozen for that cycle (the previous check measured only up to the
      start of the next cycle and missed 40-50 ms gaps after an overrun).
@@ -55,6 +58,7 @@ import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import dynamixel_sdk.port_handler as dxl_port_handler
 from dynamixel_sdk import COMM_SUCCESS, GroupSyncRead, PacketHandler, PortHandler
@@ -94,6 +98,13 @@ JOINT_LIMIT_SLOW_DEG = 20.0   # margin to the joint limit below this: warning an
 JOINT_LIMIT_STOP_DEG = 10.0   # below this: stop
 MAX_LAG_MM = 30.0          # C: lag kept for catch-up [mm]; 0 = B. Set from --max-lag-mm in main() (default 30)
 MAX_LAG_LIMIT_MM = 50.0    # largest allowed --max-lag-mm
+
+# --- Yaw (rotation about base z): RB5 yaw change = leader J6 change (decisions 2026-10-12, method B)
+YAW_SPEED_DEG_S = 90.0
+MAX_YAW_STEP_DEG = YAW_SPEED_DEG_S * PERIOD_S   # 1.8 deg per cycle
+YAW_RANGE_DEG = 90.0       # around the TCP rz at script start
+MAX_YAW_LEAD_DEG = 2.0 * MAX_YAW_STEP_DEG       # same rule as the position lead (2 x step)
+MAX_YAW_LAG_DEG = 15.0     # C: yaw lag kept for catch-up (0 when --max-lag-mm 0, i.e. B)
 MAX_FK_ERROR_MM = 5.0      # DH model vs tcp_ref at start
 MAX_GAP_S = 1.5 * SERVO_T1 # a send gap longer than this freezes the target for that cycle (08)
 MAX_LATE_CYCLES = 3
@@ -160,6 +171,11 @@ def axis_rotation(axis, angle):
 def clip_norm(v, limit):
     n = np.linalg.norm(v)
     return v if n <= limit else v * (limit / n)
+
+
+def wrap_deg(a):
+    """Angle wrapped to [-180, 180) deg."""
+    return (a + 180.0) % 360.0 - 180.0
 
 
 def singular_distance(angle_deg):
@@ -253,10 +269,11 @@ class RB5Model:
             jac[3:, i] = np.array([dr[2, 1] - dr[1, 2], dr[0, 2] - dr[2, 0], dr[1, 0] - dr[0, 1]]) / 2 / np.radians(h_deg)
         return jac
 
-    def predict(self, q, dp_mm, jac=None):
-        """Joint motion [deg] for a TCP position change dp (orientation unchanged), from the current q.
-        Pass jac = jacobian(q) to reuse it (one Jacobian per cycle)."""
-        return np.degrees(np.linalg.solve(self.jacobian(q) if jac is None else jac, np.r_[dp_mm, 0, 0, 0]))
+    def predict(self, q, dp_mm, jac=None, dyaw_deg=0.0):
+        """Joint motion [deg] for a TCP position change dp and a rotation dyaw about base z (TCP fixed),
+        from the current q. Pass jac = jacobian(q) to reuse it (one Jacobian per cycle)."""
+        return np.degrees(np.linalg.solve(self.jacobian(q) if jac is None else jac,
+                                          np.r_[dp_mm, 0, 0, np.radians(dyaw_deg)]))
 
 
 class CylinderRange:
@@ -280,19 +297,30 @@ class CylinderRange:
         return np.linalg.norm(self.clamp(p) - p) < 1e-6
 
 
-def plan_step(target, desired, tcp_pos, q, model, cyl):
-    """One cycle of the limits.
-    Returns (new target, dropped vector, flags, predicted J5 / shoulder / elbow margins, max |dq|, lag, stop reason)."""
-    flags = dict.fromkeys(("speed", "j5slow", "shslow", "elslow", "jlslow", "jspeed", "range", "lead"), False)
+def plan_step(target, desired, tcp_pos, q, model, cyl, yaw):
+    """One cycle of the limits for the position and the yaw.
+
+    yaw: dict with "target", "desired", "tcp" = yaw about base z relative to the start rz [deg]
+    (None or a dict with equal values when yaw mapping is off).
+    Returns a SimpleNamespace: target (new position), yaw (new yaw), dropped (position vector),
+    dropped_yaw, flags, margins (J5, shoulder, elbow, joint limit), max_dq, lag, lag_yaw, stop.
+    """
+    flags = dict.fromkeys(("speed", "j5slow", "shslow", "elslow", "jlslow", "jspeed", "range", "lead",
+                           "yspeed", "yrange", "ylead"), False)
     # Range first: the part of desired outside the range is kept (not dropped). Clamping only the new
     # target would let desired - target grow outside the range, and the speed limit would then drop it.
     desired_in = cyl.clamp(desired)
     flags["range"] = bool(np.any(desired_in != desired))
+    ydes_in = float(np.clip(yaw["desired"], -YAW_RANGE_DEG, YAW_RANGE_DEG))
+    flags["yrange"] = ydes_in != yaw["desired"]
     step = desired_in - target
+    ystep = ydes_in - yaw["target"]
     jac = model.jacobian(q)   # all predictions below are from the same q: compute it once
+    lead_p, lead_y = target - tcp_pos, yaw["target"] - yaw["tcp"]   # parts that are only the robot catching up
 
-    # Speed limit, scaled by the predicted singularity margins of a full-size step
-    q_full = q + model.predict(q, target + clip_norm(step, MAX_STEP_MM) - tcp_pos, jac)
+    # Speed limits, scaled by the predicted singularity / joint limit margins of a full-size step
+    q_full = q + model.predict(q, lead_p + clip_norm(step, MAX_STEP_MM), jac,
+                               lead_y + np.clip(ystep, -MAX_YAW_STEP_DEG, MAX_YAW_STEP_DEG))
     j5_scale = j5_speed_scale(singular_distance(q_full[4]))
     sh_scale = ramp_scale(model.shoulder_margin(q_full), SHOULDER_SLOW_MM, SHOULDER_STOP_MM)
     el_scale = ramp_scale(singular_distance(q_full[2]), ELBOW_SLOW_DEG, ELBOW_STOP_DEG)
@@ -301,14 +329,19 @@ def plan_step(target, desired, tcp_pos, q, model, cyl):
     flags["shslow"] = sh_scale < 1.0
     flags["elslow"] = el_scale < 1.0
     flags["jlslow"] = jl_scale < 1.0
-    limited = clip_norm(step, MAX_STEP_MM * min(j5_scale, sh_scale, el_scale, jl_scale))
+    scale = min(j5_scale, sh_scale, el_scale, jl_scale)
+    limited = clip_norm(step, MAX_STEP_MM * scale)
     flags["speed"] = np.linalg.norm(limited) < np.linalg.norm(step) - 1e-9
+    ylimited = float(np.clip(ystep, -MAX_YAW_STEP_DEG * scale, MAX_YAW_STEP_DEG * scale))
+    flags["yspeed"] = abs(ylimited) < abs(ystep) - 1e-9
 
-    # Joint speed limit (the joint motion is nearly linear in a step this small)
-    max_dq = np.abs(model.predict(q, target + limited - tcp_pos, jac)).max()
-    lead_dq = np.abs(model.predict(q, target - tcp_pos, jac)).max()   # part that is only the robot catching up
+    # Joint speed limit on the combined motion (nearly linear in a step this small); both parts are
+    # scaled by the same factor
+    max_dq = np.abs(model.predict(q, lead_p + limited, jac, lead_y + ylimited)).max()
+    lead_dq = np.abs(model.predict(q, lead_p, jac, lead_y)).max()
     if max_dq > MAX_DQ_DEG and max_dq > lead_dq:
-        limited = limited * max(0.0, (MAX_DQ_DEG - lead_dq) / (max_dq - lead_dq))
+        f = max(0.0, (MAX_DQ_DEG - lead_dq) / (max_dq - lead_dq))
+        limited, ylimited = limited * f, ylimited * f
         flags["jspeed"] = True
     new = target + limited
     clamped = cyl.clamp(new)   # a straight step between two inside points can cut the inner radius
@@ -316,24 +349,31 @@ def plan_step(target, desired, tcp_pos, q, model, cyl):
     if np.linalg.norm(clamped - tcp_pos) > MAX_LEAD_MM:
         clamped = target.copy()
         flags["lead"] = True
+    ynew = float(np.clip(yaw["target"] + ylimited, -YAW_RANGE_DEG, YAW_RANGE_DEG))
+    if abs(ynew - yaw["tcp"]) > MAX_YAW_LEAD_DEG:
+        ynew = yaw["target"]
+        flags["ylead"] = True
 
     # What is dropped (the leader start is shifted by it): B drops all of the cut part of this step;
-    # C keeps the lag up to MAX_LAG_MM for catch-up and drops only the part beyond it.
+    # C keeps the lag up to MAX_LAG_MM / MAX_YAW_LAG_DEG for catch-up and drops only the part beyond it.
     if MAX_LAG_MM <= 0.0:
-        dropped = step - limited
+        dropped, ydropped = step - limited, ystep - ylimited
     else:
         lag = desired_in - clamped
         n = np.linalg.norm(lag)
         dropped = lag * (1.0 - MAX_LAG_MM / n) if n > MAX_LAG_MM else np.zeros(3)
+        ylag = ydes_in - ynew
+        ydropped = float(np.sign(ylag) * (abs(ylag) - MAX_YAW_LAG_DEG)) if abs(ylag) > MAX_YAW_LAG_DEG else 0.0
     lag_after = np.linalg.norm(desired_in - dropped - clamped)
+    ylag_after = abs(ydes_in - ydropped - ynew)
 
-    dq = model.predict(q, clamped - tcp_pos, jac)
+    dq = model.predict(q, clamped - tcp_pos, jac, ynew - yaw["tcp"])
     j5_final = singular_distance(q[4] + dq[4])
     sh_final = model.shoulder_margin(q + dq)
     el_final = singular_distance(q[2] + dq[2])
     jl_final, jl_joint = joint_limit_margin(q + dq)
     stop = None
-    if not np.array_equal(clamped, target):
+    if not (np.array_equal(clamped, target) and ynew == yaw["target"]):
         if j5_final < J5_STOP_DEG:
             stop = f"predicted J5 {j5_final:.1f} deg (from the singular angle) < {J5_STOP_DEG} deg"
         elif sh_final < SHOULDER_STOP_MM:
@@ -342,7 +382,9 @@ def plan_step(target, desired, tcp_pos, q, model, cyl):
             stop = f"predicted J3 {el_final:.1f} deg from straight < {ELBOW_STOP_DEG} deg"
         elif jl_final < JOINT_LIMIT_STOP_DEG:
             stop = f"predicted J{jl_joint} {jl_final:.1f} deg from its limit < {JOINT_LIMIT_STOP_DEG} deg"
-    return clamped, dropped, flags, (j5_final, sh_final, el_final, jl_final), np.abs(dq).max(), lag_after, stop
+    return SimpleNamespace(target=clamped, yaw=ynew, dropped=dropped, dropped_yaw=ydropped, flags=flags,
+                           margins=(j5_final, sh_final, el_final, jl_final), max_dq=np.abs(dq).max(),
+                           lag=lag_after, lag_yaw=ylag_after, stop=stop)
 
 
 # ---------------------------------------------------------------- devices
@@ -522,7 +564,9 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
     tcp0, _, _ = reader.latest()
     ctx["target"] = tcp0[:3].copy()
     target = ctx["target"]
+    rpy0 = ctx["rpy"].copy()
     rpy = ctx["rpy"]
+    yaw_target = 0.0          # RB5 yaw relative to the start rz [deg]
     cyl = CylinderRange(tcp0[:3])
     yaw = rot_z(args.yaw_deg)
 
@@ -531,6 +575,7 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
     leader_q = leader_p = None
     leader_fails = leader_fail_total = leader_reads = 0
     rb5_start = leader_start = None
+    yaw_rb5_start = yaw_leader_start = None
     flags_prev = {}
     last_send = prev_cycle_t = None
     late_cycles = stale_cycles = 0
@@ -566,6 +611,7 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
                 clutch_event = "press ignored (no leader reading yet)"
             else:
                 rb5_start, leader_start = target.copy(), leader_p.copy()
+                yaw_rb5_start, yaw_leader_start = yaw_target, np.degrees(leader_q[6])
                 clutch_event = f"engaged: RB5 start {np.round(rb5_start, 1)} mm, leader start {np.round(leader_start, 1)} mm"
         if clutch_event:
             event(f"[{time.monotonic() - t_start:7.2f} s] clutch {clutch_event}")
@@ -591,14 +637,21 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
         flags = {}
         j5_pred, sh_pred, el_pred = singular_distance(q[4]), rb5_model.shoulder_margin(q), singular_distance(q[2])
         jl_pred = joint_limit_margin(q)[0]
-        max_dq = lag = 0.0
+        max_dq = lag = yaw_lag = 0.0
         dropped = np.zeros(3)
+        yaw_desired = None
+        plan = None
+        yaw_tcp = wrap_deg(tcp[5] - rpy0[2])
         if clutch.engaged and q_l is not None and not late_early and not stale:
             desired = rb5_start + args.scale * (yaw @ (leader_p - leader_start))
-            new, dropped, flags, (j5_pred, sh_pred, el_pred, jl_pred), max_dq, lag, stop = plan_step(
-                target, desired, tcp[:3], q, rb5_model, cyl)
-            if stop:
-                raise StopRequest(stop)
+            yaw_desired = (yaw_rb5_start + wrap_deg(np.degrees(leader_q[6]) - yaw_leader_start)) if not args.no_yaw else 0.0
+            plan = plan_step(target, desired, tcp[:3], q, rb5_model, cyl,
+                             {"target": yaw_target, "desired": yaw_desired, "tcp": yaw_tcp})
+            new, dropped, flags = plan.target, plan.dropped, plan.flags
+            j5_pred, sh_pred, el_pred, jl_pred = plan.margins
+            max_dq, lag, yaw_lag = plan.max_dq, plan.lag, plan.lag_yaw
+            if plan.stop:
+                raise StopRequest(plan.stop)
         t_plan = time.monotonic() - t_plan0
 
         # 5. Late check on the real send gap, then apply the new target
@@ -613,6 +666,9 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
             # B / C: shift the leader start so that the dropped part is not caught up later
             leader_start += yaw.T @ dropped / args.scale
             target[:] = new
+            yaw_leader_start += plan.dropped_yaw
+            yaw_target = plan.yaw
+            rpy[2] = wrap_deg(rpy0[2] + yaw_target)
         labels = {"speed": f"speed limit ({MAX_STEP_MM} mm/cycle)",
                   "j5slow": f"J5 below {J5_SLOW_DEG:.0f} deg: slower",
                   "shslow": f"shoulder margin below {SHOULDER_SLOW_MM:.0f} mm: slower",
@@ -621,7 +677,10 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
                   "jspeed": f"joint speed limit ({MAX_DQ_DEG} deg/cycle predicted)",
                   "range": f"range limit (cylinder r {CYL_R_MIN:.0f}..{CYL_R_MAX:.0f} mm, "
                            f"z +/-{CYL_Z_HALF:.0f} mm, azimuth +/-{CYL_AZ_HALF_DEG:.0f} deg)",
-                  "lead": f"target waits for robot (lead limit {MAX_LEAD_MM} mm)"}
+                  "lead": f"target waits for robot (lead limit {MAX_LEAD_MM} mm)",
+                  "yspeed": f"yaw speed limit ({MAX_YAW_STEP_DEG} deg/cycle)",
+                  "yrange": f"yaw range limit (+/-{YAW_RANGE_DEG:.0f} deg)",
+                  "ylead": f"yaw waits for robot (lead limit {MAX_YAW_LEAD_DEG} deg)"}
         for key, on in flags.items():
             if on and not flags_prev.get(key, False):
                 event(f"[{time.monotonic() - t_start:7.2f} s] {labels[key]}")
@@ -658,7 +717,10 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
                f"{(t_send_end - t_cycle) * 1000:.2f}", "" if send_interval is None else f"{send_interval * 1000:.2f}"]
             + [f"{el_pred:.2f}", int(flags.get("elslow", False)), f"{lag:.3f}",
                f"{np.linalg.norm(dropped) if not late else 0.0:.3f}"]
-            + [f"{jl_pred:.2f}", int(flags.get("jlslow", False))])
+            + [f"{jl_pred:.2f}", int(flags.get("jlslow", False))]
+            + ["" if yaw_desired is None else f"{yaw_desired:.3f}", f"{yaw_target:.3f}", f"{yaw_tcp:.3f}"]
+            + [int(flags.get(k, False)) for k in ("yspeed", "yrange", "ylead")]
+            + [f"{yaw_lag:.3f}", f"{abs(plan.dropped_yaw) if plan is not None and not late else 0.0:.3f}"])
 
         # 7. Status line
         if cycle % STATUS_EVERY == 0:
@@ -667,7 +729,7 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
             sys.stdout.write(
                 f"{CLEAR_LINE}clutch {'ENGAGED ' if clutch.engaged else 'released'}  "
                 f"target-start {np.round(target - tcp0[:3], 1)} mm  J5 {q[4]:6.1f} (eff {singular_distance(q[4]):5.1f})  "
-                f"shoulder {rb5_model.shoulder_margin(q):5.0f} mm  |  "
+                f"shoulder {rb5_model.shoulder_margin(q):5.0f} mm  yaw {yaw_target:6.1f}  |  "
                 f"button fail {tool_rate:4.1f}%  leader fail {leader_rate:4.1f}%")
             sys.stdout.flush()
 
@@ -690,7 +752,9 @@ CSV_HEADER = (["t_s", "cycle_interval_ms", "button_raw", "clutch_engaged"]
                  "late", "late_before_plan", "stale", "state_age_ms"]
               + ["leader_read_ms", "plan_ms", "send_call_ms", "work_ms", "send_interval_ms"]
               + ["elbow_from_straight_pred_deg", "elbow_slow", "lag_mm", "dropped_mm"]
-              + ["joint_limit_margin_pred_deg", "joint_limit_slow"])
+              + ["joint_limit_margin_pred_deg", "joint_limit_slow"]
+              + ["yaw_desired_deg", "yaw_target_deg", "yaw_tcp_deg", "yaw_speed_limited", "yaw_range_limited",
+                 "yaw_lead_limited", "yaw_lag_deg", "yaw_dropped_deg"])
 
 
 def save_csv(rows):
@@ -723,6 +787,7 @@ def main():
                         help=f"TCP speed limit [mm/s], at most {MAX_SPEED_MM_S:.0f} (Simulation)")
     parser.add_argument("--max-lag-mm", type=float, default=30.0,
                         help=f"C: lag kept for catch-up [mm], at most {MAX_LAG_LIMIT_MM:.0f} (default 30); 0 = B")
+    parser.add_argument("--no-yaw", action="store_true", help="keep the start orientation (no yaw mapping)")
     parser.add_argument("--port", default=LEADER_PORT, help="leader arm USB-serial device")
     args = parser.parse_args()
     if not 0 <= args.max_lag_mm <= MAX_LAG_LIMIT_MM:
@@ -732,8 +797,10 @@ def main():
     if not 0 < args.speed_mm_s <= MAX_SPEED_MM_S:
         raise SystemExit(f"--speed-mm-s must be in (0, {MAX_SPEED_MM_S:.0f}]")
     # The lead limit scales with the step: with a fixed 2 mm, a 4 mm step would always wait for the robot
-    global MAX_STEP_MM, MAX_LEAD_MM, MAX_LAG_MM
+    global MAX_STEP_MM, MAX_LEAD_MM, MAX_LAG_MM, MAX_YAW_LAG_DEG
     MAX_LAG_MM = args.max_lag_mm
+    if MAX_LAG_MM <= 0:
+        MAX_YAW_LAG_DEG = 0.0
     MAX_STEP_MM = args.speed_mm_s * PERIOD_S
     MAX_LEAD_MM = LEAD_PER_STEP * MAX_STEP_MM
     np.set_printoptions(precision=2, suppress=True)
@@ -770,7 +837,8 @@ def main():
     fk_error = np.linalg.norm(rb5_model.tcp(q0)[0] - tcp0[:3])
     print(f"Mode: Simulation   loop {PERIOD_S * 1000:.0f} ms   move_servo_l t1={SERVO_T1} t2={SERVO_T2}   "
           f"yaw {args.yaw_deg} deg   scale {args.scale}   "
-          f"{'B (drop the cut part)' if MAX_LAG_MM <= 0 else f'C (catch up to {MAX_LAG_MM:.0f} mm lag)'}")
+          f"{'B (drop the cut part)' if MAX_LAG_MM <= 0 else f'C (catch up to {MAX_LAG_MM:.0f} mm / {MAX_YAW_LAG_DEG:.0f} deg lag)'}   "
+          f"yaw {'off' if args.no_yaw else f'leader J6 -> RB5 rz, {YAW_SPEED_DEG_S:.0f} deg/s, +/-{YAW_RANGE_DEG:.0f} deg'}")
     print(f"RB5 tcp_ref {tcp0}   jnt_ref {q0}")
     print(f"TCP offset (flange frame) {rb5_model.offset} mm   DH model vs tcp_ref {fk_error:.2f} mm   "
           f"J5 {singular_distance(q0[4]):.1f} deg from singular, shoulder margin {rb5_model.shoulder_margin(q0):.1f} mm, "
