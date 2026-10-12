@@ -17,7 +17,7 @@ servo:                          # same as Simulation (06, 10, 13 Real)
   alpha: 1.0
 
 leader:
-  port: /dev/rby1_leader_arm    # udev link (udev/99-rby1-leader-arm.rules)
+  port: /dev/ttyUSB0            # /dev/rby1_leader_arm once the udev rule is installed (not yet)
   required_latency_timer_ms: 1
 
 mapping:

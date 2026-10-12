@@ -53,7 +53,13 @@ class LeaderArm:
     def open(self):
         """Open the port and ping every joint and the tool. Returns a list of problems (empty = OK)."""
         from dynamixel_sdk import COMM_SUCCESS, GroupSyncRead
-        if not self.port.openPort():
+        if not os.path.exists(self.port.getPortName()):
+            return [f"port {self.port.getPortName()} does not exist (USB cable? udev link? see leader.port in the settings)"]
+        try:
+            opened = self.port.openPort()
+        except Exception as e:   # pyserial raises when the device cannot be opened
+            return [f"failed to open {self.port.getPortName()}: {e}"]
+        if not opened:
             return [f"failed to open {self.port.getPortName()}"]
         if not self.port.setBaudRate(BAUDRATE):
             return [f"failed to set baud rate {BAUDRATE}"]

@@ -78,9 +78,11 @@ def main():
     # 2. Checks before moving
     latency = read_latency_timer(s.leader.port)
     leader = LeaderArm(s.leader.port)
-    problems = preflight.check_leader(latency, s.leader.required_latency_timer_ms, leader.open())
+    open_problems = leader.open()
+    problems = preflight.check_leader(latency, s.leader.required_latency_timer_ms, open_problems)
     if problems:
-        leader.close()
+        if not open_problems:
+            leader.close()
         refuse("leader arm", problems)
     import dynamixel_sdk.port_handler as dxl_port_handler
     dxl_port_handler.LATENCY_TIMER = s.leader.required_latency_timer_ms   # reply timeout follows this (12)
