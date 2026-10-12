@@ -5,7 +5,8 @@ passed in, so the tests can use fakes:
   leader:  read_joints_rad() -> 7 angles [rad] or None, read_button_raw() -> int or None
   leader_model: wrist_center_mm(q_rad)
   rb5:     check_errors(), send_servo(xyz, rpy)
-  reader:  latest() -> (tcp pose, joints [deg], age [s])
+  reader:  latest() -> (tcp pose, joints [deg], age [s]); optional measured() -> encoder joints [deg]
+           (logged with their DH-model TCP to see how the real arm follows the commands)
 """
 import sys
 import time
@@ -31,7 +32,8 @@ CSV_HEADER = (["t_s", "cycle_interval_ms", "button_raw", "clutch_engaged"]
               + ["joint_limit_margin_pred_deg", "joint_limit_slow"]
               + ["yaw_desired_deg", "yaw_target_deg", "yaw_tcp_deg", "yaw_speed_limited", "yaw_range_limited",
                  "yaw_lead_limited", "yaw_lag_deg", "yaw_dropped_deg"]
-              + ["trigger_raw", "grip_close", "grip_state_closed", "tool_read_failed"])
+              + ["trigger_raw", "grip_close", "grip_state_closed", "tool_read_failed"]
+              + [f"jnt_ang_{i}" for i in range(6)] + [f"meas_tcp_{a}" for a in "xyz"] + ["target_minus_meas_mm"])
 
 
 class StopRequest(Exception):
@@ -53,6 +55,15 @@ class TeleopLoop:
         self.target = self.rpy = None          # what is being sent (for the normal stop)
         self.clutch = Clutch()
         self.grip = GripSignal(s.gripper)
+
+    def _measured_columns(self, q_meas, target):
+        """Encoder joints, their TCP from the DH model (absolute about 2 mm off the controller, 17) and the
+        distance of the target from it; blanks when the reader has no measured joints."""
+        if q_meas is None:
+            return [""] * 10
+        p = self.model.tcp(q_meas)[0]
+        return ([f"{v:.3f}" for v in q_meas] + [f"{v:.3f}" for v in p]
+                + [f"{np.linalg.norm(np.asarray(target) - p):.3f}"])
 
     def labels(self):
         s, lim = self.s, self.lim
@@ -129,6 +140,7 @@ class TeleopLoop:
             # 3. RB5 state and the 08 safety checks
             self.rb5.check_errors()
             tcp, q, state_age = self.reader.latest()
+            q_meas = self.reader.measured() if hasattr(self.reader, "measured") else None
             now = time.monotonic()
             late_early = last_send is not None and now - last_send > sf.max_gap_s   # already late before planning
             stale = state_age > sf.max_state_age_s
@@ -212,7 +224,8 @@ class TeleopLoop:
                 + [int(flags.get(k, False)) for k in ("yspeed", "yrange", "ylead")]
                 + [f"{yaw_lag:.3f}", f"{abs(plan.dropped_yaw) if plan is not None and not late else 0.0:.3f}"]
                 + ["" if grip.trigger is None else grip.trigger, "" if grip.close is None else f"{grip.close:.3f}",
-                   "" if grip.closed is None else int(grip.closed), int(button_raw is None)])
+                   "" if grip.closed is None else int(grip.closed), int(button_raw is None)]
+                + self._measured_columns(q_meas, mapper.target))
 
             # 7. Status line
             if self.status and cycle % STATUS_EVERY == 0:

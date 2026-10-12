@@ -6,8 +6,9 @@ set_speed_bar, get_robot_state, flush, enable/disable_waiting_ack, move_servo_l,
 move_j, wait_for_move_started, task_stop, get_tcp_info, get_tfc_info, calc_fk_tcp,
 CobotData.request_data (sdata.tcp_ref, jnt_ref, real_vs_simulation_mode).
 
-State: the reference values (tcp_ref, jnt_ref) are used in both modes. In Simulation jnt_ang does not
-follow the motion; tcp_pos is documented as overwritten from the reference (17).
+State: the reference values (tcp_ref, jnt_ref) are used for control in both modes. The measured joints
+(jnt_ang) are kept too and logged, to see how the real arm follows (in Simulation jnt_ang stays at the
+real arm's pose). tcp_pos is documented as overwritten from the reference (17).
 """
 import threading
 import time
@@ -36,8 +37,10 @@ class StateReader(threading.Thread):
                 continue
             s = data.sdata
             sample = (np.array(s.tcp_ref, dtype=float), np.array(s.jnt_ref, dtype=float), time.monotonic())
+            measured = np.array(s.jnt_ang, dtype=float)
             with self.lock:
                 self.sample = sample
+                self.jnt_ang = measured
 
     def wait_first(self, timeout_s=2.0):
         t0 = time.monotonic()
@@ -51,6 +54,11 @@ class StateReader(threading.Thread):
         with self.lock:
             tcp, q, t = self.sample
         return tcp.copy(), q.copy(), time.monotonic() - t
+
+    def measured(self):
+        """Measured joint angles (encoder, jnt_ang) [deg] of the latest sample."""
+        with self.lock:
+            return self.jnt_ang.copy()
 
     def stop(self):
         self.stop_event.set()

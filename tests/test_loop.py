@@ -186,6 +186,26 @@ class TestLoop(unittest.TestCase):
         self.assertEqual(closed[10], 1)             # kept on failed reads
         self.assertEqual(closed[-1], 0)
 
+    def test_measured_columns(self):
+        steps = ARM + [(1, [1.0 * i, 0, 0], 0) for i in range(1, 11)]
+        loop, _, _, col, _ = run(steps)
+        self.assertTrue(np.all(np.isnan(col("jnt_ang_0"))))          # fake reader has no measured joints
+
+        class MeasuredReader(FakeReader):
+            def measured(self):
+                return self.robot.q.copy()
+
+        model = RB5Model(OFFSET)
+        robot = FakeRB5(D, model)
+        leader = ScriptLeader(steps)
+        loop = TeleopLoop(settings(), leader, ScriptModel(leader), robot, MeasuredReader(robot), model,
+                          event=lambda m: None, status=False, sleep=lambda t: None)
+        with self.assertRaises(StopRequest):
+            loop.run()
+        r = loop.rows[-1]
+        self.assertAlmostEqual(float(r[IX["jnt_ang_0"]]), robot.q[0], places=2)
+        self.assertLess(float(r[IX["target_minus_meas_mm"]]), 1.0)   # the fake follows exactly
+
     def test_leader_failures_stop(self):
         steps = ARM + [(1, [0, 0, 0], 0, 0, False)] * 3 + [(1, [0, 0, 0], 0)] * 5
         _, _, _, _, stop = run(steps)

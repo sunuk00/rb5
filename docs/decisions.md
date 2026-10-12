@@ -817,6 +817,25 @@ move_j to the ready pose runs at 30 x speed bar 0.1 = 3 deg/s (same as Simulatio
 slow to wait for). The speed bar stays 0.1 (CLAUDE.md). The change display, the typed "yes" and the
 wrist-turn warning before the move are unchanged.
 
+## 2026-10-12 — Real runs 132310 / 133219; faster Real settings; measured joints logged
+
+**Runs (real robot, scale 1.0, 40 mm/s, B):** 29 s and 122 s, no late cycles (send interval max 26 ms,
+work p99 9.2 ms), no singularity or joint limit slowdown (J5 >= 84, shoulder >= 232 mm, elbow >= 41,
+J3 >= 26 deg). The wide-range run reached x 330-661, r 350-663, z 65-215, yaw -27..+16 deg. The robot
+target speed sat at 40 mm/s (speed limited 83-88 %, joint speed limited 27-34 %) while the hand moved
+at p50 126-184 mm/s: the RB5 moved 16 % of the hand path and B dropped 1.9 / 8.7 m. Tool read failures
+2-3 %. The trigger read 0 for the whole of both runs (gripper "closed" 100 %), unlike the 837-1000 read
+at rest before: to be checked.
+
+**Decision (user):** real.yaml `speed_mm_s` 50 (Real max), `joint_speed_deg_per_cycle` 0.5 (Real max,
+25 deg/s; 50 mm/s x 0.393 deg/mm = 20 deg/s), `max_lag_mm` 20 (C: up to 20 mm, 0.4 s, after the hand
+stops; yaw stays B since yaw.max_lag_deg is 0).
+
+**Logging:** the state reader keeps the measured joints (jnt_ang); the CSV adds `jnt_ang_0..5`, their
+DH-model TCP `meas_tcp_x/y/z` (absolute about 2 mm off the controller FK) and `target_minus_meas_mm`.
+The logged tcp_ref / jnt_ref are the controller's reference (command) values; jnt_ang shows how the
+real arm actually followed. In Simulation jnt_ang stays at the real arm's pose.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

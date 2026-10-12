@@ -56,7 +56,7 @@ class TestSettings(unittest.TestCase):
         d["tcp"]["expected_offset_mm"] = [0.0, -187.0, -40.0]
         d["ready_pose"]["joints_deg"] = [182.0, -11.0, -110.1, 31.1, -90.0, -2.0]
         s, _ = load_settings(write_tmp(d), real=True)
-        self.assertEqual(s.mapping.max_lag_mm, 0.0)
+        self.assertEqual(s.mapping.max_lag_mm, 20.0)
 
     def test_mode_must_match(self):
         self.assert_problem(raw(SIM), "mode", real=True)
