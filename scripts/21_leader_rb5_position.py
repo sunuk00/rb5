@@ -37,6 +37,10 @@ Each 20 ms cycle:
      "late" and the target is frozen for that cycle (the previous check measured only up to the
      start of the next cycle and missed 40-50 ms gaps after an overrun).
   Every cycle logs the time of the leader read, the planning, the send call and the real send interval.
+  gripper signal (logged only, no gripper output yet): trigger = bits 16-31 of the tool raw value,
+     continuous 0 (fully closed) .. 1000 (fully open); grip_open = trigger / 1000; state open above
+     0.6, closed below 0.4, kept in between. Independent of the clutch. A failed tool read keeps the
+     previous gripper value (no drop), while the clutch releases after 3 failed reads (motion stops).
 
 Coordinate alignment: leader Base and RB5 base are taken as the same directions (x forward, y left,
 z up for the leader, confirmed in 20), rotated about z by --yaw-deg (default 0).
@@ -128,6 +132,12 @@ TOOL_ID = 0x80             # right tool
 TOOL_READ_PAUSE_S = 100e-6 # rby1-sdk ReadButtonStatus sleeps 100 us after the read
 TICKS_PER_REV = 4096
 URDF_PATH = ROOT / "refs" / "rby1-sdk" / "models" / "leader_arm" / "model.urdf"
+
+# --- Gripper signal from the tool trigger (decisions 2026-10-12)
+TRIGGER_FULL = 1000.0      # trigger 0 = fully closed, 1000 = fully open (user measurement)
+GRIP_OPEN_ABOVE = 0.6      # grip_open above this: state open
+GRIP_CLOSE_BELOW = 0.4     # grip_open below this: state closed; in between the state is kept
+GRIP_FAIL_WARN = 3         # warn after this many failed tool reads in a row (value is kept)
 
 # --- Clutch (13)
 BUTTON_PRESSED = 1
@@ -482,6 +492,37 @@ class Clutch:
         return button, None
 
 
+class GripSignal:
+    """Gripper opening from the tool trigger. A failed read keeps the previous value."""
+
+    def __init__(self):
+        self.trigger = None        # last good raw trigger value
+        self.open = None           # 0 = closed .. 1 = open
+        self.state_open = None     # True open / False closed (hysteresis)
+        self.fail_count = 0
+
+    def update(self, raw):
+        """Feed one tool read (raw value or None). Returns an event string or None."""
+        if raw is None:
+            self.fail_count += 1
+            if self.fail_count == GRIP_FAIL_WARN:
+                return f"gripper: {GRIP_FAIL_WARN} failed tool reads in a row, keeping the last value"
+            return None
+        self.fail_count = 0
+        self.trigger = (raw >> 16) & 0xFFFF
+        self.open = min(max(self.trigger / TRIGGER_FULL, 0.0), 1.0)
+        previous = self.state_open
+        if self.state_open is None:
+            self.state_open = self.open >= 0.5
+        elif self.open > GRIP_OPEN_ABOVE:
+            self.state_open = True
+        elif self.open < GRIP_CLOSE_BELOW:
+            self.state_open = False
+        if self.state_open != previous:
+            return f"gripper {'OPEN' if self.state_open else 'CLOSED'} (trigger {self.trigger})"
+        return None
+
+
 class StateReader(threading.Thread):
     """Reads the RB5 data channel continuously and keeps the latest tcp_ref / jnt_ref (08 / 18)."""
 
@@ -575,6 +616,7 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
 
     clutch = Clutch()
     ctx["clutch"] = clutch
+    grip = GripSignal()
     leader_q = leader_p = None
     leader_fails = leader_fail_total = leader_reads = 0
     rb5_start = leader_start = None
@@ -605,6 +647,9 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
             leader_q, leader_p = q_l, leader_model.wrist_center_mm(q_l)
         button_raw = leader.read_button_raw()
         t_leader = time.monotonic() - t_leader0
+        grip_event = grip.update(button_raw)   # independent of the clutch
+        if grip_event:
+            event(f"[{time.monotonic() - t_start:7.2f} s] {grip_event}")
 
         # 2. Clutch
         button, clutch_event = clutch.update(button_raw)
@@ -723,7 +768,9 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
             + [f"{jl_pred:.2f}", int(flags.get("jlslow", False))]
             + ["" if yaw_desired is None else f"{yaw_desired:.3f}", f"{yaw_target:.3f}", f"{yaw_tcp:.3f}"]
             + [int(flags.get(k, False)) for k in ("yspeed", "yrange", "ylead")]
-            + [f"{yaw_lag:.3f}", f"{abs(plan.dropped_yaw) if plan is not None and not late else 0.0:.3f}"])
+            + [f"{yaw_lag:.3f}", f"{abs(plan.dropped_yaw) if plan is not None and not late else 0.0:.3f}"]
+            + ["" if grip.trigger is None else grip.trigger, "" if grip.open is None else f"{grip.open:.3f}",
+               "" if grip.state_open is None else int(grip.state_open), int(button_raw is None)])
 
         # 7. Status line
         if cycle % STATUS_EVERY == 0:
@@ -732,7 +779,9 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
             sys.stdout.write(
                 f"{CLEAR_LINE}clutch {'ENGAGED ' if clutch.engaged else 'released'}  "
                 f"target-start {np.round(target - tcp0[:3], 1)} mm  J5 {q[4]:6.1f} (eff {singular_distance(q[4]):5.1f})  "
-                f"shoulder {rb5_model.shoulder_margin(q):5.0f} mm  yaw {yaw_target:6.1f}  |  "
+                f"shoulder {rb5_model.shoulder_margin(q):5.0f} mm  yaw {yaw_target:6.1f}  "
+                f"grip {'-' if grip.open is None else f'{grip.open:.2f}'}"
+                f"{'' if grip.state_open is None else (' OPEN' if grip.state_open else ' CLOSED')}  |  "
                 f"button fail {tool_rate:4.1f}%  leader fail {leader_rate:4.1f}%")
             sys.stdout.flush()
 
@@ -757,7 +806,8 @@ CSV_HEADER = (["t_s", "cycle_interval_ms", "button_raw", "clutch_engaged"]
               + ["elbow_from_straight_pred_deg", "elbow_slow", "lag_mm", "dropped_mm"]
               + ["joint_limit_margin_pred_deg", "joint_limit_slow"]
               + ["yaw_desired_deg", "yaw_target_deg", "yaw_tcp_deg", "yaw_speed_limited", "yaw_range_limited",
-                 "yaw_lead_limited", "yaw_lag_deg", "yaw_dropped_deg"])
+                 "yaw_lead_limited", "yaw_lag_deg", "yaw_dropped_deg"]
+              + ["trigger_raw", "grip_open", "grip_state_open", "tool_read_failed"])
 
 
 def save_csv(rows):
