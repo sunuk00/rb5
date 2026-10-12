@@ -24,6 +24,7 @@ z up for the leader, confirmed in 20), rotated about z by --yaw-deg (default 0).
 Usage:
     python scripts/21_leader_rb5_position.py
     python scripts/21_leader_rb5_position.py --yaw-deg 90 --scale 1.0
+    python scripts/21_leader_rb5_position.py --speed-mm-s 200
 Stop with Ctrl+C. Each run is logged to data/21_leader_pos_sim_<time>.csv
 """
 import argparse
@@ -53,10 +54,12 @@ SERVO_GAIN = 1.0
 SERVO_ALPHA = 1.0
 
 # --- Limits
-MAX_STEP_MM = 1.0          # per cycle (50 mm/s)
+MAX_SPEED_MM_S = 200.0     # largest allowed --speed-mm-s (Simulation)
+MAX_STEP_MM = 1.0          # per cycle (50 mm/s); set from --speed-mm-s in main()
 MAX_DQ_DEG = 1.0           # predicted joint motion per cycle (50 deg/s)
 RANGE_MM = 150.0           # per axis, around the TCP at script start
-MAX_LEAD_MM = 2.0          # target may be at most this far ahead of tcp_ref
+MAX_LEAD_MM = 2.0          # target may be at most this far ahead of tcp_ref; set in main()
+LEAD_PER_STEP = 2.0        # lead limit = this x MAX_STEP_MM (2 mm at 1 mm/cycle as first tested)
 J5_SLOW_DEG = 20.0         # effective J5 below this: warning and slower
 J5_STOP_DEG = 10.0         # effective J5 below this: stop
 J5_MIN_SCALE = 0.25        # speed scale at J5_STOP_DEG
@@ -579,10 +582,18 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--yaw-deg", type=float, default=0.0, help="rotation of the leader frame about z [deg]")
     parser.add_argument("--scale", type=float, default=1.0, help="RB5 motion / leader motion")
+    parser.add_argument("--speed-mm-s", type=float, default=50.0,
+                        help=f"TCP speed limit [mm/s], at most {MAX_SPEED_MM_S:.0f} (Simulation)")
     parser.add_argument("--port", default=LEADER_PORT, help="leader arm USB-serial device")
     args = parser.parse_args()
     if not 0.1 <= args.scale <= 2.0:
         raise SystemExit("--scale must be between 0.1 and 2.0")
+    if not 0 < args.speed_mm_s <= MAX_SPEED_MM_S:
+        raise SystemExit(f"--speed-mm-s must be in (0, {MAX_SPEED_MM_S:.0f}]")
+    # The lead limit scales with the step: with a fixed 2 mm, a 4 mm step would always wait for the robot
+    global MAX_STEP_MM, MAX_LEAD_MM
+    MAX_STEP_MM = args.speed_mm_s * PERIOD_S
+    MAX_LEAD_MM = LEAD_PER_STEP * MAX_STEP_MM
     np.set_printoptions(precision=2, suppress=True)
 
     latency_timer = read_latency_timer(args.port)
