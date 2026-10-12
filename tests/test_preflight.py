@@ -16,7 +16,7 @@ from teleop.settings import load_settings  # noqa: E402
 
 SIM, _ = load_settings(ROOT / "configs" / "sim.yaml")
 OFFSET = [0.0, -187.0, -40.0]
-D = np.array(SIM.ready_pose.joints_deg)
+D = np.array([182.0, -11.0, -110.1, 31.1, -90.0, -2.0])   # pose D (tests are written for it)
 
 
 class TestReadyMove(unittest.TestCase):

@@ -76,3 +76,7 @@ gripper:
 
 logging:
   dir: data
+
+runtime:
+  cpu_cores: [0, 11]            # pin to the performance cores (i7-13700H cpu0-11): planning p99 5-6 ms instead of
+                                # 8-9 ms (decisions 2026-10-12); replaces "taskset -c 0-11"; null = no pinning

@@ -115,6 +115,9 @@ SCHEMA = {
     "logging": {
         "dir": _str(),
     },
+    "runtime": {
+        "cpu_cores": _vec(2, 0, 1023, nullable=True),   # [first, last] CPU to pin the process to; null = no pinning
+    },
 }
 
 # Null is allowed in Simulation (meaning "not used / not checked") but not in Real.

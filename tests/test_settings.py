@@ -36,9 +36,9 @@ class TestSettings(unittest.TestCase):
     def test_sim_loads(self):
         s, _ = load_settings(SIM)
         self.assertEqual(s.mode, "sim")
-        self.assertEqual(s.mapping.scale, 0.5)
         self.assertEqual(s.safety.joint_speed_deg_per_cycle, (1.0, 1.0, 1.0, 2.0, 2.0, 2.0))
-        self.assertEqual(s.ready_pose.joints_deg, (182.0, -11.0, -110.1, 31.1, -90.0, -2.0))
+        self.assertEqual(len(s.ready_pose.joints_deg), 6)
+        self.assertEqual(s.runtime.cpu_cores, (0, 11))
 
     def test_real_file_is_valid_but_refused_until_tbd_values_are_set(self):
         with self.assertRaises(SettingsError) as cm:

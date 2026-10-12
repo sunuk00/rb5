@@ -4,7 +4,8 @@ Steps:
   1. load configs/sim.yaml (or configs/real.yaml with --real; Real asks to type REAL)
   2. checks before moving: leader latency_timer and ping, RB5 mode matches, not moving, no controller
      errors, TCP offset (Real: equal to the expected value)
-  3. move to the ready pose with move_j: shows the change per joint and asks for "yes"; skipped when
+  3. move to the ready pose with move_j: first checks that the ready pose is a valid start (step 4
+     checks, from the controller FK), then shows the change per joint and asks for "yes"; skipped when
      already there. Real: slower, "clear the area" note, warning for large wrist turns
   4. checks at the ready pose: DH model vs tcp_ref, TCP inside the range, singularity / joint limit margins
   5. teleop loop until Ctrl+C (or a stop condition); normal stop or task_stop on errors
@@ -14,9 +15,10 @@ Usage:
     python teleop.py                       # Simulation, configs/sim.yaml
     python teleop.py --config my_sim.yaml  # another Simulation settings file
     python teleop.py --real                # REAL robot, configs/real.yaml (asks to type REAL)
-Run pinned to the performance cores: taskset -c 0-11 python teleop.py
+The process pins itself to the CPU cores in settings runtime.cpu_cores (no taskset needed).
 """
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -62,6 +64,12 @@ def main():
         refuse(f"settings {path}", e.problems)
     mode = "REAL" if real else "Simulation"
     print(f"Mode: {mode}   settings: {path}")
+    if s.runtime.cpu_cores is not None:
+        first, last = int(s.runtime.cpu_cores[0]), int(s.runtime.cpu_cores[1])
+        cores = set(range(first, last + 1)) & os.sched_getaffinity(0)
+        if cores:
+            os.sched_setaffinity(0, cores)   # threads started later (state reader) inherit it
+        print(f"CPU cores: {sorted(os.sched_getaffinity(0))}")
     if real:
         print("REAL mode: the RB5 will move. Keep the emergency stop within reach.")
         if not ask("Type REAL to continue: ", "REAL"):
@@ -98,6 +106,16 @@ def main():
     if plan["problems"]:
         leader.close()
         refuse("ready pose", plan["problems"])
+    if not plan["skip"]:
+        # Check the ready pose before moving there, so a pose that would be refused at start is not reached
+        tcp_ready = rb5.fk_tcp(plan["target"])
+        if tcp_ready is None:
+            leader.close()
+            refuse("ready pose", ["calc_fk_tcp of the ready pose failed"])
+        ready_problems, _ = preflight.check_start_pose(tcp_ready, plan["target"], model, watch, s)
+        if ready_problems:
+            leader.close()
+            refuse("the ready pose would not be a valid start (nothing moved)", ready_problems)
     if plan["skip"]:
         print("Already at the ready pose.")
     else:
@@ -106,7 +124,7 @@ def main():
         print(f"  current {q_now}")
         print(f"  target  {plan['target']}")
         print(f"  change  {plan['change']}")
-        print(f"  target TCP (calc_fk_tcp) {rb5.fk_tcp(plan['target'])}")
+        print(f"  target TCP (calc_fk_tcp) {tcp_ready}")
         if real:
             print("REAL: clear the area around the robot.")
             for w in plan["wrist_warnings"]:

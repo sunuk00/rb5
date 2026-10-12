@@ -18,7 +18,7 @@ leader:
   required_latency_timer_ms: 1  # FTDI latency_timer must be 1 ms (11)
 
 mapping:
-  scale: 0.5                    # RB5 motion / leader motion (104723, 113617)
+  scale: 1.5                    # RB5 motion / leader motion; 1.5 so the RB5 reaches farther (user, 2026-10-12)
   frame_yaw_deg: 0.0            # leader frame rotated about z before mapping
   speed_mm_s: 200.0             # TCP speed limit (094517)
   lead_per_step: 2.0            # target may lead tcp_ref by this x one step
@@ -61,8 +61,9 @@ tcp:
   expected_offset_mm: null      # null = not checked in Simulation
   offset_tolerance_mm: 1.0
 
-ready_pose:                     # pose D: tool down, wrist outside, TCP r 500, z 102 (object on the table)
-  joints_deg: [182.0, -11.0, -110.1, 31.1, -90.0, -2.0]
+ready_pose:                     # pose set by the user on the real RB5 (read from jnt_ang, 2026-10-12): TCP r 367,
+                                # z 63, tool 6.9 deg from straight down. Pose D was (182, -11, -110.1, 31.1, -90, -2)
+  joints_deg: [178.969, 8.514, -138.775, 46.535, -87.239, 56.265]
   move_speed_deg_s: 30.0        # move_j argument; x speed bar 0.1 = 3 deg/s
   tolerance_deg: 0.05           # closer than this on every joint: no move
   wrist_warning_deg: 90.0       # warn when a wrist joint turns more than this
@@ -75,3 +76,7 @@ gripper:                        # grip_close = trigger / trigger_full (pulled = 
 
 logging:
   dir: data
+
+runtime:
+  cpu_cores: [0, 11]            # pin to the performance cores (i7-13700H cpu0-11): planning p99 5-6 ms instead of
+                                # 8-9 ms (decisions 2026-10-12); replaces "taskset -c 0-11"; null = no pinning

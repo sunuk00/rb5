@@ -19,7 +19,7 @@ from teleop.settings import load_settings  # noqa: E402
 SIM, _ = load_settings(ROOT / "configs" / "sim.yaml")
 URDF = ROOT / "refs" / "rby1-sdk" / "models" / "leader_arm" / "model.urdf"
 OFFSET = [0.0, -187.0, -40.0]
-POSE_D = np.array(SIM.ready_pose.joints_deg)
+POSE_D = np.array([182.0, -11.0, -110.1, 31.1, -90.0, -2.0])   # pose D (tests are written for it)
 
 
 class TestKinematics(unittest.TestCase):
@@ -176,7 +176,9 @@ def _ns(d):
 
 class TestMapper(unittest.TestCase):
     def test_relative_mapping_and_shift(self):
-        mp = Mapper(SIM, [400.0, 100.0, 200.0])
+        s = load_settings(ROOT / "configs" / "sim.yaml")[1]
+        s["mapping"]["scale"] = 0.5                               # the test is written for scale 0.5
+        mp = Mapper(_ns(s), [400.0, 100.0, 200.0])
         mp.engage([10.0, 0.0, 0.0], 30.0)
         pos, yaw = mp.desired([30.0, 0.0, -10.0], 40.0)
         np.testing.assert_allclose(pos, [410.0, 100.0, 195.0])   # scale 0.5

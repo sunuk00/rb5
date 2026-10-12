@@ -42,11 +42,11 @@ conda env `rb5` (rbpodo, dynamixel-sdk, numpy, PyYAML). Tests: `python -m unitte
 ## 3. Run
 ```
 conda activate rb5
-taskset -c 0-11 python teleop.py                 # Simulation, configs/sim.yaml
-taskset -c 0-11 python teleop.py --config other.yaml
+python teleop.py                 # Simulation, configs/sim.yaml
+python teleop.py --config other.yaml
 ```
-`taskset -c 0-11` keeps the process on the performance cores (planning p99 5-6 ms instead of 8-9 ms,
-decisions 2026-10-12).
+The process pins itself to the performance cores (`runtime.cpu_cores: [0, 11]` in the settings;
+planning p99 5-6 ms instead of 8-9 ms, decisions 2026-10-12). No `taskset` needed.
 
 What happens:
 1. The settings are checked (unknown keys, ranges, relations). Any problem: it does not start.
@@ -68,7 +68,7 @@ What happens:
 | twist the handle (leader J6) | RB5 tool yaw about the vertical axis (same angle) |
 | trigger | gripper signal `grip_close` = trigger / 1000 (pulled = closed); logged only |
 
-Scale 0.5 in Simulation: the RB5 moves half of the hand motion. Lower the hand vertically: the
+Scale 1.5 in Simulation: the RB5 moves 1.5 times the hand motion. Lower the hand vertically: the
 leader's wrist center also moves toward the body when the hand comes down (decisions 2026-10-12).
 
 ## 5. Stop
@@ -88,7 +88,7 @@ leader's wrist center also moves toward the body when the hand comes down (decis
 | `J... from its limit` / `J5` / `shoulder` / `J3 ... from straight` at start | the ready pose is not valid for these settings |
 | `range limit` events | the hand asks for a target outside the cylinder (r, z, azimuth); move back inside |
 | `joint speed limit` events | the hand is faster than the joints allowed; move slower |
-| `late: ... ms since last send` | a cycle took too long (CPU); run with `taskset -c 0-11` |
+| `late: ... ms since last send` | a cycle took too long (CPU); check `runtime.cpu_cores` in the settings |
 | `stopping: predicted ... < ...` | a singularity or joint limit was close; restart from the ready pose |
 | clutch released by itself | 3 failed handle reads in a row; check the handle cable |
 

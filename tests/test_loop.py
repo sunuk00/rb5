@@ -21,13 +21,14 @@ from teleop.settings import load_settings  # noqa: E402
 
 RAW = load_settings(ROOT / "configs" / "sim.yaml")[1]
 OFFSET = [0.0, -187.0, -40.0]
-D = np.array(RAW["ready_pose"]["joints_deg"], dtype=float)
+D = np.array([182.0, -11.0, -110.1, 31.1, -90.0, -2.0])   # pose D (tests are written for it)
 IX = {h: i for i, h in enumerate(CSV_HEADER)}
 
 
 def settings(**changes):
     """sim.yaml with changes given as section__key=value."""
     d = copy.deepcopy(RAW)
+    d["mapping"]["scale"] = 0.5          # the tests are written for scale 0.5
     for k, v in changes.items():
         sec, key = k.split("__")
         d[sec][key] = v
