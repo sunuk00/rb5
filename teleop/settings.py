@@ -129,7 +129,7 @@ REAL_MAX = {
     "mapping.speed_mm_s": 50.0,
     "mapping.scale": 1.0,
     "yaw.speed_deg_s": 30.0,
-    "ready_pose.move_speed_deg_s": 10.0,
+    "ready_pose.move_speed_deg_s": 30.0,      # x speed bar 0.1 = 3 deg/s (user, 2026-10-12; was 10)
 }
 REAL_MAX_JOINT_SPEED_DEG_PER_CYCLE = 0.5
 

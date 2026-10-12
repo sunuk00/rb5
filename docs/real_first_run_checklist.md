@@ -24,7 +24,7 @@ its own step, with the lab, not as part of a Simulation session.
 - [ ] Nothing in the reach of the robot along the ready-pose move (large wrist turns are warned).
 
 ## Speeds (conservative in real.yaml; RB5 specification still to be found)
-- [ ] TCP 20 mm/s, yaw 15 deg/s, joints 0.2 deg/cycle (10 deg/s), ready move 10 x 0.1 = 1 deg/s.
+- [ ] TCP 20 mm/s, yaw 15 deg/s, joints 0.2 deg/cycle (10 deg/s), ready move 30 x 0.1 = 3 deg/s.
 - [ ] B mode (`max_lag_mm: 0`): the robot stops as soon as the hand stops.
 - [ ] Per-joint speed limits from the RB5 specification (manual lists only "joint max 180 deg/s, tool
       1 m/s" for the E series).

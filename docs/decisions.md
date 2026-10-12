@@ -810,6 +810,13 @@ sim.yaml), keeping the PROVISIONAL floor z >= 30 mm. Was r 340-420, z -40 / +50,
 **Risk noted:** collision detection is still Off and the TCP / floor values are provisional; the wider
 range lets the real arm sweep +/-90 deg of azimuth and reach r 800.
 
+## 2026-10-12 — Real ready-pose move 3 deg/s
+
+**Decision:** real.yaml `ready_pose.move_speed_deg_s` 10 -> 30 and the Real cap (REAL_MAX) 10 -> 30, so the
+move_j to the ready pose runs at 30 x speed bar 0.1 = 3 deg/s (same as Simulation; was 1 deg/s, too
+slow to wait for). The speed bar stays 0.1 (CLAUDE.md). The change display, the typed "yes" and the
+wrist-turn warning before the move are unchanged.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
