@@ -14,9 +14,17 @@ Each 20 ms cycle:
        after the hand stops
      - range: +/-RANGE_MM per axis around the TCP at script start (not dropped)
      - lead: the target is not moved while it is more than MAX_LEAD_MM ahead of tcp_ref (not dropped)
-  5. wrist singularity watch (DH model): effective J5 = asin(|sin J5|) of the predicted joint angles.
-     Below 20 deg: warning and the speed limit falls linearly to 0.25x at 10 deg. Below 10 deg: stop.
-  6. send move_servo_l(target x, y, z, fixed rx, ry, rz) every cycle (released clutch = frozen target)
+  5. singularity watch on the predicted joint angles (DH model):
+     - wrist: effective J5 = asin(|sin J5|). Below 20 deg: warning and the speed limit falls linearly
+       to 0.25x at 10 deg. Below 10 deg: stop.
+     - shoulder: margin = horizontal radius of the wrist point P05 - d4 (J1 has no unique solution
+       at margin 0; Rainbow IK th1 = atan2(...) - acos(d4 / r)). Below 50 mm: warning and slower
+       (0.25x at 20 mm). Below 20 mm: stop.
+  6. send move_servo_l(target x, y, z, fixed rx, ry, rz) every cycle (released clutch = frozen target).
+     Just before sending, the gap since the previous send is checked; over MAX_GAP_S the cycle is
+     "late" and the target is frozen for that cycle (the previous check measured only up to the
+     start of the next cycle and missed 40-50 ms gaps after an overrun).
+  Every cycle logs the time of the leader read, the planning, the send call and the real send interval.
 
 Coordinate alignment: leader Base and RB5 base are taken as the same directions (x forward, y left,
 z up for the leader, confirmed in 20), rotated about z by --yaw-deg (default 0).
@@ -62,7 +70,9 @@ MAX_LEAD_MM = 2.0          # target may be at most this far ahead of tcp_ref; se
 LEAD_PER_STEP = 2.0        # lead limit = this x MAX_STEP_MM (2 mm at 1 mm/cycle as first tested)
 J5_SLOW_DEG = 20.0         # effective J5 below this: warning and slower
 J5_STOP_DEG = 10.0         # effective J5 below this: stop
-J5_MIN_SCALE = 0.25        # speed scale at J5_STOP_DEG
+J5_MIN_SCALE = 0.25        # speed scale at J5_STOP_DEG (also used at SHOULDER_STOP_MM)
+SHOULDER_SLOW_MM = 50.0    # shoulder margin (P05 radius - d4) below this: warning and slower
+SHOULDER_STOP_MM = 20.0    # shoulder margin below this: stop
 MAX_FK_ERROR_MM = 5.0      # DH model vs tcp_ref at start
 MAX_GAP_S = 1.5 * SERVO_T1 # a send gap longer than this freezes the target for that cycle (08)
 MAX_LATE_CYCLES = 3
@@ -136,12 +146,17 @@ def effective_j5(j5_deg):
     return np.degrees(np.arcsin(min(abs(np.sin(np.radians(j5_deg))), 1.0)))
 
 
-def j5_speed_scale(j5_eff):
-    if j5_eff >= J5_SLOW_DEG:
+def ramp_scale(value, slow, stop):
+    """1.0 at or above slow, falling linearly to J5_MIN_SCALE at stop (and below)."""
+    if value >= slow:
         return 1.0
-    if j5_eff <= J5_STOP_DEG:
+    if value <= stop:
         return J5_MIN_SCALE
-    return J5_MIN_SCALE + (1.0 - J5_MIN_SCALE) * (j5_eff - J5_STOP_DEG) / (J5_SLOW_DEG - J5_STOP_DEG)
+    return J5_MIN_SCALE + (1.0 - J5_MIN_SCALE) * (value - stop) / (slow - stop)
+
+
+def j5_speed_scale(j5_eff):
+    return ramp_scale(j5_eff, J5_SLOW_DEG, J5_STOP_DEG)
 
 
 class LeaderModel:
@@ -187,6 +202,12 @@ class RB5Model:
             t = t @ self._dh(*row)
         return t
 
+    def shoulder_margin(self, q):
+        """Horizontal radius of the wrist point P05 minus d4 [mm] (P05 = flange + d6 * flange Y, Rainbow IK)."""
+        t = self.flange(q)
+        p05 = t[:3, 3] + D6 * t[:3, 1]
+        return np.hypot(p05[0], p05[1]) - D4
+
     def tcp(self, q):
         t = self.flange(q)
         return t[:3, 3] + t[:3, :3] @ self.offset, t[:3, :3]
@@ -210,15 +231,18 @@ class RB5Model:
 
 
 def plan_step(target, desired, tcp_pos, q, model, low, high):
-    """One cycle of the limits. Returns (new target, dropped vector, flags, predicted eff. J5, max |dq|, stop reason)."""
-    flags = dict.fromkeys(("speed", "j5slow", "jspeed", "range", "lead"), False)
+    """One cycle of the limits.
+    Returns (new target, dropped vector, flags, predicted eff. J5, predicted shoulder margin, max |dq|, stop reason)."""
+    flags = dict.fromkeys(("speed", "j5slow", "shslow", "jspeed", "range", "lead"), False)
     step = desired - target
 
-    # Speed limit, scaled by the predicted J5 of a full-size step
-    j5_eff = effective_j5(q[4] + model.predict(q, target + clip_norm(step, MAX_STEP_MM) - tcp_pos)[4])
-    scale = j5_speed_scale(j5_eff)
-    flags["j5slow"] = scale < 1.0
-    limited = clip_norm(step, MAX_STEP_MM * scale)
+    # Speed limit, scaled by the predicted singularity margins of a full-size step
+    q_full = q + model.predict(q, target + clip_norm(step, MAX_STEP_MM) - tcp_pos)
+    j5_scale = j5_speed_scale(effective_j5(q_full[4]))
+    sh_scale = ramp_scale(model.shoulder_margin(q_full), SHOULDER_SLOW_MM, SHOULDER_STOP_MM)
+    flags["j5slow"] = j5_scale < 1.0
+    flags["shslow"] = sh_scale < 1.0
+    limited = clip_norm(step, MAX_STEP_MM * min(j5_scale, sh_scale))
     flags["speed"] = np.linalg.norm(limited) < np.linalg.norm(step) - 1e-9
 
     # Joint speed limit (the joint motion is nearly linear in a step this small)
@@ -238,10 +262,14 @@ def plan_step(target, desired, tcp_pos, q, model, low, high):
 
     dq = model.predict(q, clamped - tcp_pos)
     j5_final = effective_j5(q[4] + dq[4])
+    sh_final = model.shoulder_margin(q + dq)
     stop = None
-    if j5_final < J5_STOP_DEG and not np.array_equal(clamped, target):
-        stop = f"predicted J5 {j5_final:.1f} deg (from the singular angle) < {J5_STOP_DEG} deg"
-    return clamped, dropped, flags, j5_final, np.abs(dq).max(), stop
+    if not np.array_equal(clamped, target):
+        if j5_final < J5_STOP_DEG:
+            stop = f"predicted J5 {j5_final:.1f} deg (from the singular angle) < {J5_STOP_DEG} deg"
+        elif sh_final < SHOULDER_STOP_MM:
+            stop = f"predicted shoulder margin {sh_final:.1f} mm < {SHOULDER_STOP_MM} mm"
+    return clamped, dropped, flags, j5_final, sh_final, np.abs(dq).max(), stop
 
 
 # ---------------------------------------------------------------- devices
@@ -433,7 +461,7 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
     flags_prev = {}
     last_send = prev_cycle_t = None
     late_cycles = stale_cycles = 0
-    j5_warned = False
+    warned = {"j5slow": False, "shslow": False}
 
     t_start = next_t = time.monotonic()
     cycle = 0
@@ -443,6 +471,7 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
         prev_cycle_t = t_cycle
 
         # 1. Leader arm joints -> wrist center, then the button
+        t_leader0 = time.monotonic()
         leader_reads += 1
         q_l = leader.read_joints_rad()
         if q_l is None:
@@ -454,6 +483,7 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
             leader_fails = 0
             leader_q, leader_p = q_l, leader_model.wrist_center_mm(q_l)
         button_raw = leader.read_button_raw()
+        t_leader = time.monotonic() - t_leader0
 
         # 2. Clutch
         button, clutch_event = clutch.update(button_raw)
@@ -473,33 +503,43 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
         rc.clear()
         tcp, q, state_age = reader.latest()
         now = time.monotonic()
-        late = last_send is not None and now - last_send > MAX_GAP_S
-        late_cycles = late_cycles + 1 if late else 0
-        if late_cycles >= MAX_LATE_CYCLES:
-            raise RuntimeError(f"{MAX_LATE_CYCLES} late cycles in a row; loop too slow for servo")
+        late_early = last_send is not None and now - last_send > MAX_GAP_S   # already late before planning
         stale = state_age > MAX_STATE_AGE_S
         stale_cycles = stale_cycles + 1 if stale else 0
         if stale_cycles >= MAX_STALE_CYCLES:
             raise RuntimeError(f"{MAX_STALE_CYCLES} stale-state cycles in a row; state reader stopped?")
-        if late:
-            event(f"late: {(now - last_send) * 1000:.0f} ms since last send, target frozen")
         if stale:
             event(f"stale RB5 state: {state_age * 1000:.0f} ms old, target frozen")
 
-        # 4. Target: follow the leader only while engaged and every check passed
-        desired = None
+        # 4. Target: follow the leader only while engaged and every check passed.
+        #    The new target and the B shift are applied only after the gap check right before sending.
+        t_plan0 = time.monotonic()
+        desired = new = None
         flags = {}
-        j5_pred, max_dq = effective_j5(q[4]), 0.0
-        if clutch.engaged and q_l is not None and not late and not stale:
+        j5_pred, sh_pred, max_dq = effective_j5(q[4]), rb5_model.shoulder_margin(q), 0.0
+        if clutch.engaged and q_l is not None and not late_early and not stale:
             desired = rb5_start + args.scale * (yaw @ (leader_p - leader_start))
-            new, dropped, flags, j5_pred, max_dq, stop = plan_step(target, desired, tcp[:3], q, rb5_model, low, high)
+            new, dropped, flags, j5_pred, sh_pred, max_dq, stop = plan_step(
+                target, desired, tcp[:3], q, rb5_model, low, high)
             if stop:
                 raise StopRequest(stop)
+        t_plan = time.monotonic() - t_plan0
+
+        # 5. Late check on the real send gap, then apply the new target
+        gap = None if last_send is None else time.monotonic() - last_send
+        late = late_early or (gap is not None and gap > MAX_GAP_S)
+        late_cycles = late_cycles + 1 if late else 0
+        if late_cycles >= MAX_LATE_CYCLES:
+            raise RuntimeError(f"{MAX_LATE_CYCLES} late cycles in a row; loop too slow for servo")
+        if late:
+            event(f"[{time.monotonic() - t_start:7.2f} s] late: {gap * 1000:.0f} ms since last send, target frozen")
+        elif new is not None:
             # B: shift the leader start so that the dropped part is not caught up later
             leader_start += yaw.T @ dropped / args.scale
             target[:] = new
         labels = {"speed": f"speed limit ({MAX_STEP_MM} mm/cycle)",
                   "j5slow": f"J5 below {J5_SLOW_DEG:.0f} deg: slower",
+                  "shslow": f"shoulder margin below {SHOULDER_SLOW_MM:.0f} mm: slower",
                   "jspeed": f"joint speed limit ({MAX_DQ_DEG} deg/cycle predicted)",
                   "range": f"range limit (+/-{RANGE_MM:.0f} mm)",
                   "lead": f"target waits for robot (lead limit {MAX_LEAD_MM} mm)"}
@@ -507,13 +547,18 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
             if on and not flags_prev.get(key, False):
                 event(f"[{time.monotonic() - t_start:7.2f} s] {labels[key]}")
         flags_prev = flags
-        if flags.get("j5slow") and not j5_warned:
+        if flags.get("j5slow") and not warned["j5slow"]:
             event(f"WARNING: J5 {j5_pred:.1f} deg from the singular angle (stop below {J5_STOP_DEG:.0f})")
-        j5_warned = flags.get("j5slow", False)
+        if flags.get("shslow") and not warned["shslow"]:
+            event(f"WARNING: shoulder margin {sh_pred:.1f} mm (stop below {SHOULDER_STOP_MM:.0f})")
+        warned = {k: flags.get(k, False) for k in warned}
 
-        # 5. Send every cycle (a released clutch sends the frozen target)
+        # 6. Send every cycle (a released clutch sends the frozen target)
+        t_send0 = time.monotonic()
         send_servo(robot, rc, target, rpy)
-        last_send = time.monotonic()
+        t_send_end = time.monotonic()
+        send_interval = None if last_send is None else t_send0 - last_send
+        last_send = t_send0
 
         f = lambda v, fmt="{:.3f}": [fmt.format(x) for x in v]   # noqa: E731
         empty3 = [""] * 3
@@ -523,21 +568,24 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
             + (f(np.degrees(leader_q)) if leader_q is not None else [""] * 7)
             + (f(leader_p) if leader_p is not None else empty3)
             + (f(desired) if desired is not None else empty3) + f(target) + f(tcp[:3]) + f(q)
-            + [f"{j5_pred:.2f}", f"{max_dq:.3f}"]
-            + [int(flags.get(k, False)) for k in ("speed", "j5slow", "jspeed", "range", "lead")]
-            + [int(late), int(stale), f"{state_age * 1000:.2f}"])
+            + [f"{j5_pred:.2f}", f"{sh_pred:.1f}", f"{max_dq:.3f}"]
+            + [int(flags.get(k, False)) for k in ("speed", "j5slow", "shslow", "jspeed", "range", "lead")]
+            + [int(late), int(late_early), int(stale), f"{state_age * 1000:.2f}"]
+            + [f"{t_leader * 1000:.2f}", f"{t_plan * 1000:.2f}", f"{(t_send_end - t_send0) * 1000:.2f}",
+               f"{(t_send_end - t_cycle) * 1000:.2f}", "" if send_interval is None else f"{send_interval * 1000:.2f}"])
 
-        # 6. Status line
+        # 7. Status line
         if cycle % STATUS_EVERY == 0:
             tool_rate = 100.0 * clutch.failures / max(clutch.reads, 1)
             leader_rate = 100.0 * leader_fail_total / max(leader_reads, 1)
             sys.stdout.write(
                 f"{CLEAR_LINE}clutch {'ENGAGED ' if clutch.engaged else 'released'}  "
-                f"target-start {np.round(target - tcp0[:3], 1)} mm  J5 {q[4]:6.1f} (eff {effective_j5(q[4]):5.1f})  |  "
+                f"target-start {np.round(target - tcp0[:3], 1)} mm  J5 {q[4]:6.1f} (eff {effective_j5(q[4]):5.1f})  "
+                f"shoulder {rb5_model.shoulder_margin(q):5.0f} mm  |  "
                 f"button fail {tool_rate:4.1f}%  leader fail {leader_rate:4.1f}%")
             sys.stdout.flush()
 
-        # 7. Sleep until the next cycle; after an overrun wait a full period (08, as in 13)
+        # 8. Sleep until the next cycle; after an overrun wait a full period (08, as in 13)
         cycle += 1
         next_t += PERIOD_S
         delay = next_t - time.monotonic()
@@ -551,9 +599,10 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
 CSV_HEADER = (["t_s", "cycle_interval_ms", "button_raw", "clutch_engaged"]
               + [f"leader_q{i}_deg" for i in range(7)] + [f"leader_{a}_mm" for a in "xyz"]
               + [f"desired_{a}" for a in "xyz"] + [f"target_{a}" for a in "xyz"] + [f"tcp_ref_{a}" for a in "xyz"]
-              + [f"jnt_ref_{i}" for i in range(6)] + ["j5_eff_pred_deg", "max_dq_pred_deg"]
-              + ["speed_limited", "j5_slow", "joint_speed_limited", "range_limited", "lead_limited",
-                 "late", "stale", "state_age_ms"])
+              + [f"jnt_ref_{i}" for i in range(6)] + ["j5_eff_pred_deg", "shoulder_margin_pred_mm", "max_dq_pred_deg"]
+              + ["speed_limited", "j5_slow", "shoulder_slow", "joint_speed_limited", "range_limited", "lead_limited",
+                 "late", "late_before_plan", "stale", "state_age_ms"]
+              + ["leader_read_ms", "plan_ms", "send_call_ms", "work_ms", "send_interval_ms"])
 
 
 def save_csv(rows):
@@ -629,12 +678,16 @@ def main():
     print(f"Mode: Simulation   loop {PERIOD_S * 1000:.0f} ms   move_servo_l t1={SERVO_T1} t2={SERVO_T2}   "
           f"yaw {args.yaw_deg} deg   scale {args.scale}")
     print(f"RB5 tcp_ref {tcp0}   jnt_ref {q0}")
-    print(f"TCP offset (flange frame) {rb5_model.offset} mm   DH model vs tcp_ref {fk_error:.2f} mm")
+    print(f"TCP offset (flange frame) {rb5_model.offset} mm   DH model vs tcp_ref {fk_error:.2f} mm   "
+          f"J5 {effective_j5(q0[4]):.1f} deg from singular, shoulder margin {rb5_model.shoulder_margin(q0):.1f} mm")
     print(f"Limits: {MAX_STEP_MM} mm/cycle ({MAX_STEP_MM / PERIOD_S:.0f} mm/s), {MAX_DQ_DEG} deg/cycle joints, "
-          f"range +/-{RANGE_MM:.0f} mm, lead {MAX_LEAD_MM} mm, J5 slow < {J5_SLOW_DEG:.0f} / stop < {J5_STOP_DEG:.0f} deg")
+          f"range +/-{RANGE_MM:.0f} mm, lead {MAX_LEAD_MM} mm, J5 slow < {J5_SLOW_DEG:.0f} / stop < {J5_STOP_DEG:.0f} deg, "
+          f"shoulder slow < {SHOULDER_SLOW_MM:.0f} / stop < {SHOULDER_STOP_MM:.0f} mm")
     problems = []
     if fk_error > MAX_FK_ERROR_MM:
         problems.append(f"DH model differs from tcp_ref by {fk_error:.2f} mm (> {MAX_FK_ERROR_MM})")
+    if rb5_model.shoulder_margin(q0) < SHOULDER_SLOW_MM:
+        problems.append(f"shoulder margin is {rb5_model.shoulder_margin(q0):.1f} mm (need >= {SHOULDER_SLOW_MM:.0f})")
     if effective_j5(q0[4]) < J5_SLOW_DEG:
         problems.append(f"J5 is {effective_j5(q0[4]):.1f} deg from the singular angle (need >= {J5_SLOW_DEG:.0f}); "
                         f"move it first, e.g. scripts/19_move_joint_sim.py --joint 5 --to 45")
