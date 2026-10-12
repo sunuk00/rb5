@@ -581,6 +581,22 @@ tool into the table. The TCP offset itself (0, -187, -40) is still being checked
   separately.
 - Late cycles 0; work p99 8.8 ms, max 11.0 ms.
 
+## 2026-10-12 — Leader handle point instead of the wrist center: small effect, not applied
+
+**Offline analysis (logged leader joints, no robot, no code change):** handle point = Link_6R origin +
+R6 (0, 0, -135) mm, taken from the URDF Link_6R inertial origin (0.00089, -0.00028, -0.13533) m (the
+handle's center of mass; the URDF has no handle frame). Wrist FK matches the logged leader position
+within 0.005 mm.
+
+| run | descents (> 30 mm) | median hand \|dx\|/\|dz\|, wrist center | handle point |
+|---|---|---|---|
+| 112319 (no habit) | 20 | 0.70 | 0.71 |
+| 113617 (vertical habit) | 10 | 0.59 | 0.45 |
+
+The handle tilted 30-130 deg from straight down and turned by 15-55 deg during the descents, so the
+handle point also picks up wrist rotation (its dz is 1.1-1.6x the wrist dz). Effect: none without
+the habit, about 25 % with it. Decision: keep the wrist center; next step is orientation (yaw) mapping.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
