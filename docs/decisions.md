@@ -882,6 +882,14 @@ measured TCP speed shows peaks up to 171 mm/s (p99 125), probably from sampling 
 **Decision (user):** ready-pose move_j speed argument 30 -> 50 (5 deg/s with speed bar 0.1); schema
 maximum 30 -> 60 and Real cap 30 -> 50. Speed bar unchanged.
 
+## 2026-10-12 — Real joint speed limit 0.8 deg/cycle (40 deg/s)
+
+**Decision (user):** real.yaml `joint_speed_deg_per_cycle` 0.5 -> 0.8 on all joints and the Real cap
+0.5 -> 0.8. In 135230 the joint speed limit was active in 32 % of the engaged cycles (measured joints
+up to 23.4 deg/s against 25). With 0.8, 100 mm/s fits everywhere in the range (worst 0.393 deg/mm x
+100 = 39.3 deg/s). The RB5 specification for per-joint speeds is still to be found (manual: joint max
+180 deg/s for the E series).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

@@ -131,7 +131,7 @@ REAL_MAX = {
     "yaw.speed_deg_s": 30.0,
     "ready_pose.move_speed_deg_s": 50.0,      # x speed bar 0.1 = 5 deg/s (user, 2026-10-12; was 10, then 30)
 }
-REAL_MAX_JOINT_SPEED_DEG_PER_CYCLE = 0.5
+REAL_MAX_JOINT_SPEED_DEG_PER_CYCLE = 0.8   # 40 deg/s (user, 2026-10-12; was 0.5)
 
 
 def _check(spec, value, key, problems):

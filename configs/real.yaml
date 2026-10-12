@@ -45,7 +45,8 @@ range:
   azimuth_half_deg: 90.0        # same as Simulation; was 30
 
 safety:
-  joint_speed_deg_per_cycle: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5]   # 25 deg/s = Real max (was 0.4); 50 mm/s x 0.393 deg/mm = 20 deg/s
+  joint_speed_deg_per_cycle: [0.8, 0.8, 0.8, 0.8, 0.8, 0.8]   # 40 deg/s = Real max (was 0.5: joint speed limited 32 %
+                                # in 135230); 100 mm/s x 0.393 deg/mm = 39.3 deg/s
                                 # TBD from the RB5 specification
   joint_limit_deg: [360.0, 360.0, 165.0, 360.0, 360.0, 360.0] # J3 +/-165 (user checked on the pendant, 2026-10-12)
   joint_limit_slow_deg: 20.0
