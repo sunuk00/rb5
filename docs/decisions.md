@@ -639,6 +639,24 @@ release freezes yaw; `--no-yaw` 0; J6 crossing +/-180 -> +20.00. Note: the yaw s
 not 1.8: at D a yaw step is mostly J6 (0.92 deg per deg), so the joint speed limit (1 deg/cycle
 predicted) caps the yaw at about 54 deg/s.
 
+## 2026-10-12 — Yaw mapping Simulation result (115603, ready pose D, scale 0.5, C)
+
+Segments classified from the data (no time marks given): twist only (|dJ6| > 15 deg, hand < 40 mm),
+descend (hand dz < -30 mm, |dJ6| < 10 deg), combined.
+
+- **Twist only (3 segments, handle tilt 12-17 deg):** RB5 yaw followed the leader J6 within the limits:
+  +119.1 deg -> +90.0 (range limit), -149.1 -> -108.7, +32.1 -> +3.7 (back-and-forth twists faster than
+  the yaw limit; the part beyond the 15 deg lag was dropped). TCP moved 1.6-7.6 mm, which is the
+  hand's own motion x 0.5. The true twist about vertical (A) had the same sign as dJ6 (106 / -134 /
+  33 deg), so +J6 is counterclockwise seen from above, the same as +rz on the RB5.
+- **Descend without twist (6 segments):** yaw change 0.0-2.5 deg, max 3.1 deg during the segment
+  (A would have given 7-14 deg). Method B works as intended here.
+- **Combined (2 segments):** dJ6 -20.7 / +30.5 deg -> yaw -20.65 / +30.50 deg while moving 41-53 mm.
+- Yaw tracking: |target - tcp| yaw p99 1.09 deg. Late cycles 0, work p99 9.0 ms.
+- Speed: leader J6 p50 44, p90 75, max 92 deg/s during twisting; RB5 yaw max 48 deg/s because the
+  joint speed limit (1 deg/cycle predicted for any joint) caps J6. Yaw speed limited 32 %, joint speed
+  limited 37 % of engaged cycles; 110 deg of yaw dropped in total.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
