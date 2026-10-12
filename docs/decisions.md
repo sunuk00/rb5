@@ -550,6 +550,23 @@ If the teach pendant shows +/-165 for J3, every value above gains 15 deg.
 38 slow cycles, matching the IK value 17.3. Old tests (old start pose, J3 -160.6, TCP r 367) give the
 same results with the joint limit watch and r_min relaxed; with the real settings that pose is refused.
 
+## 2026-10-12 — Object on the RB5 table (z 0): ready pose D, cylinder r 450-550 mm
+
+**Decision:** objects are on the same table as the RB5 (TCP z 0 = base bottom). Ready pose
+D = (182, -11.0, -110.1, 31.1, -90, -2) deg: controller `calc_fk_tcp` TCP (483.3, 129.0, 102.2) mm,
+r 500.2, (rx, ry, rz) = (90, 0, 90): tool down, wrist outside, same tool rotation as C, 100 mm above
+the object height. Margins at D: J3 limit 39.9 deg, elbow 70 deg, shoulder 428 mm, J5 90 deg.
+Move: `taskset -c 0-11 python scripts/19_move_joint_sim.py --pose 182 -11.0 -110.1 31.1 -90 -2 --speed 30`.
+
+**Cylinder:** r 450-550 mm (was 375-500), z = start z +/-150 (-50..252 mm from D), azimuth +/-90 deg.
+J3 limit margin at the object height z 0 by r (worst azimuth, DH IK): r 450 18.5, 475 22.2, 500 26.1,
+525 30.0, 550 34.1 deg; at z -50 and r 450 it is 16.4 deg (slow, no stop). With r_max 550 the
+worst spot stays at the inner low corner; the outer side kept elbow >= 35 deg in the grid.
+
+**Before Real (must do):** set the z lower bound again from the table height and the gripper length.
+With D the current lower bound is z -50 mm, below the table surface (z 0); in Real that would drive the
+tool into the table. The TCP offset itself (0, -187, -40) is still being checked by the lab.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

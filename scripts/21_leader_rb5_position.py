@@ -76,8 +76,8 @@ SERVO_ALPHA = 1.0
 MAX_SPEED_MM_S = 200.0     # largest allowed --speed-mm-s (Simulation)
 MAX_STEP_MM = 1.0          # per cycle (50 mm/s); set from --speed-mm-s in main()
 MAX_DQ_DEG = 1.0           # predicted joint motion per cycle (50 deg/s)
-CYL_R_MIN = 375.0          # TCP horizontal radius from the base z axis [mm]; J3 limit at low z inside (pose C)
-CYL_R_MAX = 500.0          # elbow nearly straight beyond about 550 mm in the ready pose (decisions 2026-10-12)
+CYL_R_MIN = 450.0          # TCP horizontal radius from the base z axis [mm]; J3 limit at low z inside
+CYL_R_MAX = 550.0          # ready pose at r 500 (object on the table, z 0); see decisions 2026-10-12
 CYL_Z_HALF = 150.0         # z range around the TCP z at script start [mm] (Real: set from table + gripper)
 CYL_AZ_HALF_DEG = 90.0     # azimuth range around the TCP azimuth at script start [deg]
 MAX_LEAD_MM = 2.0          # target may be at most this far ahead of tcp_ref; set in main()
@@ -788,7 +788,7 @@ def main():
     r0 = np.hypot(tcp0[0], tcp0[1])
     if not CYL_R_MIN <= r0 <= CYL_R_MAX:
         problems.append(f"TCP radius {r0:.1f} mm is outside the cylinder range {CYL_R_MIN:.0f}..{CYL_R_MAX:.0f} mm "
-                        f"(ready pose C: scripts/19_move_joint_sim.py --pose 180 4 -111 17 -90 0 --speed 30)")
+                        f"(ready pose: scripts/19_move_joint_sim.py --pose 182 -11.0 -110.1 31.1 -90 -2 --speed 30)")
     if rb5_model.shoulder_margin(q0) < SHOULDER_SLOW_MM:
         problems.append(f"shoulder margin is {rb5_model.shoulder_margin(q0):.1f} mm (need >= {SHOULDER_SLOW_MM:.0f})")
     if joint_limit_margin(q0)[0] < JOINT_LIMIT_SLOW_DEG:
