@@ -69,7 +69,7 @@ ready_pose:
   tolerance_deg: 0.05
   wrist_warning_deg: 90.0
 
-gripper:
+gripper:                        # same as Simulation: grip_close = 1 - trigger / trigger_full
   trigger_full: 1000.0
   close_above: 0.6
   open_below: 0.4

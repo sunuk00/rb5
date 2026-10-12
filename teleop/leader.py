@@ -154,8 +154,9 @@ class Clutch:
 
 
 class GripSignal:
-    """Gripper closing from the tool trigger: grip_close = trigger / trigger_full (pulled = closed,
-    untouched trigger 0 = open). State closed above close_above, open below open_below, kept in
+    """Gripper closing from the tool trigger. The trigger reads 0 when pulled closed and trigger_full
+    (1000) when fully open / released (user, 2026-10-12), so grip_close = 1 - trigger / trigger_full:
+    pulled = closed, released = open. State closed above close_above, open below open_below, kept in
     between. A failed read keeps the previous value (no drop), unlike the clutch. Independent of the
     clutch."""
 
@@ -175,7 +176,7 @@ class GripSignal:
             return None
         self.fail_count = 0
         self.trigger = (raw >> 16) & 0xFFFF
-        self.close = min(max(self.trigger / self.g.trigger_full, 0.0), 1.0)
+        self.close = 1.0 - min(max(self.trigger / self.g.trigger_full, 0.0), 1.0)
         previous = self.closed
         if self.closed is None:
             self.closed = self.close >= 0.5

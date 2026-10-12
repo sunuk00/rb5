@@ -66,7 +66,7 @@ What happens:
 | button held | clutch: the RB5 follows the hand's motion (relative to the moment of the press) |
 | button released | the RB5 holds its pose; move the hand freely, press again to continue |
 | twist the handle (leader J6) | RB5 tool yaw about the vertical axis (same angle) |
-| trigger | gripper signal `grip_close` = trigger / 1000 (pulled = closed); logged only |
+| trigger | gripper signal `grip_close` = 1 - trigger / 1000 (trigger reads 0 pulled, 1000 released: pulled = closed); logged only |
 
 Scale 1.5 in Simulation: the RB5 moves 1.5 times the hand motion. Lower the hand vertically: the
 leader's wrist center also moves toward the body when the hand comes down (decisions 2026-10-12).

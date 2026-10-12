@@ -98,10 +98,11 @@ class TestLeader(unittest.TestCase):
     def test_grip_close_direction_and_hysteresis(self):
         g = GripSignal(SIM.gripper)
         out = []
-        for t in [0, 300, 650, 500, 450, 350, None, None, None, 900, 380]:
-            g.update(None if t is None else t << 16)
+        # trigger: 1000 released (open) .. 0 pulled (closed); grip_close = 1 - trigger / 1000
+        for c in [0, 300, 650, 500, 450, 350, None, None, None, 900, 380]:
+            g.update(None if c is None else (1000 - c) << 16)
             out.append((g.close, g.closed))
-        self.assertEqual(out[0], (0.0, False))                   # untouched trigger = open
+        self.assertEqual(out[0], (0.0, False))                   # released trigger (1000) = open
         self.assertEqual(out[2][1], True)                        # 0.65 > 0.6: closed
         self.assertEqual(out[4][1], True)                        # 0.45 kept
         self.assertEqual(out[5][1], False)                       # 0.35 < 0.4: open

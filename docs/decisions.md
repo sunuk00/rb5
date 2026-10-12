@@ -752,6 +752,16 @@ ready pose in sim.yaml passes the start checks with sim.yaml.
 `grip_close = trigger / 1000` that means "closed" at rest. To be checked by the user (released /
 pulled values) before the direction is changed.
 
+## 2026-10-12 — Gripper direction fixed: grip_close = 1 - trigger / 1000
+
+**Fact (user):** the trigger reads 0 when it is closed (pulled) and 1000 when fully open (released).
+This matches the 1000 read with the trigger untouched (dry run with the real leader arm). Earlier logs
+had 0 at rest; the reason is not known.
+
+**Decision:** `grip_close = 1 - trigger / 1000`: pulled = closed (1), released = open (0), as the user
+wants. Hysteresis and the failure rule are unchanged (closed above 0.6, open below 0.4, keep the
+value on a failed read). Replaces `grip_close = trigger / 1000` from the cleanup step 2.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

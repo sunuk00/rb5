@@ -79,7 +79,7 @@ class ScriptLeader:
 
     def step(self):
         b, p, j6, *rest = self.steps[self.i]
-        trig = rest[0] if rest else 0
+        trig = rest[0] if rest else 1000          # released trigger
         ok = rest[1] if len(rest) > 1 else True
         return b, p, j6, trig, ok
 
@@ -175,9 +175,10 @@ class TestLoop(unittest.TestCase):
         self.assertEqual(np.abs(col("yaw_target_deg")).max(), 0.0)
 
     def test_gripper_independent_of_clutch(self):
-        steps = ([(0, [0, 0, 0], 0, 0)] * 3 + [(0, [0, 0, 0], 0, 1000)] * 3        # pulled while released
-                 + [(1, [0, 0, 0], 0, 1000)] * 3 + [(1, [0, 0, 0], 0, None)] * 2   # failed reads
-                 + [(1, [0, 0, 0], 0, 0)] * 3)
+        # trigger 1000 = released (open), 0 = pulled (closed)
+        steps = ([(0, [0, 0, 0], 0, 1000)] * 3 + [(0, [0, 0, 0], 0, 0)] * 3        # pulled while the clutch is released
+                 + [(1, [0, 0, 0], 0, 0)] * 3 + [(1, [0, 0, 0], 0, None)] * 2      # failed reads
+                 + [(1, [0, 0, 0], 0, 1000)] * 3)
         _, _, _, col, _ = run(steps)
         closed = col("grip_state_closed")
         self.assertEqual(closed[0], 0)
@@ -269,8 +270,8 @@ class TestLoopSameAs21(unittest.TestCase):
             a = col(k)
             b = np.array([float(r[h21[k]]) for r in ctx["rows"]])
             np.testing.assert_allclose(a, b, atol=1e-3, err_msg=k)
-        # gripper columns: 21 logged grip_open = trigger / 1000; teleop logs grip_close = trigger / 1000
-        np.testing.assert_allclose(col("grip_close"), [float(r[h21["grip_open"]]) for r in ctx["rows"]], atol=1e-9)
+        # gripper columns: 21 logged grip_open = trigger / 1000; teleop logs grip_close = 1 - trigger / 1000
+        np.testing.assert_allclose(col("grip_close"), [1.0 - float(r[h21["grip_open"]]) for r in ctx["rows"]], atol=1e-9)
 
 
 if __name__ == "__main__":
