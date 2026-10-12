@@ -103,7 +103,7 @@ SCHEMA = {
     },
     "ready_pose": {
         "joints_deg": _vec(6, -360.0, 360.0, nullable=True),
-        "move_speed_deg_s": _num(1.0, 30.0),
+        "move_speed_deg_s": _num(1.0, 60.0),          # move_j argument, x speed bar (0.1) = deg/s
         "tolerance_deg": _num(0.001, 1.0),
         "wrist_warning_deg": _num(0.0, 360.0),
     },
@@ -129,7 +129,7 @@ REAL_MAX = {
     "mapping.speed_mm_s": 100.0,               # user, 2026-10-12 (was 50)
     "mapping.scale": 1.0,
     "yaw.speed_deg_s": 30.0,
-    "ready_pose.move_speed_deg_s": 30.0,      # x speed bar 0.1 = 3 deg/s (user, 2026-10-12; was 10)
+    "ready_pose.move_speed_deg_s": 50.0,      # x speed bar 0.1 = 5 deg/s (user, 2026-10-12; was 10, then 30)
 }
 REAL_MAX_JOINT_SPEED_DEG_PER_CYCLE = 0.5
 

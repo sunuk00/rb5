@@ -868,6 +868,20 @@ joint speed limit stays 0.5 deg/cycle (25 deg/s): near the ready pose (about 0.2
 fits, at the far / low corners (up to 0.393 deg/mm) the joint limit caps the TCP at about 64 mm/s.
 With the 80 ms delay the real arm will trail the target by about 8 mm at 100 mm/s.
 
+## 2026-10-12 — Real run 135230 (100 mm/s) and ready move 5 deg/s
+
+**Run 135230 (68 s):** RB5 target at 100 mm/s in 63 % of the engaged cycles (60-95 mm/s in 21 %);
+RB5 path 50 % of the hand path (31 % at 50 mm/s), dropped 1.9 m; speed limited 89 %, joint speed
+limited 32 % (the 25 deg/s joint limit at far poses), range limited 24 % (all z top +200). Reached x
+357-705, r 367-710, z 65-265. Measured: jnt_ref - jnt_ang <= 0.149 deg; measured TCP about 80 ms
+behind (6.9 mm p50 while moving at 100 mm/s, 2.1 mm after shifting by 80 ms). Measured joint speeds up
+to 23.4 deg/s. No late cycles, no singularity / joint limit slowdown; tool read failures 0.9 %. The
+measured TCP speed shows peaks up to 171 mm/s (p99 125), probably from sampling (jnt_ang read every
+20 ms from a 10 ms data stream), not checked. Trigger bits 0 again (4th Real run).
+
+**Decision (user):** ready-pose move_j speed argument 30 -> 50 (5 deg/s with speed bar 0.1); schema
+maximum 30 -> 60 and Real cap 30 -> 50. Speed bar unchanged.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

@@ -73,7 +73,7 @@ tcp:
 ready_pose:
   joints_deg: [178.969, 8.514, -138.775, 46.535, -87.239, 56.265]   # set by the user on the real RB5, read from
                                 # jnt_ang 2026-10-12: TCP (356.7, 84.6, 64.6), r 366.6, tool 6.9 deg from down
-  move_speed_deg_s: 30.0        # x speed bar 0.1 = 3 deg/s (was 10 = 1 deg/s, too slow; user 2026-10-12)
+  move_speed_deg_s: 50.0        # x speed bar 0.1 = 5 deg/s (was 30 = 3 deg/s; user 2026-10-12: a bit faster)
   tolerance_deg: 0.05
   wrist_warning_deg: 90.0
 
