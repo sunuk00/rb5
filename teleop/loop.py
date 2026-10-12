@@ -63,7 +63,8 @@ class TeleopLoop:
                 "jlslow": f"a joint within {s.safety.joint_limit_slow_deg:.0f} deg of its limit: slower",
                 "jspeed": f"joint speed limit ({lim.max_dq_deg.tolist()} deg/cycle predicted)",
                 "range": f"range limit (cylinder r {s.range.r_min_mm:.0f}..{s.range.r_max_mm:.0f} mm, "
-                         f"z +/-{s.range.z_half_mm:.0f} mm, azimuth +/-{s.range.azimuth_half_deg:.0f} deg)",
+                         f"z -{s.range.z_below_mm:.0f} / +{s.range.z_above_mm:.0f} mm, "
+                         f"azimuth +/-{s.range.azimuth_half_deg:.0f} deg)",
                 "lead": f"target waits for robot (lead limit {lim.max_lead_mm} mm)",
                 "yspeed": f"yaw speed limit ({lim.max_yaw_step_deg} deg/cycle)",
                 "yrange": f"yaw range limit (+/-{lim.yaw_range_deg:.0f} deg)",

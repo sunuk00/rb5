@@ -106,19 +106,21 @@ def tcp_offset_from(tcp, tfc):
 
 
 class CylinderRange:
-    """Cylinder piece about the base z axis, fixed at start: r_min..r_max, z0 +/- z_half (and above an
-    optional absolute floor z_min_abs), azimuth az0 +/- az_half. Clamped in r, z and azimuth separately."""
+    """Cylinder piece about the base z axis, fixed at start: r_min..r_max, z0 - z_below .. z0 + z_above
+    (and above an optional absolute floor z_min_abs), azimuth az0 +/- az_half. Clamped in r, z and
+    azimuth separately."""
 
-    def __init__(self, tcp0, r_min, r_max, z_half, az_half, z_min_abs=None):
+    def __init__(self, tcp0, r_min, r_max, z_below, z_above, az_half, z_min_abs=None):
         self.z0 = tcp0[2]
         self.az0 = np.degrees(np.arctan2(tcp0[1], tcp0[0]))
         self.r_min, self.r_max, self.az_half = r_min, r_max, az_half
-        self.z_lo = self.z0 - z_half if z_min_abs is None else max(self.z0 - z_half, z_min_abs)
-        self.z_hi = self.z0 + z_half
+        self.z_lo = self.z0 - z_below if z_min_abs is None else max(self.z0 - z_below, z_min_abs)
+        self.z_hi = self.z0 + z_above
 
     @classmethod
     def from_settings(cls, tcp0, rng):
-        return cls(tcp0, rng.r_min_mm, rng.r_max_mm, rng.z_half_mm, rng.azimuth_half_deg, rng.z_min_abs_mm)
+        return cls(tcp0, rng.r_min_mm, rng.r_max_mm, rng.z_below_mm, rng.z_above_mm, rng.azimuth_half_deg,
+                   rng.z_min_abs_mm)
 
     def clamp(self, p):
         """Return the point clamped into the range (r, z and azimuth separately)."""

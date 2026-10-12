@@ -72,7 +72,8 @@ SCHEMA = {
     "range": {
         "r_min_mm": _num(150.0, 900.0),
         "r_max_mm": _num(150.0, 900.0),
-        "z_half_mm": _num(0.0, 300.0),
+        "z_below_mm": _num(0.0, 300.0),               # start z - this
+        "z_above_mm": _num(0.0, 300.0),               # start z + this
         "z_min_abs_mm": _num(-200.0, 800.0, nullable=True),
         "azimuth_half_deg": _num(0.0, 180.0),
     },

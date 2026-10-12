@@ -15,11 +15,14 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "tests"))
 from teleop.kinematics import RB5Model, rot_zyx, zyx_from_rot  # noqa: E402
 from teleop.loop import CSV_HEADER, StopRequest, TeleopLoop  # noqa: E402
 from teleop.settings import load_settings  # noqa: E402
 
-RAW = load_settings(ROOT / "configs" / "sim.yaml")[1]
+from fixtures import test_raw  # noqa: E402
+
+RAW = test_raw()   # pose D era values, same as scripts/21
 OFFSET = [0.0, -187.0, -40.0]
 D = np.array([182.0, -11.0, -110.1, 31.1, -90.0, -2.0])   # pose D (tests are written for it)
 IX = {h: i for i, h in enumerate(CSV_HEADER)}
@@ -28,7 +31,6 @@ IX = {h: i for i, h in enumerate(CSV_HEADER)}
 def settings(**changes):
     """sim.yaml with changes given as section__key=value."""
     d = copy.deepcopy(RAW)
-    d["mapping"]["scale"] = 0.5          # the tests are written for scale 0.5
     for k, v in changes.items():
         sec, key = k.split("__")
         d[sec][key] = v
@@ -204,7 +206,7 @@ class TestLoop(unittest.TestCase):
         jinv = np.linalg.inv(model.jacobian(q))
         d = -jinv[4, :3] / np.linalg.norm(jinv[4, :3])                  # position direction that lowers J5
         steps = ARM + [(1, list(1.0 * i * d), 0) for i in range(1, 400)]
-        wide = settings(range__r_min_mm=150.0, range__r_max_mm=900.0, range__z_half_mm=300.0,
+        wide = settings(range__r_min_mm=150.0, range__r_max_mm=900.0, range__z_below_mm=300.0, range__z_above_mm=300.0,
                         range__azimuth_half_deg=180.0, safety__joint_limit_deg=[360.0] * 6,
                         safety__elbow_slow_deg=5.0, safety__elbow_stop_deg=1.0)
         _, _, _, col, stop = run(steps, wide, q0=q)

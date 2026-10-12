@@ -32,15 +32,16 @@ yaw:
   max_lag_deg: 0.0              # B
 
 range:
-  r_min_mm: 470.0               # narrower than Simulation (450..550)
+  r_min_mm: 470.0               # narrow; TBD for the Real ready pose (Simulation uses 350..600 around r 367)
   r_max_mm: 530.0
-  z_half_mm: 50.0               # narrower than Simulation (150)
+  z_below_mm: 50.0              # narrower than Simulation (100 / 150)
+  z_above_mm: 50.0
   z_min_abs_mm: null            # TBD: table height + gripper length (must be set before Real)
   azimuth_half_deg: 30.0        # conservative
 
 safety:
   joint_speed_deg_per_cycle: [0.2, 0.2, 0.2, 0.2, 0.2, 0.2]   # 10 deg/s; TBD from the RB5 specification
-  joint_limit_deg: [360.0, 360.0, 150.0, 360.0, 360.0, 360.0] # J3: TBD +/-150 vs +/-165 (pendant); 150 is the smaller
+  joint_limit_deg: [360.0, 360.0, 165.0, 360.0, 360.0, 360.0] # J3 +/-165 (user checked on the pendant, 2026-10-12)
   joint_limit_slow_deg: 20.0
   joint_limit_stop_deg: 10.0
   j5_slow_deg: 20.0

@@ -722,6 +722,36 @@ matches vendor / product / serial (FT62AJW7) on its parent USB device (checked w
 
 **Next feature candidate:** left handle button switches the scale (precise 0.5 / fast 1.5).
 
+## 2026-10-12 — Teleop: ready pose from the real RB5, scale 1.5, J3 +/-165, range around the new pose
+
+**User requests:** run with plain `python teleop.py` (no taskset), the RB5 should go farther (scale
+about 1.5), and use the ready pose the user set on the real RB5. J3 limit confirmed +/-165 on the
+teach pendant.
+
+**Changes:**
+- The process pins itself to `runtime.cpu_cores` ([0, 11], the performance cores) from the settings.
+- `mapping.scale` 1.5 in sim.yaml.
+- Ready pose (178.969, 8.514, -138.775, 46.535, -87.239, 56.265) deg, read from jnt_ang in Simulation
+  mode (the encoder of the real arm). Controller FK: TCP (356.7, 84.6, 64.6) mm, r 366.6, rpy
+  (84.2, 3.7, 145.2): the tool is 6.9 deg from straight down.
+- J3 limit +/-165 in both settings files. With +/-150 the new pose had only 11.2 deg margin (refused).
+- Range (sim.yaml) around the new pose: r 350-600 mm, z start -100 / +150 mm (about -37 .. 213),
+  azimuth +/-90 deg. The z range is now asymmetric (`z_below_mm`, `z_above_mm`). DH grid with the
+  pose's orientation over r 330-600, z start -150 .. +150, azimuth +/-90: elbow >= 25 deg, shoulder
+  >= 198 mm, J5 >= 83 deg, all reachable; J3 (+/-165) margin is lowest at the inner low corner
+  (10.2 deg at r 330, z -87). At the ready pose: J5 87.2 deg, shoulder 252.8 mm, elbow 41.2 deg,
+  J3 26.2 deg.
+- The teleop now checks the ready pose with the start checks (controller FK) before moving there.
+- Note: with pose D the forward reach was only 50 mm (r 500 -> r_max 550); that, more than the scale,
+  limited "how far forward" the RB5 went.
+
+**Tests:** fixed to the pose D era values (same as 21) in `tests/fixtures.py`, plus a test that the
+ready pose in sim.yaml passes the start checks with sim.yaml.
+
+**Open:** the trigger read 1000 with the trigger apparently untouched (earlier logs: 0). With
+`grip_close = trigger / 1000` that means "closed" at rest. To be checked by the user (released /
+pulled values) before the direction is changed.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

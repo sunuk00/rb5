@@ -10,13 +10,14 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "tests"))
 from teleop.kinematics import CylinderRange, RB5Model, rot_zyx, tcp_offset_from, wrap_deg, zyx_from_rot  # noqa: E402
 from teleop.leader import Clutch, GripSignal, LeaderModel  # noqa: E402
 from teleop.mapping import Limits, Mapper, plan_step  # noqa: E402
 from teleop.safety import Watch, joint_limit_margin, ramp_scale, singular_distance  # noqa: E402
 from teleop.settings import load_settings  # noqa: E402
 
-SIM, _ = load_settings(ROOT / "configs" / "sim.yaml")
+from fixtures import TEST as SIM, test_raw  # noqa: E402  (pose D era values, same as 21)
 URDF = ROOT / "refs" / "rby1-sdk" / "models" / "leader_arm" / "model.urdf"
 OFFSET = [0.0, -187.0, -40.0]
 POSE_D = np.array([182.0, -11.0, -110.1, 31.1, -90.0, -2.0])   # pose D (tests are written for it)
@@ -57,7 +58,7 @@ class TestKinematics(unittest.TestCase):
         for given, expect in (((700, 0, 0), (550, 0, 0)), ((300, 0, 0), (450, 0, 0)), ((500, 120, 0), (500, 90, 0)),
                               ((500, 0, -200), (500, 0, -150)), ((500, 30, 50), (500, 30, 50))):
             np.testing.assert_allclose(polar(cyl.clamp(at(*given))), expect, atol=1e-6)
-        floor = CylinderRange(p0, 450, 550, 150, 90, z_min_abs=30.0)
+        floor = CylinderRange(p0, 450, 550, 150, 150, 90, z_min_abs=30.0)
         self.assertAlmostEqual(floor.clamp(at(500, 0, -150))[2], 30.0)
 
 
@@ -134,7 +135,7 @@ class TestSameAs21(unittest.TestCase):
         seen = set()
         for lag in (30.0, 0.0):
             m.MAX_LAG_MM, m.MAX_YAW_LAG_DEG = lag, (15.0 if lag else 0.0)
-            s = load_settings(ROOT / "configs" / "sim.yaml")[1]
+            s = test_raw()
             s["mapping"]["max_lag_mm"] = lag
             lim = Limits(_ns(s))
             for i in range(300):
@@ -176,9 +177,7 @@ def _ns(d):
 
 class TestMapper(unittest.TestCase):
     def test_relative_mapping_and_shift(self):
-        s = load_settings(ROOT / "configs" / "sim.yaml")[1]
-        s["mapping"]["scale"] = 0.5                               # the test is written for scale 0.5
-        mp = Mapper(_ns(s), [400.0, 100.0, 200.0])
+        mp = Mapper(SIM, [400.0, 100.0, 200.0])
         mp.engage([10.0, 0.0, 0.0], 30.0)
         pos, yaw = mp.desired([30.0, 0.0, -10.0], 40.0)
         np.testing.assert_allclose(pos, [410.0, 100.0, 195.0])   # scale 0.5

@@ -8,13 +8,14 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "tests"))
 from teleop.kinematics import RB5Model  # noqa: E402
 from teleop.preflight import (check_leader, check_robot_mode, check_start_pose, check_tcp_offset,  # noqa: E402
                               nearest_equivalent, plan_ready_move)
 from teleop.safety import Watch  # noqa: E402
 from teleop.settings import load_settings  # noqa: E402
 
-SIM, _ = load_settings(ROOT / "configs" / "sim.yaml")
+from fixtures import TEST as SIM  # noqa: E402  (pose D era values)
 OFFSET = [0.0, -187.0, -40.0]
 D = np.array([182.0, -11.0, -110.1, 31.1, -90.0, -2.0])   # pose D (tests are written for it)
 
@@ -78,6 +79,21 @@ class TestChecks(unittest.TestCase):
         self.assertTrue(any("radius" in p for p in problems))
         problems, _ = check_start_pose(tcp0 + [10, 0, 0, 0, 0, 0], D, model, watch, SIM)
         self.assertTrue(any("DH model" in p for p in problems))
+
+
+
+
+class TestCurrentSimSettings(unittest.TestCase):
+    """The ready pose in configs/sim.yaml must pass the start checks with the settings in that file."""
+
+    def test_ready_pose_is_a_valid_start(self):
+        s, _ = load_settings(ROOT / "configs" / "sim.yaml")
+        model, watch = RB5Model(OFFSET), Watch(s.safety)
+        q = np.array(s.ready_pose.joints_deg)
+        p, r = model.tcp(q)
+        from teleop.kinematics import zyx_from_rot
+        problems, _ = check_start_pose(np.r_[p, zyx_from_rot(r)], q, model, watch, s)
+        self.assertEqual(problems, [])
 
 
 if __name__ == "__main__":

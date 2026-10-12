@@ -11,8 +11,7 @@ its own step, with the lab, not as part of a Simulation session.
 - [ ] **TCP offset**: the controller has (0, -187, -40) mm, orientation 0 (17). The lab is checking
       what it should be. Put the confirmed value in `tcp.expected_offset_mm`; the teleop compares it
       with get_tcp_info / get_tfc_info at start (tolerance 1 mm).
-- [ ] **J3 limit**: +/-150 or +/-165 on this RB5-850 (N)? Check on the teach pendant; update
-      `safety.joint_limit_deg[2]`.
+- [x] **J3 limit**: +/-165 (user checked on the teach pendant, 2026-10-12); set in both settings files.
 - [ ] Joint limits set on the controller (setup page), if any are narrower than the teleop's.
 
 ## Workspace
@@ -22,8 +21,8 @@ its own step, with the lab, not as part of a Simulation session.
       outside (like pose D); check the margins with the DH model as done for D.
 - [ ] **z lower bound** (`range.z_min_abs_mm`): table height + gripper length + margin, in the base
       frame (z 0 = base bottom). The cylinder never goes below it.
-- [ ] Range (`range.*`): narrow first (r 470-530, z +/-50, azimuth +/-30 in real.yaml); widen only
-      after runs look right.
+- [ ] Range (`range.*`): narrow first (z -50 / +50, azimuth +/-30 in real.yaml) and centered on the Real
+      ready pose (r_min / r_max must contain its TCP radius); widen only after runs look right.
 - [ ] Nothing in the reach of the robot along the ready-pose move (large wrist turns are warned).
 
 ## Speeds (conservative in real.yaml; RB5 specification still to be found)
