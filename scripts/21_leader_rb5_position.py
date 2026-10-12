@@ -40,7 +40,8 @@ Usage:
     python scripts/21_leader_rb5_position.py
     python scripts/21_leader_rb5_position.py --yaw-deg 90 --scale 1.0
     python scripts/21_leader_rb5_position.py --speed-mm-s 200
-    python scripts/21_leader_rb5_position.py --speed-mm-s 200 --max-lag-mm 30
+    python scripts/21_leader_rb5_position.py --speed-mm-s 200 --max-lag-mm 0     # B
+    python scripts/21_leader_rb5_position.py --speed-mm-s 200 --scale 0.5
 Stop with Ctrl+C. Each run is logged to data/21_leader_pos_sim_<time>.csv
 """
 import argparse
@@ -86,7 +87,7 @@ SHOULDER_SLOW_MM = 50.0    # shoulder margin (P05 radius - d4) below this: warni
 SHOULDER_STOP_MM = 20.0    # shoulder margin below this: stop
 ELBOW_SLOW_DEG = 20.0      # J3 distance from 0 / 180 deg below this: warning and slower
 ELBOW_STOP_DEG = 10.0      # below this: stop
-MAX_LAG_MM = 0.0           # C: lag kept for catch-up [mm]; 0 = B. Set from --max-lag-mm in main()
+MAX_LAG_MM = 30.0          # C: lag kept for catch-up [mm]; 0 = B. Set from --max-lag-mm in main() (default 30)
 MAX_LAG_LIMIT_MM = 50.0    # largest allowed --max-lag-mm
 MAX_FK_ERROR_MM = 5.0      # DH model vs tcp_ref at start
 MAX_GAP_S = 1.5 * SERVO_T1 # a send gap longer than this freezes the target for that cycle (08)
@@ -695,8 +696,8 @@ def main():
     parser.add_argument("--scale", type=float, default=1.0, help="RB5 motion / leader motion")
     parser.add_argument("--speed-mm-s", type=float, default=50.0,
                         help=f"TCP speed limit [mm/s], at most {MAX_SPEED_MM_S:.0f} (Simulation)")
-    parser.add_argument("--max-lag-mm", type=float, default=0.0,
-                        help=f"C: lag kept for catch-up [mm], at most {MAX_LAG_LIMIT_MM:.0f}; 0 = B (default)")
+    parser.add_argument("--max-lag-mm", type=float, default=30.0,
+                        help=f"C: lag kept for catch-up [mm], at most {MAX_LAG_LIMIT_MM:.0f} (default 30); 0 = B")
     parser.add_argument("--port", default=LEADER_PORT, help="leader arm USB-serial device")
     args = parser.parse_args()
     if not 0 <= args.max_lag_mm <= MAX_LAG_LIMIT_MM:

@@ -391,6 +391,32 @@ is dropped (hand travel beyond the speed-limited travel + L); C only reduces it 
 **Side effect seen in the fake tests:** the old 21 start pose (J3 = -160.6) is 19.4 deg from folded,
 so the elbow watch slows it and the start check would refuse it. Use the ready pose A.
 
+## 2026-10-12 — 21: default is C with a 30 mm lag
+
+**Decision:** `--max-lag-mm` defaults to 30 (C). `--max-lag-mm 0` gives B.
+
+**Reason (Simulation, 200 mm/s, user runs; hand speeds differ between runs, so not a controlled test):**
+
+| run | mode | hand speed p50 | RB5 path / hand path | dropped / hand path | hand-robot offset at segment end (median / max) |
+|---|---|---|---|---|---|
+| 102624 | B | 246 mm/s | 44 % | 38 % | 83 / 233 mm |
+| 102731 | C | 287 mm/s | 45 % | 26 % | 73 / 246 mm |
+| 103206 | B | 93 mm/s | 57 % | 15 % | 11 / 126 mm |
+| 103353 | C | 143 mm/s | 66 % | 8 % | 34 / 157 mm |
+
+C drops less than B (38 -> 26 % at similar hand speed; 8 % for C even with a faster hand than the
+second B run). The path ratio gain is small when the hand is above the speed limit most of the time,
+because the 30 mm lag fills quickly. Robot motion while the hand was slower than 20 mm/s: C 11 mm,
+B 14 mm (a 0.3 s hand stop was too rare to measure the after-motion directly). A controlled B / C
+comparison was skipped by choice.
+
+**Before Real:** C keeps moving up to the lag after the hand stops (fake test: 30 mm in 0.6 s at
+50 mm/s). The lag length must be chosen again for the real robot.
+
+**Also seen:** the range limit (r 300-500, z +/-150) was active in 28-56 % of engaged cycles, the
+largest limiter; late cycles 0.6-5.2 %, all while engaged, after planning spikes up to 27 ms (cause
+under test).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
