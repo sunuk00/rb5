@@ -836,6 +836,20 @@ DH-model TCP `meas_tcp_x/y/z` (absolute about 2 mm off the controller FK) and `t
 The logged tcp_ref / jnt_ref are the controller's reference (command) values; jnt_ang shows how the
 real arm actually followed. In Simulation jnt_ang stays at the real arm's pose.
 
+## 2026-10-12 — Real run 133743 (50 mm/s, C 20 mm) and z upper bound +200
+
+**Run 133743 (66 s):** first run with the measured joints. jnt_ref - jnt_ang <= 0.145 deg (p50 0.03);
+the measured TCP follows the target about 80 ms late (4 cycles; error 3.9 mm mean at 0 delay, 2.0 mm
+when shifted, 2.0 mm while holding = the DH model offset). Measured joint speeds J1-J4 10-12 deg/s,
+J6 24 deg/s. RB5 path 32 % of the hand path (16 % before), dropped 2.6 m, speed limited 91 %, joint
+speed limited 10 %, range limited 52 % - all of it the z upper bound (start + 150 = 215 mm; reaching
+forward raises the leader wrist). No late cycles, no singularity / joint limit slowdown. Tool read
+failures 5.2 % (higher than before). The tool raw value was only 256 / 0: the trigger bits stayed 0.
+
+**Decision:** real.yaml `range.z_above_mm` 150 -> 200 (z up to 264.6). DH grid with the real ready
+pose orientation, r 350-800, azimuth +/-90: at +200 every point is reachable, elbow >= 25 deg (at r
+800), J5 >= 84 deg, shoulder >= 218 mm, joint limit >= 48 deg; at +250 r 800 is out of reach.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

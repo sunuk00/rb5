@@ -38,7 +38,8 @@ range:
   r_min_mm: 350.0               # same as Simulation (user, 2026-10-12); was 340..420
   r_max_mm: 800.0               # same as Simulation; elbow >= 43 deg up to r 800 (DH grid)
   z_below_mm: 100.0             # same as Simulation; the floor below is higher (30 mm)
-  z_above_mm: 150.0             # same as Simulation: start z + 150 = 214.6
+  z_above_mm: 200.0             # start z + 200 = 264.6 (was +150: the z top was 52 % of the range limit in 133743);
+                                # +250 is out of reach at r 800, +200 keeps elbow >= 25 deg there (DH grid)
   z_min_abs_mm: 30.0            # PROVISIONAL: TCP never below z 30 mm (z 0 = base bottom = table?). Replace with
                                 # table height + gripper length + margin
   azimuth_half_deg: 90.0        # same as Simulation; was 30
