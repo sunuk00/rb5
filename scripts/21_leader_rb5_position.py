@@ -12,7 +12,9 @@ Each 20 ms cycle:
        MAX_DQ_DEG per cycle the step is scaled down
      - the cut part of the step is dropped (B: the leader start is shifted), so the robot stops soon
        after the hand stops
-     - range: +/-RANGE_MM per axis around the TCP at script start (not dropped)
+     - range: a cylinder piece about the base z axis (not dropped): radius CYL_R_MIN..CYL_R_MAX,
+       z = start z +/- CYL_Z_HALF, azimuth = start azimuth +/- CYL_AZ_HALF_DEG. A target outside
+       is clamped in r, z and azimuth separately.
      - lead: the target is not moved while it is more than MAX_LEAD_MM ahead of tcp_ref (not dropped)
   5. singularity watch on the predicted joint angles (DH model):
      - wrist: effective J5 = asin(|sin J5|). Below 20 deg: warning and the speed limit falls linearly
@@ -65,7 +67,10 @@ SERVO_ALPHA = 1.0
 MAX_SPEED_MM_S = 200.0     # largest allowed --speed-mm-s (Simulation)
 MAX_STEP_MM = 1.0          # per cycle (50 mm/s); set from --speed-mm-s in main()
 MAX_DQ_DEG = 1.0           # predicted joint motion per cycle (50 deg/s)
-RANGE_MM = 150.0           # per axis, around the TCP at script start
+CYL_R_MIN = 300.0          # TCP horizontal radius from the base z axis [mm]
+CYL_R_MAX = 650.0
+CYL_Z_HALF = 150.0         # z range around the TCP z at script start [mm] (Real: set from table + gripper)
+CYL_AZ_HALF_DEG = 90.0     # azimuth range around the TCP azimuth at script start [deg]
 MAX_LEAD_MM = 2.0          # target may be at most this far ahead of tcp_ref; set in main()
 LEAD_PER_STEP = 2.0        # lead limit = this x MAX_STEP_MM (2 mm at 1 mm/cycle as first tested)
 J5_SLOW_DEG = 20.0         # effective J5 below this: warning and slower
@@ -230,11 +235,36 @@ class RB5Model:
         return np.degrees(np.linalg.solve(self.jacobian(q), np.r_[dp_mm, 0, 0, 0]))
 
 
-def plan_step(target, desired, tcp_pos, q, model, low, high):
+class CylinderRange:
+    """Cylinder piece about the base z axis, fixed at script start."""
+
+    def __init__(self, tcp0):
+        self.z0 = tcp0[2]
+        self.az0 = np.degrees(np.arctan2(tcp0[1], tcp0[0]))
+
+    def clamp(self, p):
+        """Return the point clamped into the range (r, z and azimuth separately)."""
+        r = np.hypot(p[0], p[1])
+        daz = (np.degrees(np.arctan2(p[1], p[0])) - self.az0 + 180.0) % 360.0 - 180.0
+        r_c = np.clip(r, CYL_R_MIN, CYL_R_MAX)
+        az_c = np.radians(self.az0 + np.clip(daz, -CYL_AZ_HALF_DEG, CYL_AZ_HALF_DEG))
+        z_c = np.clip(p[2], self.z0 - CYL_Z_HALF, self.z0 + CYL_Z_HALF)
+        out = np.array([r_c * np.cos(az_c), r_c * np.sin(az_c), z_c])
+        return out if np.linalg.norm(out - p) > 1e-9 else np.array(p, dtype=float)
+
+    def contains(self, p):
+        return np.linalg.norm(self.clamp(p) - p) < 1e-6
+
+
+def plan_step(target, desired, tcp_pos, q, model, cyl):
     """One cycle of the limits.
     Returns (new target, dropped vector, flags, predicted eff. J5, predicted shoulder margin, max |dq|, stop reason)."""
     flags = dict.fromkeys(("speed", "j5slow", "shslow", "jspeed", "range", "lead"), False)
-    step = desired - target
+    # Range first: the part of desired outside the range is kept (not dropped). Clamping only the new
+    # target would let desired - target grow outside the range, and the speed limit would then drop it.
+    desired_in = cyl.clamp(desired)
+    flags["range"] = bool(np.any(desired_in != desired))
+    step = desired_in - target
 
     # Speed limit, scaled by the predicted singularity margins of a full-size step
     q_full = q + model.predict(q, target + clip_norm(step, MAX_STEP_MM) - tcp_pos)
@@ -254,8 +284,8 @@ def plan_step(target, desired, tcp_pos, q, model, low, high):
     dropped = step - limited   # B: dropped, not caught up later
 
     new = target + limited
-    clamped = np.clip(new, low, high)
-    flags["range"] = bool(np.any(clamped != new))
+    clamped = cyl.clamp(new)   # a straight step between two inside points can cut the inner radius
+    flags["range"] = flags["range"] or bool(np.any(clamped != new))
     if np.linalg.norm(clamped - tcp_pos) > MAX_LEAD_MM:
         clamped = target.copy()
         flags["lead"] = True
@@ -450,7 +480,7 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
     ctx["target"] = tcp0[:3].copy()
     target = ctx["target"]
     rpy = ctx["rpy"]
-    low, high = tcp0[:3] - RANGE_MM, tcp0[:3] + RANGE_MM
+    cyl = CylinderRange(tcp0[:3])
     yaw = rot_z(args.yaw_deg)
 
     clutch = Clutch()
@@ -520,7 +550,7 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
         if clutch.engaged and q_l is not None and not late_early and not stale:
             desired = rb5_start + args.scale * (yaw @ (leader_p - leader_start))
             new, dropped, flags, j5_pred, sh_pred, max_dq, stop = plan_step(
-                target, desired, tcp[:3], q, rb5_model, low, high)
+                target, desired, tcp[:3], q, rb5_model, cyl)
             if stop:
                 raise StopRequest(stop)
         t_plan = time.monotonic() - t_plan0
@@ -541,7 +571,8 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
                   "j5slow": f"J5 below {J5_SLOW_DEG:.0f} deg: slower",
                   "shslow": f"shoulder margin below {SHOULDER_SLOW_MM:.0f} mm: slower",
                   "jspeed": f"joint speed limit ({MAX_DQ_DEG} deg/cycle predicted)",
-                  "range": f"range limit (+/-{RANGE_MM:.0f} mm)",
+                  "range": f"range limit (cylinder r {CYL_R_MIN:.0f}..{CYL_R_MAX:.0f} mm, "
+                           f"z +/-{CYL_Z_HALF:.0f} mm, azimuth +/-{CYL_AZ_HALF_DEG:.0f} deg)",
                   "lead": f"target waits for robot (lead limit {MAX_LEAD_MM} mm)"}
         for key, on in flags.items():
             if on and not flags_prev.get(key, False):
@@ -681,11 +712,16 @@ def main():
     print(f"TCP offset (flange frame) {rb5_model.offset} mm   DH model vs tcp_ref {fk_error:.2f} mm   "
           f"J5 {effective_j5(q0[4]):.1f} deg from singular, shoulder margin {rb5_model.shoulder_margin(q0):.1f} mm")
     print(f"Limits: {MAX_STEP_MM} mm/cycle ({MAX_STEP_MM / PERIOD_S:.0f} mm/s), {MAX_DQ_DEG} deg/cycle joints, "
-          f"range +/-{RANGE_MM:.0f} mm, lead {MAX_LEAD_MM} mm, J5 slow < {J5_SLOW_DEG:.0f} / stop < {J5_STOP_DEG:.0f} deg, "
+          f"cylinder r {CYL_R_MIN:.0f}..{CYL_R_MAX:.0f} mm / z +/-{CYL_Z_HALF:.0f} mm / "
+          f"azimuth +/-{CYL_AZ_HALF_DEG:.0f} deg, lead {MAX_LEAD_MM} mm, J5 slow < {J5_SLOW_DEG:.0f} / stop < {J5_STOP_DEG:.0f} deg, "
           f"shoulder slow < {SHOULDER_SLOW_MM:.0f} / stop < {SHOULDER_STOP_MM:.0f} mm")
     problems = []
     if fk_error > MAX_FK_ERROR_MM:
         problems.append(f"DH model differs from tcp_ref by {fk_error:.2f} mm (> {MAX_FK_ERROR_MM})")
+    r0 = np.hypot(tcp0[0], tcp0[1])
+    if not CYL_R_MIN <= r0 <= CYL_R_MAX:
+        problems.append(f"TCP radius {r0:.1f} mm is outside the cylinder range {CYL_R_MIN:.0f}..{CYL_R_MAX:.0f} mm "
+                        f"(ready pose: scripts/19_move_joint_sim.py --pose 180 -15 -90 -165 90 0 --speed 30)")
     if rb5_model.shoulder_margin(q0) < SHOULDER_SLOW_MM:
         problems.append(f"shoulder margin is {rb5_model.shoulder_margin(q0):.1f} mm (need >= {SHOULDER_SLOW_MM:.0f})")
     if effective_j5(q0[4]) < J5_SLOW_DEG:

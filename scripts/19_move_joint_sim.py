@@ -129,6 +129,10 @@ def main():
     print(f"Current TCP (calc_fk_tcp) {fk(robot, rc, q_now)}")
     print(f"Target TCP  (calc_fk_tcp) {fk(robot, rc, q_target)}")
 
+    if np.abs(change).max() < TOL_DEG:
+        print(f"Already within {TOL_DEG} deg of the target; no move_j sent.")
+        return
+
     robot.flush(rc)
     robot.move_j(rc, q_target, args.speed, acc)
     if robot.wait_for_move_started(rc, 0.5).type() == rb.ReturnType.Success:

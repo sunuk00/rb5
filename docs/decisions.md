@@ -329,6 +329,29 @@ read by any script.
 (180, -15, -90, 195, 90, 0): J4 195 instead of -165 (54 deg instead of 306 deg). Largest change J5
 92.5 deg, about 31 s at 3 deg/s.
 
+## 2026-10-12 — 21: cylinder range; range excess was being dropped (also in 13)
+
+**Decision:** the box range (+/-150 mm per axis) is replaced by a cylinder piece about the base z axis:
+r 300..650 mm, z = start z +/-150 mm, azimuth = start azimuth +/-90 deg (Simulation defaults; before
+Real, the z lower bound is set from the table height and the gripper length). A target outside is
+clamped in r, z and azimuth separately. The script refuses to start if the TCP radius is outside.
+
+**Bug found and fixed:** the range clamp was applied to the new target only. While the target sat at
+the boundary, desired kept moving out, desired - target grew, and the speed limit cut it and B dropped
+it, so the range excess was dropped after all (fake test: the hand came back 4 mm instead of 82 mm
+before the robot moved inward, and the final position was off). Now desired is clamped into the
+range first, then the speed / joint limits and B apply. Fake test after the fix: inward motion starts
+after 84 mm of hand return (82 mm + one step) and the final position equals the start. **13 has the
+same structure** (range clamp after the speed limit), so its "range excess is not dropped" note is
+wrong in effect. Not fixed in 13.
+
+**Singularity margins over the range** (pose A orientation, tool down, DH model, 120 grid points,
+IK walked from pose A): J5 stays at 90 deg; shoulder margin >= 151 mm (at r 300); |J3| <= 124 deg.
+New: the **elbow singularity** (arm stretched, J3 -> 0): at r >= 550 J3 comes within 17-20 deg of
+straight and the joint motion rises to 0.65-0.72 deg/mm (0.19-0.31 deg/mm at r 300-500). At z +150
+the model IK did not converge for r 600-650 (out of reach or nearly stretched). Decision on r_max or
+an elbow watch is pending.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
