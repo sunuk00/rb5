@@ -352,6 +352,45 @@ straight and the joint motion rises to 0.65-0.72 deg/mm (0.19-0.31 deg/mm at r 3
 the model IK did not converge for r 600-650 (out of reach or nearly stretched). Decision on r_max or
 an elbow watch is pending.
 
+## 2026-10-12 — 21: three singularities watched, r_max 500 mm, C mode (catch-up up to a lag)
+
+**The three RB5 singularities and how 21 watches them** (all on the joint angles predicted by the DH
+model for the next step, q + J^-1 dx; slow = warning and the speed limit falls linearly to 0.25x;
+stop = the step is not sent and servo mode ends normally; start needs the slow margin):
+
+| singularity | condition | measure | slow / stop | evidence |
+|---|---|---|---|---|
+| wrist | J4 and J6 axes line up | J5 distance from 0 / 180 deg | 20 / 10 deg | Rainbow IK divides by sin(th5); 18 rz test |
+| shoulder | wrist point P05 on the cylinder of radius d4 about the J1 axis | P05 horizontal radius - d4 | 50 / 20 mm | Rainbow IK acos(d4 / r); 094517 end (14 deg/mm) |
+| elbow | arm stretched (J3 -> 0; also folded, J3 -> 180) | J3 distance from 0 / 180 deg | 20 / 10 deg | cylinder grid: 0.65-0.72 deg/mm at r >= 550 |
+
+The joint speed limit (1 deg/cycle predicted) stays as the last guard for anything not covered.
+
+**r_max 500 mm** (was 650) for the Simulation cylinder: over r 300-500 the grid has <= 0.31 deg/mm and
+the elbow >= 42 deg from straight in the ready pose. Fake test from pose A with the range off: elbow
+slow from 19.3 deg (r 681), stop at 9.7 deg predicted (r 690).
+
+**Bug fix recap:** desired is clamped into the range before the speed limit (entry above); 13 still has
+the old order.
+
+**C mode:** `--max-lag-mm L` (0..50, default 0 = B). The part cut by the speed / joint / singularity
+limits is kept while the lag (clamped desired - target) is at most L; only the part beyond L is
+dropped (leader start shifted). Release drops the lag. Range excess is never dropped (it is outside
+the lag because desired is clamped first). Fake tests at 1 mm/cycle:
+
+| test | B | C (30 mm) |
+|---|---|---|
+| hand 100 mm at 5 mm/cycle, then still | robot 20 mm, stops at once | robot 50 mm, moves 30 mm in 30 cycles (0.6 s) after the hand stops |
+| slow hand 50 mm | 50 mm | 50 mm |
+| release right after the fast move | stays at 20 mm | stays at 20 mm (lag dropped) |
+| fast down 100 / slow up 100 (hand net 0) | robot net +80 mm | robot net +50 mm |
+
+Correction to the C plan: C does not bound the hand-robot offset to 30 mm. The offset grows by what
+is dropped (hand travel beyond the speed-limited travel + L); C only reduces it by L per fast move.
+
+**Side effect seen in the fake tests:** the old 21 start pose (J3 = -160.6) is 19.4 deg from folded,
+so the elbow watch slows it and the start check would refuse it. Use the ready pose A.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
