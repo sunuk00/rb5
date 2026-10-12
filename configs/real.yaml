@@ -21,15 +21,15 @@ leader:
   required_latency_timer_ms: 1
 
 mapping:
-  scale: 0.5                    # same as Simulation
+  scale: 1.0                    # was 0.5; user found the real RB5 too slow (2026-10-12). Real max 1.0
   frame_yaw_deg: 0.0            # TBD with the operator position; 0 = leader x forward = RB5 +x
-  speed_mm_s: 20.0              # conservative; 13 Real used 10 deg/s on one joint without problems
+  speed_mm_s: 40.0              # was 20 (too slow, user 2026-10-12). Real max 50
   lead_per_step: 2.0
   max_lag_mm: 0.0               # B: the robot stops as soon as the hand stops (C after-motion not wanted yet)
 
 yaw:
   enabled: true
-  speed_deg_s: 15.0             # conservative
+  speed_deg_s: 30.0             # was 15. Real max 30
   range_deg: 45.0               # conservative
   max_lag_deg: 0.0              # B
 
@@ -43,7 +43,8 @@ range:
   azimuth_half_deg: 30.0        # conservative
 
 safety:
-  joint_speed_deg_per_cycle: [0.2, 0.2, 0.2, 0.2, 0.2, 0.2]   # 10 deg/s; TBD from the RB5 specification
+  joint_speed_deg_per_cycle: [0.4, 0.4, 0.4, 0.4, 0.4, 0.4]   # 20 deg/s (was 10); 40 mm/s x 0.257 deg/mm = 10 deg/s
+                                # fits; Real max 0.5; TBD from the RB5 specification
   joint_limit_deg: [360.0, 360.0, 165.0, 360.0, 360.0, 360.0] # J3 +/-165 (user checked on the pendant, 2026-10-12)
   joint_limit_slow_deg: 20.0
   joint_limit_stop_deg: 10.0
