@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 from teleop.kinematics import CylinderRange, RB5Model, rot_zyx, tcp_offset_from, wrap_deg, zyx_from_rot  # noqa: E402
-from teleop.leader import Clutch, GripSignal, LeaderModel  # noqa: E402
+from teleop.leader import Clutch, GripSignal, LeaderFilter, LeaderModel  # noqa: E402
 from teleop.mapping import Limits, Mapper, plan_step  # noqa: E402
 from teleop.safety import Watch, joint_limit_margin, ramp_scale, singular_distance  # noqa: E402
 from teleop.settings import load_settings  # noqa: E402
@@ -96,6 +96,22 @@ class TestSafety(unittest.TestCase):
 class TestLeader(unittest.TestCase):
     def test_wrist_center_zero_pose(self):
         np.testing.assert_allclose(LeaderModel(URDF).wrist_center_mm(np.zeros(7)), [0, -150, -372.5], atol=1e-9)
+
+    def test_leader_filter(self):
+        f = LeaderFilter(0.3, 0.15)
+        tick = 360.0 / 4096
+        outs = [f.update([0.0, 0.0, 0.1 * (i % 2)], 10.0 + tick * (i % 2))[1] for i in range(6)]
+        self.assertEqual(outs, [10.0] * 6)                                   # one-tick flicker ignored
+        p, j6 = f.update([0.0, 0.0, 0.0], 10.0 + 2 * tick)
+        self.assertAlmostEqual(j6, 10.0 + 2 * tick)                          # two ticks pass
+        p, _ = f.update([0.0, 0.0, 0.25], j6)
+        np.testing.assert_allclose(p, [0.0, 0.0, 0.0])                       # 0.25 mm ignored
+        p, _ = f.update([0.0, 0.0, 0.31], j6)
+        np.testing.assert_allclose(p, [0.0, 0.0, 0.31])                      # 0.31 mm taken
+        f = LeaderFilter(0.3, 0.15)
+        f.update([0, 0, 0], 179.95)
+        self.assertAlmostEqual(f.update([0, 0, 0], -179.97)[1], 179.95)      # 0.08 deg across +/-180: ignored
+        self.assertAlmostEqual(f.update([0, 0, 0], -179.8)[1], -179.8)       # 0.25 deg across +/-180: taken
 
     def test_clutch(self):
         c = Clutch()

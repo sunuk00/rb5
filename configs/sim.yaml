@@ -23,12 +23,15 @@ mapping:
   speed_mm_s: 400.0             # TCP speed limit; 200 dropped 1.8-4.0 m of hand motion per run at scale 1.5-2 (130330, 130757)
   lead_per_step: 2.0            # target may lead tcp_ref by this x one step
   max_lag_mm: 50.0              # C: lag kept for catch-up; 0 = B (was 30; 50 is the settings maximum)
+  leader_deadband_mm: 0.3       # ignore leader wrist center changes < 0.3 mm (encoder flicker, run 141108)
 
 yaw:                            # RB5 yaw change = leader J6 change (method B)
   enabled: true
   speed_deg_s: 90.0
   range_deg: 90.0               # around the TCP rz at start
   max_lag_deg: 15.0             # C lag for yaw (forced to 0 when max_lag_mm is 0)
+  leader_deadband_deg: 0.15     # ignore leader J6 changes < 0.15 deg: one encoder tick (0.088) back and forth made
+                                # the RB5 J6 shake (run 141108); two ticks (0.176) pass
 
 range:                          # cylinder piece about the base z axis, fixed at start (ready pose: r 367, z 63)
   r_min_mm: 350.0               # J3 (+/-165) margin >= 10 deg over the range (DH grid, 2026-10-12)

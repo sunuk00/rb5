@@ -14,7 +14,7 @@ import time
 import numpy as np
 
 from .kinematics import CylinderRange, wrap_deg
-from .leader import Clutch, GripSignal
+from .leader import Clutch, GripSignal, LeaderFilter
 from .mapping import Limits, Mapper, plan_step
 from .safety import Watch, joint_limit_margin, singular_distance
 
@@ -33,7 +33,8 @@ CSV_HEADER = (["t_s", "cycle_interval_ms", "button_raw", "clutch_engaged"]
               + ["yaw_desired_deg", "yaw_target_deg", "yaw_tcp_deg", "yaw_speed_limited", "yaw_range_limited",
                  "yaw_lead_limited", "yaw_lag_deg", "yaw_dropped_deg"]
               + ["trigger_raw", "grip_close", "grip_state_closed", "tool_read_failed"]
-              + [f"jnt_ang_{i}" for i in range(6)] + [f"meas_tcp_{a}" for a in "xyz"] + ["target_minus_meas_mm"])
+              + [f"jnt_ang_{i}" for i in range(6)] + [f"meas_tcp_{a}" for a in "xyz"] + ["target_minus_meas_mm"]
+              + [f"leader_used_{a}_mm" for a in "xyz"] + ["leader_j6_used_deg"])
 
 
 class StopRequest(Exception):
@@ -94,6 +95,8 @@ class TeleopLoop:
         labels = self.labels()
         clutch, grip = self.clutch, self.grip
         leader_q = leader_p = None
+        lf = LeaderFilter(s.mapping.leader_deadband_mm, s.yaw.leader_deadband_deg)
+        used_p = used_j6 = None   # leader values after the deadband (what the mapping uses)
         leader_fails = leader_fail_total = leader_reads = 0
         flags_prev = {}
         last_send = prev_cycle_t = None
@@ -119,6 +122,7 @@ class TeleopLoop:
             else:
                 leader_fails = 0
                 leader_q, leader_p = q_l, self.leader_model.wrist_center_mm(q_l)
+                used_p, used_j6 = lf.update(leader_p, np.degrees(leader_q[6]))
             button_raw = self.leader.read_button_raw()
             t_leader = time.monotonic() - t_leader0
             grip_event = grip.update(button_raw)   # independent of the clutch
@@ -132,7 +136,7 @@ class TeleopLoop:
                     clutch.engaged = False
                     clutch_event = "press ignored (no leader reading yet)"
                 else:
-                    mapper.engage(leader_p, np.degrees(leader_q[6]))
+                    mapper.engage(used_p, used_j6)
                     clutch_event = (f"engaged: RB5 start {np.round(mapper.rb5_start, 1)} mm, "
                                     f"leader start {np.round(mapper.leader_start, 1)} mm")
             if clutch_event:
@@ -162,7 +166,7 @@ class TeleopLoop:
             dropped = np.zeros(3)
             yaw_tcp = wrap_deg(tcp[5] - rpy0[2])
             if clutch.engaged and q_l is not None and not late_early and not stale:
-                desired, yaw_desired = mapper.desired(leader_p, np.degrees(leader_q[6]))
+                desired, yaw_desired = mapper.desired(used_p, used_j6)
                 plan = plan_step(mapper.target, desired, tcp[:3], q, self.model, cyl,
                                  {"target": mapper.yaw, "desired": yaw_desired, "tcp": yaw_tcp}, self.lim, self.watch)
                 dropped, flags = plan.dropped, plan.flags
@@ -226,7 +230,8 @@ class TeleopLoop:
                 + [f"{yaw_lag:.3f}", f"{abs(plan.dropped_yaw) if plan is not None and not late else 0.0:.3f}"]
                 + ["" if grip.trigger is None else grip.trigger, "" if grip.close is None else f"{grip.close:.3f}",
                    "" if grip.closed is None else int(grip.closed), int(button_raw is None)]
-                + self._measured_columns(q_meas, mapper.target))
+                + self._measured_columns(q_meas, mapper.target)
+                + ([f"{v:.3f}" for v in used_p] + [f"{used_j6:.3f}"] if used_p is not None else [""] * 4))
 
             # 7. Status line
             if self.status and cycle % STATUS_EVERY == 0:

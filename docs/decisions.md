@@ -909,6 +909,24 @@ Tests: range clamp with the table, settings checks of the table (heights increas
 
 **Real:** the real arm can now go up to about 463 mm; the space above has to be clear.
 
+## 2026-10-12 — Leader deadband (hysteresis) against the wrist shake
+
+**Observation (Real run 141108, user felt a slight motor shake):** the yaw target reversed direction in
+18 % of its steps (position 3-6 %), and 79 of 81 reversals were exactly one leader encoder tick
+(0.087-0.088 deg = 360 / 4096): the leader J6 flickered between two counts and the RB5 J6 followed.
+Measured RB5 J6 had the largest fast wobble (p99 0.38 deg vs 0.11-0.19 for J1-J4). The log is at 50 Hz,
+so vibration above 25 Hz cannot be seen in it.
+
+**Decision (user):** a hysteresis on the leader values before the mapping (`LeaderFilter`): a new value is
+taken only when it moved at least the deadband from the last taken value. `yaw.leader_deadband_deg`
+0.15 (one tick ignored, two ticks pass), `mapping.leader_deadband_mm` 0.3. Both settings files. The CSV
+adds `leader_used_x/y/z_mm` and `leader_j6_used_deg` (what the mapping used).
+
+**Replay on 141108:** leader J6 reversals 81 -> 1; position reversals 71 / 197 / 127 -> 59 / 182 / 118
+(x / y / z: mostly real hand tremor above 0.3 mm). Largest difference raw - used: 0.088 deg, 0.30 mm.
+If the shake is still felt, next options: servo alpha < 1 (controller smoothing, adds delay) or a
+low-pass on the position.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

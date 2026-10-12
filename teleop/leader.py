@@ -114,6 +114,26 @@ class LeaderModel:
         return p * 1000.0
 
 
+class LeaderFilter:
+    """Hysteresis on the leader readings: a value is taken only when it moved at least the deadband
+    from the last taken value, otherwise the last taken value is kept. This removes the encoder
+    flicker (one tick = 0.088 deg back and forth, run 141108) without adding a delay to real motion."""
+
+    def __init__(self, deadband_mm, deadband_deg):
+        self.deadband_mm, self.deadband_deg = deadband_mm, deadband_deg
+        self.p = self.j6 = None
+
+    def update(self, p_mm, j6_deg):
+        """Return (wrist center [mm], J6 [deg]) after the hysteresis."""
+        p_mm = np.asarray(p_mm, dtype=float)
+        if self.p is None or np.linalg.norm(p_mm - self.p) >= self.deadband_mm:
+            self.p = p_mm.copy()
+        d = (j6_deg - self.j6 + 180.0) % 360.0 - 180.0 if self.j6 is not None else None
+        if d is None or abs(d) >= self.deadband_deg:
+            self.j6 = float(j6_deg)
+        return self.p.copy(), self.j6
+
+
 class Clutch:
     """Debounced clutch from the tool button (13): a press counts after `press_reads` pressed reads,
     `fails_to_release` failed reads in a row count as released (motion stops). Starts released, and a

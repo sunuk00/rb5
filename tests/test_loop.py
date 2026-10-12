@@ -174,6 +174,14 @@ class TestLoop(unittest.TestCase):
         _, _, _, col, _ = run(steps)
         self.assertEqual(np.abs(col("yaw_target_deg")).max(), 0.0)
 
+    def test_j6_flicker_does_not_move_yaw(self):
+        tick = 360.0 / 4096
+        steps = ARM + [(1, [0, 0, 0], tick * (i % 2)) for i in range(40)] + [(1, [0, 0, 0], 2 * tick)] * 5
+        _, _, _, col, _ = run(steps, settings(mapping__leader_deadband_mm=0.3, yaw__leader_deadband_deg=0.15))
+        y = col("yaw_target_deg")
+        self.assertEqual(np.abs(y[:len(ARM) + 40]).max(), 0.0)              # flicker: no yaw
+        self.assertAlmostEqual(y[-1], 2 * tick, places=3)                     # a real two-tick turn passes
+
     def test_gripper_independent_of_clutch(self):
         # trigger 1000 = released (open), 0 = pulled (closed)
         steps = ([(0, [0, 0, 0], 0, 1000)] * 3 + [(0, [0, 0, 0], 0, 0)] * 3        # pulled while the clutch is released

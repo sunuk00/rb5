@@ -67,12 +67,14 @@ SCHEMA = {
         "speed_mm_s": _num(1.0, 400.0),               # Real is capped at 50 (REAL_MAX)
         "lead_per_step": _num(1.0, 5.0),
         "max_lag_mm": _num(0.0, 50.0),
+        "leader_deadband_mm": _num(0.0, 5.0),         # leader wrist center changes smaller than this are ignored
     },
     "yaw": {
         "enabled": _bool(),
         "speed_deg_s": _num(1.0, 90.0),
         "range_deg": _num(0.0, 180.0),
         "max_lag_deg": _num(0.0, 30.0),
+        "leader_deadband_deg": _num(0.0, 2.0),        # leader J6 changes smaller than this are ignored
     },
     "range": {
         "r_min_mm": _num(150.0, 900.0),

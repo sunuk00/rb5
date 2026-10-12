@@ -27,12 +27,15 @@ mapping:
   lead_per_step: 2.0
   max_lag_mm: 20.0              # C: catch up to 20 mm after the hand stops (0.4 s at 50 mm/s); was 0 (B). Yaw stays B
                                 # because yaw.max_lag_deg is 0
+  leader_deadband_mm: 0.3       # ignore leader wrist center changes < 0.3 mm (encoder flicker, run 141108)
 
 yaw:
   enabled: true
   speed_deg_s: 30.0             # was 15. Real max 30
   range_deg: 45.0               # conservative
   max_lag_deg: 0.0              # B
+  leader_deadband_deg: 0.15     # ignore leader J6 changes < 0.15 deg: one encoder tick (0.088) back and forth made
+                                # the RB5 J6 shake (run 141108); two ticks (0.176) pass
 
 range:
   r_min_mm: 350.0               # same as Simulation (user, 2026-10-12); was 340..420
