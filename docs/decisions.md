@@ -311,6 +311,24 @@ differs by 2 mm. Flange (377.9, 110.7, 381.6), elbow above the wrist.
 - Note: the current Simulation start pose has J3 = -160.6 deg, beyond +/-150 (so this RB5 has the
   +/-165 limit, or the value needs checking).
 
+## 2026-10-12 — 19: --pose mode (all joints), shortest equivalent angles, RB5 joint limits
+
+**Decision:** 19 gets `--pose J1..J6` (move_j of all joints, Simulation only) and `--speed` (default 10,
+at most 30 deg/s; the controller scales it by the speed bar 0.1, so 30 -> 3 deg/s). For each joint the
+target is the equivalent angle (target + k x 360) inside the joint limit closest to the current angle.
+Per-joint change limit: 60 deg (--joint), 180 deg (--pose).
+
+**Joint limits (evidence):** rb_cobot_docs manual 1.6 Robot Operating Range: J1, J2, J4, J5, J6
++/-360 deg, J3 "+/-165 / +/-150" (the page does not say which model has which). Appendix System
+Specifications: "Joint Range +/-360 (Elbow: +/-165)", written for the E series. This robot is an
+RB5-850 (N), so J3 uses the smaller +/-150 in 19. The 21 start pose had J3 = -160.6 deg, which hints
+that this arm allows +/-165, but that is not confirmed. The controller's setup joint limits are not
+read by any script.
+
+**Ready pose A from the current Simulation pose (180, 1.1, -156.9, 140.8, -2.5, 43.9):** target
+(180, -15, -90, 195, 90, 0): J4 195 instead of -165 (54 deg instead of 306 deg). Largest change J5
+92.5 deg, about 31 s at 3 deg/s.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
