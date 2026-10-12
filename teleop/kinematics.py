@@ -107,28 +107,41 @@ def tcp_offset_from(tcp, tfc):
 
 class CylinderRange:
     """Cylinder piece about the base z axis, fixed at start: r_min..r_max, z0 - z_below .. z0 + z_above
-    (and above an optional absolute floor z_min_abs), azimuth az0 +/- az_half. Clamped in r, z and
-    azimuth separately."""
+    (and above an optional absolute floor z_min_abs), azimuth az0 +/- az_half. Optional r_max_by_z:
+    [dz, r_max] points (dz above the start z) where the outer radius falls with height (linear between
+    points, the first value below the first point, the last above the last), so the top outer corner
+    the arm cannot reach is cut off. Clamped in z first, then r (at the clamped z), and azimuth."""
 
-    def __init__(self, tcp0, r_min, r_max, z_below, z_above, az_half, z_min_abs=None):
+    def __init__(self, tcp0, r_min, r_max, z_below, z_above, az_half, z_min_abs=None, r_max_by_z=None):
         self.z0 = tcp0[2]
         self.az0 = np.degrees(np.arctan2(tcp0[1], tcp0[0]))
         self.r_min, self.r_max, self.az_half = r_min, r_max, az_half
         self.z_lo = self.z0 - z_below if z_min_abs is None else max(self.z0 - z_below, z_min_abs)
         self.z_hi = self.z0 + z_above
+        if r_max_by_z:
+            table = np.asarray(r_max_by_z, dtype=float)
+            self.table_z, self.table_r = self.z0 + table[:, 0], table[:, 1]
+        else:
+            self.table_z = self.table_r = None
+
+    def r_max_at(self, z):
+        """Outer radius at height z (absolute)."""
+        if self.table_z is None:
+            return self.r_max
+        return min(self.r_max, float(np.interp(z, self.table_z, self.table_r)))
 
     @classmethod
     def from_settings(cls, tcp0, rng):
         return cls(tcp0, rng.r_min_mm, rng.r_max_mm, rng.z_below_mm, rng.z_above_mm, rng.azimuth_half_deg,
-                   rng.z_min_abs_mm)
+                   rng.z_min_abs_mm, rng.r_max_by_z)
 
     def clamp(self, p):
         """Return the point clamped into the range (r, z and azimuth separately)."""
         r = np.hypot(p[0], p[1])
         daz = (np.degrees(np.arctan2(p[1], p[0])) - self.az0 + 180.0) % 360.0 - 180.0
-        r_c = np.clip(r, self.r_min, self.r_max)
-        az_c = np.radians(self.az0 + np.clip(daz, -self.az_half, self.az_half))
         z_c = np.clip(p[2], self.z_lo, self.z_hi)
+        r_c = np.clip(r, self.r_min, self.r_max_at(z_c))
+        az_c = np.radians(self.az0 + np.clip(daz, -self.az_half, self.az_half))
         out = np.array([r_c * np.cos(az_c), r_c * np.sin(az_c), z_c])
         return out if np.linalg.norm(out - p) > 1e-9 else np.array(p, dtype=float)
 

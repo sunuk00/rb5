@@ -890,6 +890,25 @@ up to 23.4 deg/s against 25). With 0.8, 100 mm/s fits everywhere in the range (w
 100 = 39.3 deg/s). The RB5 specification for per-joint speeds is still to be found (manual: joint max
 180 deg/s for the E series).
 
+## 2026-10-12 — z upper bound +400 with an outer radius that falls with height (Sim and Real)
+
+**Decision (user, option B):** both settings files: `range.z_above_mm` 200 -> 400 (about 463 mm) and a new
+`range.r_max_by_z` table [[200, 800], [250, 775], [300, 725], [350, 700], [400, 650]] (start z + dz,
+r_max). The cylinder is clamped in z first, then in r at that height; between table points r_max is
+linear, below the first point it is the first value, above the last the last value. The low part of the
+range is unchanged (r up to 800 below +200).
+
+**Reason:** at +250 the arm could not reach r 800. Largest radius with every watch above its slow
+threshold (DH grid with the ready pose orientation, azimuth -90 / 0 / +90): +200 800, +250 775, +300 725,
++350 700, +400 650, +450 600 mm. Option A (one smaller r_max for all heights) would have given up
+forward reach at low height.
+
+**Check of the sloped edge (9 heights from +200 to +400 incl. the interpolated ones, 3 azimuths):** all
+reachable; J5 >= 83.4 deg, shoulder >= 518 mm, elbow >= 23.3 deg (at +250, r 775), joint limit >= 84 deg.
+Tests: range clamp with the table, settings checks of the table (heights increasing, r within r_min..r_max).
+
+**Real:** the real arm can now go up to about 463 mm; the space above has to be clear.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

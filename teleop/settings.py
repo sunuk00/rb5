@@ -30,6 +30,11 @@ def _vec(n, lo=None, hi=None, nullable=False):
     return {"kind": "vec", "n": n, "lo": lo, "hi": hi, "nullable": nullable}
 
 
+def _pairs(lo=None, hi=None, nullable=False):
+    """A list of [a, b] number pairs (any length >= 1); lo / hi are (a, b) bounds."""
+    return {"kind": "pairs", "lo": lo, "hi": hi, "nullable": nullable}
+
+
 def _str(choices=None):
     return {"kind": "str", "choices": choices}
 
@@ -73,7 +78,9 @@ SCHEMA = {
         "r_min_mm": _num(150.0, 900.0),
         "r_max_mm": _num(150.0, 900.0),
         "z_below_mm": _num(0.0, 300.0),               # start z - this
-        "z_above_mm": _num(0.0, 300.0),               # start z + this
+        "z_above_mm": _num(0.0, 500.0),               # start z + this
+        # [start z + dz, r_max] points: r_max falls with height (linear between points, the last value above)
+        "r_max_by_z": _pairs(lo=(0.0, 150.0), hi=(500.0, 900.0), nullable=True),
         "z_min_abs_mm": _num(-200.0, 800.0, nullable=True),
         "azimuth_half_deg": _num(0.0, 180.0),
     },
@@ -180,6 +187,19 @@ def _check(spec, value, key, problems):
             return
         for i, v in enumerate(value):
             _range(spec, v, f"{key}[{i}]", problems)
+    elif kind == "pairs":
+        if value is None:
+            if not spec["nullable"]:
+                problems.append(f"{key}: must not be null")
+            return
+        if (not isinstance(value, list) or not value
+                or any(not isinstance(p, list) or len(p) != 2
+                       or any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in p) for p in value)):
+            problems.append(f"{key}: expected a list of [number, number] pairs, got {value!r}")
+            return
+        for i, (a, b) in enumerate(value):
+            for j, v in enumerate((a, b)):
+                _range({"lo": spec["lo"][j], "hi": spec["hi"][j]}, v, f"{key}[{i}][{j}]", problems)
 
 
 def _range(spec, v, key, problems):
@@ -207,6 +227,16 @@ def _check_relations(d, problems):
     r = d["range"]
     if r["r_min_mm"] >= r["r_max_mm"]:
         problems.append(f"range: r_min_mm ({r['r_min_mm']}) must be below r_max_mm ({r['r_max_mm']})")
+    table = r.get("r_max_by_z")
+    if isinstance(table, list) and table and all(isinstance(p, list) and len(p) == 2 for p in table):
+        dz = [p[0] for p in table]
+        if any(b <= a for a, b in zip(dz, dz[1:])):
+            problems.append(f"range.r_max_by_z: heights must increase, got {dz}")
+        if dz[-1] > r["z_above_mm"]:
+            problems.append(f"range.r_max_by_z: height {dz[-1]} is above z_above_mm ({r['z_above_mm']})")
+        for a, b in table:
+            if not r["r_min_mm"] < b <= r["r_max_mm"]:
+                problems.append(f"range.r_max_by_z: r {b} at height {a} must be above r_min_mm and at most r_max_mm")
     g = d["gripper"]
     if g["open_below"] >= g["close_above"]:
         problems.append(f"gripper: open_below ({g['open_below']}) must be below close_above ({g['close_above']})")

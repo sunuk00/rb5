@@ -94,6 +94,12 @@ class TestSettings(unittest.TestCase):
         self.assert_problem(d, "open_below")
         d = raw(SIM); d["servo"]["t1_s"] = 0.01
         self.assert_problem(d, "t1_s")
+        d = raw(SIM); d["range"]["r_max_by_z"] = [[300.0, 700.0], [250.0, 750.0]]
+        self.assert_problem(d, "heights must increase")
+        d = raw(SIM); d["range"]["r_max_by_z"] = [[200.0, 900.0]]
+        self.assert_problem(d, "at most r_max_mm")
+        d = raw(SIM); d["range"]["r_max_by_z"] = [[200.0]]
+        self.assert_problem(d, "pairs")
 
     def test_real_limits(self):
         d = raw(REAL)

@@ -61,6 +61,18 @@ class TestKinematics(unittest.TestCase):
         floor = CylinderRange(p0, 450, 550, 150, 150, 90, z_min_abs=30.0)
         self.assertAlmostEqual(floor.clamp(at(500, 0, -150))[2], 30.0)
 
+    def test_cylinder_outer_radius_falls_with_height(self):
+        p0 = np.array([400.0, 0.0, 100.0])
+        cyl = CylinderRange(p0, 350, 800, 100, 400, 90, r_max_by_z=[[200, 800], [300, 700], [400, 650]])
+        self.assertEqual(cyl.r_max_at(100.0 + 100), 800.0)          # below the first point
+        self.assertAlmostEqual(cyl.r_max_at(100.0 + 250), 750.0)    # halfway between 200 and 300
+        self.assertEqual(cyl.r_max_at(100.0 + 400), 650.0)
+        out = cyl.clamp(np.array([900.0, 0.0, 100.0 + 250]))       # far and high: r cut at that height
+        np.testing.assert_allclose(out, [750.0, 0.0, 350.0])
+        out = cyl.clamp(np.array([900.0, 0.0, 100.0 + 600]))       # above the top: z to +400, then r 650
+        np.testing.assert_allclose(out, [650.0, 0.0, 500.0])
+        np.testing.assert_allclose(cyl.clamp(np.array([780.0, 0.0, 150.0])), [780.0, 0.0, 150.0])   # low: inside
+
 
 class TestSafety(unittest.TestCase):
     def test_helpers(self):

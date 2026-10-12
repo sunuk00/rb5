@@ -35,7 +35,10 @@ range:                          # cylinder piece about the base z axis, fixed at
   r_max_mm: 800.0               # was 600 (x stopped at about 585); elbow >= 43 deg up to r 800 (DH grid, z -37..213,
                                 # azimuth +/-30); x 750 needs r 771 at the start azimuth 13.4 deg
   z_below_mm: 100.0             # start z - 100 (about -37 mm)
-  z_above_mm: 200.0             # start z + 200 (about 263 mm), same as real.yaml; +250 is out of reach at r 800
+  z_above_mm: 400.0             # start z + 400 (about 463 mm); the outer radius falls with height above +200:
+  r_max_by_z: [[200.0, 800.0], [250.0, 775.0], [300.0, 725.0], [350.0, 700.0], [400.0, 650.0]]
+                                # [start z + dz, r_max]: largest r without any slowdown at that height (DH grid
+                                # with the ready pose orientation, azimuth +/-90; user chose this shape 2026-10-12)
   z_min_abs_mm: null            # absolute floor; null = not used in Simulation
   azimuth_half_deg: 90.0
 
