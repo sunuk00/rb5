@@ -1,0 +1,77 @@
+# Teleop settings for Simulation (the default). Values are the ones tested with
+# scripts/21_leader_rb5_position.py on 2026-10-12 (see docs/decisions.md for each decision).
+mode: sim
+
+robot:
+  ip: 10.0.2.6
+  speed_bar: 0.1                # CLAUDE.md: <= 0.1. Scales move_j (19), not servo (06)
+
+servo:                          # move_servo_l arguments (rb_cobot_docs UI Script 7.35)
+  period_s: 0.02                # 50 Hz send loop
+  t1_s: 0.02                    # equal to the send period (06 / 10)
+  t2_s: 0.1
+  gain: 1.0
+  alpha: 1.0
+
+leader:
+  port: /dev/ttyUSB0            # /dev/rby1_leader_arm after the udev rule is installed
+  required_latency_timer_ms: 1  # FTDI latency_timer must be 1 ms (11)
+
+mapping:
+  scale: 0.5                    # RB5 motion / leader motion (104723, 113617)
+  frame_yaw_deg: 0.0            # leader frame rotated about z before mapping
+  speed_mm_s: 200.0             # TCP speed limit (094517)
+  lead_per_step: 2.0            # target may lead tcp_ref by this x one step
+  max_lag_mm: 30.0              # C: lag kept for catch-up; 0 = B (decisions: default C 30 mm)
+
+yaw:                            # RB5 yaw change = leader J6 change (method B)
+  enabled: true
+  speed_deg_s: 90.0
+  range_deg: 90.0               # around the TCP rz at start
+  max_lag_deg: 15.0             # C lag for yaw (forced to 0 when max_lag_mm is 0)
+
+range:                          # cylinder piece about the base z axis, fixed at start
+  r_min_mm: 450.0               # J3 limit at low z inside (pose D table)
+  r_max_mm: 550.0
+  z_half_mm: 150.0              # start z +/- this
+  z_min_abs_mm: null            # absolute floor; null = not used in Simulation
+  azimuth_half_deg: 90.0
+
+safety:
+  joint_speed_deg_per_cycle: [1.0, 1.0, 1.0, 2.0, 2.0, 2.0]   # predicted, J1..J6 (wrist 2)
+  joint_limit_deg: [360.0, 360.0, 150.0, 360.0, 360.0, 360.0] # J3 +/-150 until checked on the pendant
+  joint_limit_slow_deg: 20.0
+  joint_limit_stop_deg: 10.0
+  j5_slow_deg: 20.0             # wrist singularity (J5 from 0 / 180)
+  j5_stop_deg: 10.0
+  shoulder_slow_mm: 50.0        # shoulder singularity (P05 radius - d4)
+  shoulder_stop_mm: 20.0
+  elbow_slow_deg: 20.0          # elbow singularity (J3 from 0 / 180)
+  elbow_stop_deg: 10.0
+  min_speed_scale: 0.25         # speed scale at the stop thresholds
+  max_fk_error_mm: 5.0          # DH model vs tcp_ref at start (17: about 2 mm)
+  max_gap_s: 0.03               # send gap over this = late, target frozen (08)
+  max_late_cycles: 3
+  max_state_age_s: 0.1
+  max_stale_cycles: 3
+  max_leader_fails: 3
+  hold_on_exit_s: 0.3
+
+tcp:
+  expected_offset_mm: null      # null = not checked in Simulation
+  offset_tolerance_mm: 1.0
+
+ready_pose:                     # pose D: tool down, wrist outside, TCP r 500, z 102 (object on the table)
+  joints_deg: [182.0, -11.0, -110.1, 31.1, -90.0, -2.0]
+  move_speed_deg_s: 30.0        # move_j argument; x speed bar 0.1 = 3 deg/s
+  tolerance_deg: 0.05           # closer than this on every joint: no move
+  wrist_warning_deg: 90.0       # warn when a wrist joint turns more than this
+
+gripper:                        # grip_close = trigger / trigger_full (pulled = closed)
+  trigger_full: 1000.0
+  close_above: 0.6
+  open_below: 0.4
+  fail_warn: 3
+
+logging:
+  dir: data
