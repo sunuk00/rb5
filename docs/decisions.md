@@ -670,6 +670,25 @@ per-joint values for this RB5-850 (N) still have to be found).
 -> 1.80 deg/cycle (the 90 deg/s yaw limit), C 18.0 then 33.0 deg (+15 lag), B 18.0. Old fake tests
 unchanged.
 
+## 2026-10-12 — Gripper signal from the leader trigger: rules (not implemented yet)
+
+**Signal:** grip_cmd = clip(trigger / 1000, 0, 1) (Rainbow example 35 lines 1173-1176 use trigger / 1000
+as the gripper target). Open / closed state with hysteresis: above 0.6 one state, below 0.4 the other,
+in between the previous state is kept. Trigger = bits 16-31 of the tool's raw value at address 132
+(rby1-sdk `dynamixel_bus.cpp:57`), read together with the clutch button.
+
+**Measured range (user, teach-in with script 12):** trigger 0 to 1000 (user's note: "closed 0 ~ open
+1000"). Logged data so far: 115603 had only 0 and 1000; earlier runs only 0 (trigger untouched).
+
+**The gripper works independently of the clutch:** the gripper can be closed or opened while the robot
+holds its position.
+
+**Failure rule - the two signals fail differently on purpose:**
+- Gripper: on a failed tool read, keep the previous value. Reason: an object in the gripper must not be
+  dropped because of a lost packet.
+- Clutch: after 3 failed reads in a row, treat it as released. Reason: motion must stop when the input
+  is not known.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
