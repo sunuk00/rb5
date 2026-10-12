@@ -567,6 +567,20 @@ worst spot stays at the inner low corner; the outer side kept elbow >= 35 deg in
 With D the current lower bound is z -50 mm, below the table surface (z 0); in Real that would drive the
 tool into the table. The TCP offset itself (0, -187, -40) is still being checked by the lab.
 
+## 2026-10-12 — 21 from ready pose D: depth reached; vertical-hand habit halves the backward drift
+
+**Run 113617 (Simulation, scale 0.5, C 30 mm, 200 mm/s, taskset 0-11, user moved the hand vertically):**
+- Deepest TCP z -48.0 mm (start 102.2, dz -150.2): the z lower bound, below the object height z 0.
+  The first descent already reached z -19. The depth goal is met.
+- At the deepest point only the range limit was active: z lower bound and r_min 450 (desired r < 450
+  in 100 % of that segment). Joint limit margin >= 23.6 deg, elbow >= 53.6 deg, no singularity or
+  speed limits.
+- Hand |dx| / |dz| over the 10 descents of more than 30 mm: 0.45-0.9 (mostly about 0.5). The previous
+  run (112319, no habit) was mostly >= 1 (up to 2.3). The hand still drifts toward the body, so the
+  robot is pushed to r_min 450 during 6 of 10 descents; z keeps going down because r and z are clamped
+  separately.
+- Late cycles 0; work p99 8.8 ms, max 11.0 ms.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
