@@ -438,6 +438,60 @@ Also, `plan_step` computes the DH Jacobian at the same q four times (0.47 ms eac
 performance cores (`taskset`); switch the governor to `performance` while testing (PC setting, needs
 sudo).
 
+## 2026-10-12 — 21: one Jacobian per cycle; late-cycle cause is CPU power saving + hybrid cores
+
+**Cause (offline tests, recorded in the entry above, now with core pinning):** the PC uses the
+`powersave` governor on an i7-13700H (performance cores cpu0-11 up to 4.8-5.0 GHz, efficiency cores
+cpu12-19 up to 3.7 GHz). The same planning work is several times slower right after the 20 ms sleep
+than in a busy loop (clock-down after idle), and slower again when it runs on an efficiency core.
+numpy thread count has no effect.
+
+**Change:** `plan_step` computes the DH Jacobian once per cycle (it was computed 4 times at the same q).
+Fake-test results are unchanged (only differences come from the new C default in tests that do not
+set the mode).
+
+**Offline planning time after the change (20 ms cycle with sleep, 1000 calls):**
+
+| condition | p50 | p99 | max | > 12 ms |
+|---|---|---|---|---|
+| before (4 Jacobians), default cores | 7.3 ms | 16-18 ms | 21-26 ms | 53-71 / 1500 |
+| one Jacobian, default cores | 2.4-3.6 ms | 7.9-9.0 ms | 8.9-11.5 ms | 0 |
+| one Jacobian, `taskset -c 0-11` (performance cores) | 3.3-3.5 ms | 5.1-6.3 ms | 5.8-8.0 ms | 0 |
+| one Jacobian, `taskset -c 12-19` (efficiency cores) | 5.8-6.0 ms | 7.8-9.7 ms | 8.5-13.6 ms | 0-1 |
+| one Jacobian, busy loop (no sleep) | 0.85 ms | 1.7-2.8 ms | 2.4-4.0 ms | 0 |
+
+With the leader read (p99 about 7 ms) the expected work p99 is about 16 ms (default cores) or about
+13 ms (performance cores) against the 20 ms period. Governor change (`performance`): user's decision
+after a Simulation run with these changes.
+
+## 2026-10-12 — 21: --scale 0.5 Simulation result (104723, C 30 mm, 200 mm/s)
+
+| | C runs at scale 1 (102731 / 103353) | scale 0.5 (104723) |
+|---|---|---|
+| speed limited | 74 % / 37 % | 14 % |
+| joint speed limited | 35 % / 20 % | 9 % |
+| range limited | 28 % / 56 % | 38 % (desired r < 300: 33 %, z outside: 18 %, r > 500: 1 %) |
+| RB5 path / hand path | 45 % / 66 % | 39 % = 78 % of the scaled hand path (0.5 x hand) |
+| dropped / hand path | 26 % / 8 % | 0 % |
+| offset at segment end (vs scaled hand) | - | median 13 mm, all of it the range residual |
+
+At scale 0.5 almost nothing is dropped; what is lost is the range limit, mostly the inner radius
+(the hand pulled toward the base) and z.
+
+## 2026-10-12 — Ready pose: wrist folded inward in A (user); proposal C with the wrist outside
+
+**User report:** in A (J4 = 195) the wrist folds in toward the base, which makes picking hard; the
+end effector should face outward.
+
+**Proposal C (not applied):** q = (180, 4, -111, 17, -90, 0), the J5 = -90 branch (J2 + J3 + J4 = -90
+keeps the tool down). Controller `calc_fk_tcp`: TCP (415.9, 110.7, 196.8), (rx, ry, rz) = (90, 0, 90),
+the same place as A. The wrist point P05 is outside the TCP (radius 469 vs 430; in A 394 vs 432).
+Margins: J5 90 deg, shoulder 358 mm, elbow 69 deg; 0.156 deg/mm (A: 0.168).
+Over the cylinder (75 points, r 300-500): shoulder >= 182 mm, elbow >= 31.7 deg, <= 0.26 deg/mm, but
+at r 300, z -150 J3 reaches -148.3 deg, near the +/-150 limit used in 19.
+The tool is rotated 180 deg about its axis compared with A (rz +90 vs -90); J6 = 180 would keep A's
+hand rotation but moves the TCP by the 40 mm z offset.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

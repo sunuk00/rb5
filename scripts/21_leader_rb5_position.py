@@ -241,9 +241,10 @@ class RB5Model:
             jac[3:, i] = np.array([dr[2, 1] - dr[1, 2], dr[0, 2] - dr[2, 0], dr[1, 0] - dr[0, 1]]) / 2 / np.radians(h_deg)
         return jac
 
-    def predict(self, q, dp_mm):
-        """Joint motion [deg] for a TCP position change dp (orientation unchanged), from the current q."""
-        return np.degrees(np.linalg.solve(self.jacobian(q), np.r_[dp_mm, 0, 0, 0]))
+    def predict(self, q, dp_mm, jac=None):
+        """Joint motion [deg] for a TCP position change dp (orientation unchanged), from the current q.
+        Pass jac = jacobian(q) to reuse it (one Jacobian per cycle)."""
+        return np.degrees(np.linalg.solve(self.jacobian(q) if jac is None else jac, np.r_[dp_mm, 0, 0, 0]))
 
 
 class CylinderRange:
@@ -276,9 +277,10 @@ def plan_step(target, desired, tcp_pos, q, model, cyl):
     desired_in = cyl.clamp(desired)
     flags["range"] = bool(np.any(desired_in != desired))
     step = desired_in - target
+    jac = model.jacobian(q)   # all predictions below are from the same q: compute it once
 
     # Speed limit, scaled by the predicted singularity margins of a full-size step
-    q_full = q + model.predict(q, target + clip_norm(step, MAX_STEP_MM) - tcp_pos)
+    q_full = q + model.predict(q, target + clip_norm(step, MAX_STEP_MM) - tcp_pos, jac)
     j5_scale = j5_speed_scale(singular_distance(q_full[4]))
     sh_scale = ramp_scale(model.shoulder_margin(q_full), SHOULDER_SLOW_MM, SHOULDER_STOP_MM)
     el_scale = ramp_scale(singular_distance(q_full[2]), ELBOW_SLOW_DEG, ELBOW_STOP_DEG)
@@ -289,8 +291,8 @@ def plan_step(target, desired, tcp_pos, q, model, cyl):
     flags["speed"] = np.linalg.norm(limited) < np.linalg.norm(step) - 1e-9
 
     # Joint speed limit (the joint motion is nearly linear in a step this small)
-    max_dq = np.abs(model.predict(q, target + limited - tcp_pos)).max()
-    lead_dq = np.abs(model.predict(q, target - tcp_pos)).max()   # part that is only the robot catching up
+    max_dq = np.abs(model.predict(q, target + limited - tcp_pos, jac)).max()
+    lead_dq = np.abs(model.predict(q, target - tcp_pos, jac)).max()   # part that is only the robot catching up
     if max_dq > MAX_DQ_DEG and max_dq > lead_dq:
         limited = limited * max(0.0, (MAX_DQ_DEG - lead_dq) / (max_dq - lead_dq))
         flags["jspeed"] = True
@@ -311,7 +313,7 @@ def plan_step(target, desired, tcp_pos, q, model, cyl):
         dropped = lag * (1.0 - MAX_LAG_MM / n) if n > MAX_LAG_MM else np.zeros(3)
     lag_after = np.linalg.norm(desired_in - dropped - clamped)
 
-    dq = model.predict(q, clamped - tcp_pos)
+    dq = model.predict(q, clamped - tcp_pos, jac)
     j5_final = singular_distance(q[4] + dq[4])
     sh_final = model.shoulder_margin(q + dq)
     el_final = singular_distance(q[2] + dq[2])
