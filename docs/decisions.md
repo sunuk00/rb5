@@ -247,7 +247,10 @@ chain is used only as a startup self-test (max difference 6e-8 over 50 random po
   height change about 169 mm (measured in inches, converted) (pass).
 - With J2 about -100 deg, bending the elbow moves the wrist sideways (-y), on screen and on the arm.
 - Leader Base frame confirmed: x forward, y left, z up.
-- Not done: V1 (link lengths), V4 (handle tilt with a phone inclinometer).
+- Not done: V1 (link lengths).
+- V4 (handle tilt with a phone inclinometer) skipped by choice. The orientation output is to be
+  checked instead by a functional test in the orientation mapping step: compare the wrist rotation
+  directions of the leader arm and the RB5.
 
 **Rejected alternatives:** direct numpy FK as the main path (kept as the self-test only).
 
