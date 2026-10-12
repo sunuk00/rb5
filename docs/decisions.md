@@ -850,6 +850,11 @@ failures 5.2 % (higher than before). The tool raw value was only 256 / 0: the tr
 pose orientation, r 350-800, azimuth +/-90: at +200 every point is reachable, elbow >= 25 deg (at r
 800), J5 >= 84 deg, shoulder >= 218 mm, joint limit >= 48 deg; at +250 r 800 is out of reach.
 
+## 2026-10-12 — Sim z upper bound +200 (same as Real)
+
+sim.yaml `range.z_above_mm` 150 -> 200, same as real.yaml (user). Same ready pose and orientation as
+Real, so the Real grid applies: reachable over r 350-800 at +200, elbow >= 25 deg at r 800.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
