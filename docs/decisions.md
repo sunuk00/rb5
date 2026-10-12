@@ -855,6 +855,19 @@ pose orientation, r 350-800, azimuth +/-90: at +200 every point is reachable, el
 sim.yaml `range.z_above_mm` 150 -> 200, same as real.yaml (user). Same ready pose and orientation as
 Real, so the Real grid applies: reachable over r 350-800 at +200, elbow >= 25 deg at r 800.
 
+## 2026-10-12 — Real run 134902 and TCP speed 100 mm/s
+
+**Run 134902 (206 s, z top +200):** reached x 253-680, r 350-725, z 63-265, yaw -32..+22 deg. Range
+limited 29 % (z top 19 %, r < 350 9 %; was 52 %). Speed limited 94 %, RB5 path 31 % of the hand path
+(hand p50 120 mm/s). Measured tracking as before: jnt_ref - jnt_ang <= 0.139 deg, measured TCP about
+80 ms behind the target. No late cycles, no singularity / joint limit slowdown. Tool read failures
+0.8 %. Trigger bits 0 for the whole run again (third Real run).
+
+**Decision (user):** Real TCP speed cap (REAL_MAX) 50 -> 100 mm/s and real.yaml `speed_mm_s` 100. The
+joint speed limit stays 0.5 deg/cycle (25 deg/s): near the ready pose (about 0.22 deg/mm) 100 mm/s
+fits, at the far / low corners (up to 0.393 deg/mm) the joint limit caps the TCP at about 64 mm/s.
+With the 80 ms delay the real arm will trail the target by about 8 mm at 100 mm/s.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

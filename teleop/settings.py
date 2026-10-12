@@ -126,7 +126,7 @@ REQUIRED_FOR_REAL = ("range.z_min_abs_mm", "tcp.expected_offset_mm", "ready_pose
 
 # Upper limits for Real on top of SCHEMA (conservative until the RB5 values are confirmed).
 REAL_MAX = {
-    "mapping.speed_mm_s": 50.0,
+    "mapping.speed_mm_s": 100.0,               # user, 2026-10-12 (was 50)
     "mapping.scale": 1.0,
     "yaw.speed_deg_s": 30.0,
     "ready_pose.move_speed_deg_s": 30.0,      # x speed bar 0.1 = 3 deg/s (user, 2026-10-12; was 10)

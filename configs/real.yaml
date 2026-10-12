@@ -23,7 +23,7 @@ leader:
 mapping:
   scale: 1.0                    # was 0.5; user found the real RB5 too slow (2026-10-12). Real max 1.0
   frame_yaw_deg: 0.0            # TBD with the operator position; 0 = leader x forward = RB5 +x
-  speed_mm_s: 50.0              # Real max; was 40 (real runs 132310 / 133219: limited 83-88 %, 16 % of the hand path)
+  speed_mm_s: 100.0             # Real max (user, 2026-10-12); was 50 (134902: speed limited 94 %, 31 % of the hand path)
   lead_per_step: 2.0
   max_lag_mm: 20.0              # C: catch up to 20 mm after the hand stops (0.4 s at 50 mm/s); was 0 (B). Yaw stays B
                                 # because yaw.max_lag_deg is 0
