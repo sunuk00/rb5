@@ -797,6 +797,19 @@ every point up to r 850 is reachable. Elbow distance from straight: r 600 >= 70,
 >= 58, r 800 >= 43, r 850 >= 19.5 deg (only at the top z 213: slowdown). Joint limit margins grow with
 r (>= 55 deg). Decision: r_max 800 (no slowdown anywhere in the range).
 
+## 2026-10-12 — Real: range as wide as Simulation (user request)
+
+**Decision:** real.yaml range r 350-800 mm, z start -100 / +150 mm, azimuth +/-90 deg (same as
+sim.yaml), keeping the PROVISIONAL floor z >= 30 mm. Was r 340-420, z -40 / +50, azimuth +/-30.
+
+**Check (DH model, real ready pose orientation, 36 points over r 350-800, z 30 .. 214.6, azimuth
+-90 / 0 / +90):** all reachable; J5 >= 83.4 deg, shoulder >= 218.1 mm, elbow >= 35.5 deg, joint limit
+>= 20.5 deg (inner low corner r 350, z 30: just above the slow threshold); <= 0.393 deg/mm, i.e.
+15.7 deg/s at 40 mm/s (joint limit 20 deg/s).
+
+**Risk noted:** collision detection is still Off and the TCP / floor values are provisional; the wider
+range lets the real arm sweep +/-90 deg of azimuth and reach r 800.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

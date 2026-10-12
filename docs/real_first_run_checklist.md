@@ -19,8 +19,8 @@ its own step, with the lab, not as part of a Simulation session.
 - [x] **Ready pose for Real**: the pose set by the user on the real RB5 (2026-10-12), margins checked.
 - [ ] **z lower bound** (`range.z_min_abs_mm`): PROVISIONAL 30 mm. Replace with table height + gripper
       length + margin, in the base frame (z 0 = base bottom). The cylinder never goes below it.
-- [ ] Range (`range.*`): narrow first (z -50 / +50, azimuth +/-30 in real.yaml) and centered on the Real
-      ready pose (r_min / r_max must contain its TCP radius); widen only after runs look right.
+- [x] Range (`range.*`): widened to the Simulation range on user request (2026-10-12): r 350-800,
+      z -100 / +150 (floor 30), azimuth +/-90. Keep the area of that range clear.
 - [ ] Nothing in the reach of the robot along the ready-pose move (large wrist turns are warned).
 
 ## Speeds (conservative in real.yaml; RB5 specification still to be found)
