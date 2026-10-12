@@ -417,6 +417,27 @@ comparison was skipped by choice.
 largest limiter; late cycles 0.6-5.2 %, all while engaged, after planning spikes up to 27 ms (cause
 under test).
 
+## 2026-10-12 — 21: cause of the late cycles (offline test)
+
+**Test (no robot, no leader arm):** `plan_step` from pose A with a 5 mm step, 4 mm/cycle, C 30 mm,
+1000-1500 calls.
+
+| condition | p50 | p99 | max | > 12 ms |
+|---|---|---|---|---|
+| 20 ms cycle (sleep), numpy default threads | 7.3 ms | 16.8-18.3 ms | 21-26 ms | 53-71 / 1500 |
+| 20 ms cycle (sleep), OPENBLAS/OMP/MKL threads = 1 | 7.3 ms | 16.0-16.1 ms | 21-23 ms | 60-64 / 1500 |
+| no sleep (busy loop) | 2.05 ms | 3.3 ms | 5.5 ms | 0 / 1000 |
+
+**Conclusion:** numpy (OpenBLAS) threads are not the cause. The same work takes 3.6x longer with
+spikes when the loop sleeps between cycles. The PC runs the `powersave` CPU governor on an
+i7-13700H (6 performance cores up to 4.8-5.0 GHz, 8 efficiency cores up to 3.7 GHz), so after each
+sleep the core is likely clocked down or the thread lands on an efficiency core (not separated yet).
+Also, `plan_step` computes the DH Jacobian at the same q four times (0.47 ms each).
+
+**Options (not decided):** compute the Jacobian once per cycle (code only); pin the process to the
+performance cores (`taskset`); switch the governor to `performance` while testing (PC setting, needs
+sudo).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
