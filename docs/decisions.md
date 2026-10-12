@@ -506,11 +506,49 @@ at the same TCP place as A, with more shoulder margin (358 vs 283 mm) and slight
 per mm (0.156 vs 0.168 deg/mm).
 
 **Known limit of C:** low and inner targets bend J3 toward its limit (+/-150 used): at z = start - 150
-and r = 300 the margin is 1.7 deg (grid over the cylinder, independent of azimuth). Joint limit watch
+and r = 300 the margin is 1.7 deg (grid over the cylinder, worst azimuth; the margin does depend on
+the azimuth, see the next entry). Joint limit watch
 and the inner radius are decided next.
 
 **Performance cores:** from the next run, scripts are started with `taskset -c 0-11` (offline: planning
 p99 5-6 ms instead of 8-9 ms). The CPU governor stays `powersave` unless the user decides otherwise.
+
+## 2026-10-12 — 21: joint limit watch, r_min 375 mm; pick positions r 400-500 mm recommended
+
+**Joint limit watch:** margin = limit - |predicted joint| with J3 +/-150 (until the user checks +/-150
+vs +/-165 on the teach pendant), other joints +/-360. Below 20 deg: warning and slower (0.25x at
+10 deg); below 10 deg: stop; start needs >= 20 deg. Same scheme as the singularity watches.
+**r_min 375 mm** (was 300) for the cylinder.
+
+**Joint limit margin over the cylinder, pose C orientation (tool down, wrist outside), worst of
+azimuth -90..+90 deg, DH model IK walked from C** [deg, the smallest is always J3]:
+
+| z - start z \ r [mm] | 300 | 325 | 350 | 375 | 400 | 450 | 500 |
+|---|---|---|---|---|---|---|---|
+| +150 | 42.9 | 44.6 | 46.5 | 48.5 | 50.8 | 56.0 | 62.1 |
+| +100 | 34.9 | 36.7 | 38.6 | 40.8 | 43.2 | 48.5 | 54.6 |
+| +50 | 27.4 | 29.2 | 31.3 | 33.6 | 36.1 | 41.6 | 47.9 |
+| 0 | 20.3 | 22.3 | 24.5 | 27.0 | 29.6 | 35.5 | 42.0 |
+| -50 | 13.6 | 15.8 | 18.3 | 20.9 | 23.8 | 30.0 | 36.7 |
+| -100 | 7.3 | 9.9 | 12.6 | 15.5 | 18.6 | 25.2 | 32.3 |
+| -150 | 1.7 | 4.6 | 7.7 | 10.9 | 14.2 | 21.2 | 28.6 |
+
+The margin depends on the azimuth (the tool orientation is fixed in the base frame, so it turns
+relative to the arm): at r 375, z -150 it is 13.7 / 17.3 / 10.9 deg at azimuth -90 / 0 / +90 deg
+(an earlier note said "independent of azimuth"; that was wrong, the table values are the worst case).
+
+Other measures over r 400-500 in pose C (75-point grid): shoulder margin >= 281 mm, elbow >= 44 deg
+from straight, <= 0.21 deg/mm.
+
+**Recommendation: pick positions at r 400-500 mm.** In that band nothing stops over the whole z range;
+at r >= 450 there is no joint limit slowdown either; at r 400 the slowdown starts below z - 100 mm.
+r 375-400 is reachable but slows down for z <= -50 and may stop at z -150 (10.9 deg at azimuth +90).
+If the teach pendant shows +/-165 for J3, every value above gains 15 deg.
+
+**Fake tests:** from pose C with the range off, straight down: slowdown from margin 20.0 deg
+(dz -279 mm), no stop. Default range, inward then down to r 375 / z -150 at azimuth 0: margin 17.4 deg,
+38 slow cycles, matching the IK value 17.3. Old tests (old start pose, J3 -160.6, TCP r 367) give the
+same results with the joint limit watch and r_min relaxed; with the real settings that pose is refused.
 
 ## PENDING
 

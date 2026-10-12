@@ -24,6 +24,8 @@ Each 20 ms cycle:
        (0.25x at 20 mm). Below 20 mm: stop.
      - elbow: J3 distance from 0 / 180 deg (arm stretched). Below 20 deg: warning and slower (0.25x at
        10 deg). Below 10 deg: stop.
+     - joint limits: margin = limit - |joint| (J3 +/-150, others +/-360, as in 19). Below 20 deg:
+       warning and slower (0.25x at 10 deg). Below 10 deg: stop.
   C (catch-up up to a lag): with --max-lag-mm L > 0 the part cut by the speed / joint / singularity
      limits is kept and caught up later while the lag (desired - target) is at most L; only the part
      beyond L is dropped. L = 0 is B (drop all of the cut part). Release drops the lag.
@@ -74,7 +76,7 @@ SERVO_ALPHA = 1.0
 MAX_SPEED_MM_S = 200.0     # largest allowed --speed-mm-s (Simulation)
 MAX_STEP_MM = 1.0          # per cycle (50 mm/s); set from --speed-mm-s in main()
 MAX_DQ_DEG = 1.0           # predicted joint motion per cycle (50 deg/s)
-CYL_R_MIN = 300.0          # TCP horizontal radius from the base z axis [mm]
+CYL_R_MIN = 375.0          # TCP horizontal radius from the base z axis [mm]; J3 limit at low z inside (pose C)
 CYL_R_MAX = 500.0          # elbow nearly straight beyond about 550 mm in the ready pose (decisions 2026-10-12)
 CYL_Z_HALF = 150.0         # z range around the TCP z at script start [mm] (Real: set from table + gripper)
 CYL_AZ_HALF_DEG = 90.0     # azimuth range around the TCP azimuth at script start [deg]
@@ -87,6 +89,9 @@ SHOULDER_SLOW_MM = 50.0    # shoulder margin (P05 radius - d4) below this: warni
 SHOULDER_STOP_MM = 20.0    # shoulder margin below this: stop
 ELBOW_SLOW_DEG = 20.0      # J3 distance from 0 / 180 deg below this: warning and slower
 ELBOW_STOP_DEG = 10.0      # below this: stop
+JOINT_LIMIT_DEG = np.array([360.0, 360.0, 150.0, 360.0, 360.0, 360.0])   # J3 +/-150 until checked (19)
+JOINT_LIMIT_SLOW_DEG = 20.0   # margin to the joint limit below this: warning and slower
+JOINT_LIMIT_STOP_DEG = 10.0   # below this: stop
 MAX_LAG_MM = 30.0          # C: lag kept for catch-up [mm]; 0 = B. Set from --max-lag-mm in main() (default 30)
 MAX_LAG_LIMIT_MM = 50.0    # largest allowed --max-lag-mm
 MAX_FK_ERROR_MM = 5.0      # DH model vs tcp_ref at start
@@ -169,6 +174,13 @@ def ramp_scale(value, slow, stop):
     if value <= stop:
         return J5_MIN_SCALE
     return J5_MIN_SCALE + (1.0 - J5_MIN_SCALE) * (value - stop) / (slow - stop)
+
+
+def joint_limit_margin(q):
+    """Smallest margin to the joint limits [deg] and the joint number (1-6) that has it."""
+    margin = JOINT_LIMIT_DEG - np.abs(q)
+    i = int(np.argmin(margin))
+    return margin[i], i + 1
 
 
 def j5_speed_scale(j5_eff):
@@ -271,7 +283,7 @@ class CylinderRange:
 def plan_step(target, desired, tcp_pos, q, model, cyl):
     """One cycle of the limits.
     Returns (new target, dropped vector, flags, predicted J5 / shoulder / elbow margins, max |dq|, lag, stop reason)."""
-    flags = dict.fromkeys(("speed", "j5slow", "shslow", "elslow", "jspeed", "range", "lead"), False)
+    flags = dict.fromkeys(("speed", "j5slow", "shslow", "elslow", "jlslow", "jspeed", "range", "lead"), False)
     # Range first: the part of desired outside the range is kept (not dropped). Clamping only the new
     # target would let desired - target grow outside the range, and the speed limit would then drop it.
     desired_in = cyl.clamp(desired)
@@ -284,10 +296,12 @@ def plan_step(target, desired, tcp_pos, q, model, cyl):
     j5_scale = j5_speed_scale(singular_distance(q_full[4]))
     sh_scale = ramp_scale(model.shoulder_margin(q_full), SHOULDER_SLOW_MM, SHOULDER_STOP_MM)
     el_scale = ramp_scale(singular_distance(q_full[2]), ELBOW_SLOW_DEG, ELBOW_STOP_DEG)
+    jl_scale = ramp_scale(joint_limit_margin(q_full)[0], JOINT_LIMIT_SLOW_DEG, JOINT_LIMIT_STOP_DEG)
     flags["j5slow"] = j5_scale < 1.0
     flags["shslow"] = sh_scale < 1.0
     flags["elslow"] = el_scale < 1.0
-    limited = clip_norm(step, MAX_STEP_MM * min(j5_scale, sh_scale, el_scale))
+    flags["jlslow"] = jl_scale < 1.0
+    limited = clip_norm(step, MAX_STEP_MM * min(j5_scale, sh_scale, el_scale, jl_scale))
     flags["speed"] = np.linalg.norm(limited) < np.linalg.norm(step) - 1e-9
 
     # Joint speed limit (the joint motion is nearly linear in a step this small)
@@ -317,6 +331,7 @@ def plan_step(target, desired, tcp_pos, q, model, cyl):
     j5_final = singular_distance(q[4] + dq[4])
     sh_final = model.shoulder_margin(q + dq)
     el_final = singular_distance(q[2] + dq[2])
+    jl_final, jl_joint = joint_limit_margin(q + dq)
     stop = None
     if not np.array_equal(clamped, target):
         if j5_final < J5_STOP_DEG:
@@ -325,7 +340,9 @@ def plan_step(target, desired, tcp_pos, q, model, cyl):
             stop = f"predicted shoulder margin {sh_final:.1f} mm < {SHOULDER_STOP_MM} mm"
         elif el_final < ELBOW_STOP_DEG:
             stop = f"predicted J3 {el_final:.1f} deg from straight < {ELBOW_STOP_DEG} deg"
-    return clamped, dropped, flags, (j5_final, sh_final, el_final), np.abs(dq).max(), lag_after, stop
+        elif jl_final < JOINT_LIMIT_STOP_DEG:
+            stop = f"predicted J{jl_joint} {jl_final:.1f} deg from its limit < {JOINT_LIMIT_STOP_DEG} deg"
+    return clamped, dropped, flags, (j5_final, sh_final, el_final, jl_final), np.abs(dq).max(), lag_after, stop
 
 
 # ---------------------------------------------------------------- devices
@@ -517,7 +534,7 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
     flags_prev = {}
     last_send = prev_cycle_t = None
     late_cycles = stale_cycles = 0
-    warned = {"j5slow": False, "shslow": False, "elslow": False}
+    warned = {"j5slow": False, "shslow": False, "elslow": False, "jlslow": False}
 
     t_start = next_t = time.monotonic()
     cycle = 0
@@ -573,11 +590,12 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
         desired = new = None
         flags = {}
         j5_pred, sh_pred, el_pred = singular_distance(q[4]), rb5_model.shoulder_margin(q), singular_distance(q[2])
+        jl_pred = joint_limit_margin(q)[0]
         max_dq = lag = 0.0
         dropped = np.zeros(3)
         if clutch.engaged and q_l is not None and not late_early and not stale:
             desired = rb5_start + args.scale * (yaw @ (leader_p - leader_start))
-            new, dropped, flags, (j5_pred, sh_pred, el_pred), max_dq, lag, stop = plan_step(
+            new, dropped, flags, (j5_pred, sh_pred, el_pred, jl_pred), max_dq, lag, stop = plan_step(
                 target, desired, tcp[:3], q, rb5_model, cyl)
             if stop:
                 raise StopRequest(stop)
@@ -599,6 +617,7 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
                   "j5slow": f"J5 below {J5_SLOW_DEG:.0f} deg: slower",
                   "shslow": f"shoulder margin below {SHOULDER_SLOW_MM:.0f} mm: slower",
                   "elslow": f"J3 within {ELBOW_SLOW_DEG:.0f} deg of straight: slower",
+                  "jlslow": f"a joint within {JOINT_LIMIT_SLOW_DEG:.0f} deg of its limit: slower",
                   "jspeed": f"joint speed limit ({MAX_DQ_DEG} deg/cycle predicted)",
                   "range": f"range limit (cylinder r {CYL_R_MIN:.0f}..{CYL_R_MAX:.0f} mm, "
                            f"z +/-{CYL_Z_HALF:.0f} mm, azimuth +/-{CYL_AZ_HALF_DEG:.0f} deg)",
@@ -613,6 +632,8 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
             event(f"WARNING: shoulder margin {sh_pred:.1f} mm (stop below {SHOULDER_STOP_MM:.0f})")
         if flags.get("elslow") and not warned["elslow"]:
             event(f"WARNING: J3 {el_pred:.1f} deg from straight (stop below {ELBOW_STOP_DEG:.0f})")
+        if flags.get("jlslow") and not warned["jlslow"]:
+            event(f"WARNING: joint limit margin {jl_pred:.1f} deg (stop below {JOINT_LIMIT_STOP_DEG:.0f})")
         warned = {k: flags.get(k, False) for k in warned}
 
         # 6. Send every cycle (a released clutch sends the frozen target)
@@ -636,7 +657,8 @@ def run_loop(leader, leader_model, robot, rc, reader, rb5_model, args, ctx):
             + [f"{t_leader * 1000:.2f}", f"{t_plan * 1000:.2f}", f"{(t_send_end - t_send0) * 1000:.2f}",
                f"{(t_send_end - t_cycle) * 1000:.2f}", "" if send_interval is None else f"{send_interval * 1000:.2f}"]
             + [f"{el_pred:.2f}", int(flags.get("elslow", False)), f"{lag:.3f}",
-               f"{np.linalg.norm(dropped) if not late else 0.0:.3f}"])
+               f"{np.linalg.norm(dropped) if not late else 0.0:.3f}"]
+            + [f"{jl_pred:.2f}", int(flags.get("jlslow", False))])
 
         # 7. Status line
         if cycle % STATUS_EVERY == 0:
@@ -667,7 +689,8 @@ CSV_HEADER = (["t_s", "cycle_interval_ms", "button_raw", "clutch_engaged"]
               + ["speed_limited", "j5_slow", "shoulder_slow", "joint_speed_limited", "range_limited", "lead_limited",
                  "late", "late_before_plan", "stale", "state_age_ms"]
               + ["leader_read_ms", "plan_ms", "send_call_ms", "work_ms", "send_interval_ms"]
-              + ["elbow_from_straight_pred_deg", "elbow_slow", "lag_mm", "dropped_mm"])
+              + ["elbow_from_straight_pred_deg", "elbow_slow", "lag_mm", "dropped_mm"]
+              + ["joint_limit_margin_pred_deg", "joint_limit_slow"])
 
 
 def save_csv(rows):
@@ -751,21 +774,26 @@ def main():
     print(f"RB5 tcp_ref {tcp0}   jnt_ref {q0}")
     print(f"TCP offset (flange frame) {rb5_model.offset} mm   DH model vs tcp_ref {fk_error:.2f} mm   "
           f"J5 {singular_distance(q0[4]):.1f} deg from singular, shoulder margin {rb5_model.shoulder_margin(q0):.1f} mm, "
-          f"J3 {singular_distance(q0[2]):.1f} deg from straight")
+          f"J3 {singular_distance(q0[2]):.1f} deg from straight, joint limit margin {joint_limit_margin(q0)[0]:.1f} deg "
+          f"(J{joint_limit_margin(q0)[1]})")
     print(f"Limits: {MAX_STEP_MM} mm/cycle ({MAX_STEP_MM / PERIOD_S:.0f} mm/s), {MAX_DQ_DEG} deg/cycle joints, "
           f"cylinder r {CYL_R_MIN:.0f}..{CYL_R_MAX:.0f} mm / z +/-{CYL_Z_HALF:.0f} mm / "
           f"azimuth +/-{CYL_AZ_HALF_DEG:.0f} deg, lead {MAX_LEAD_MM} mm, J5 slow < {J5_SLOW_DEG:.0f} / stop < {J5_STOP_DEG:.0f} deg, "
           f"shoulder slow < {SHOULDER_SLOW_MM:.0f} / stop < {SHOULDER_STOP_MM:.0f} mm, "
-          f"elbow slow < {ELBOW_SLOW_DEG:.0f} / stop < {ELBOW_STOP_DEG:.0f} deg")
+          f"elbow slow < {ELBOW_SLOW_DEG:.0f} / stop < {ELBOW_STOP_DEG:.0f} deg, "
+          f"joint limit slow < {JOINT_LIMIT_SLOW_DEG:.0f} / stop < {JOINT_LIMIT_STOP_DEG:.0f} deg (J3 +/-{JOINT_LIMIT_DEG[2]:.0f})")
     problems = []
     if fk_error > MAX_FK_ERROR_MM:
         problems.append(f"DH model differs from tcp_ref by {fk_error:.2f} mm (> {MAX_FK_ERROR_MM})")
     r0 = np.hypot(tcp0[0], tcp0[1])
     if not CYL_R_MIN <= r0 <= CYL_R_MAX:
         problems.append(f"TCP radius {r0:.1f} mm is outside the cylinder range {CYL_R_MIN:.0f}..{CYL_R_MAX:.0f} mm "
-                        f"(ready pose: scripts/19_move_joint_sim.py --pose 180 -15 -90 -165 90 0 --speed 30)")
+                        f"(ready pose C: scripts/19_move_joint_sim.py --pose 180 4 -111 17 -90 0 --speed 30)")
     if rb5_model.shoulder_margin(q0) < SHOULDER_SLOW_MM:
         problems.append(f"shoulder margin is {rb5_model.shoulder_margin(q0):.1f} mm (need >= {SHOULDER_SLOW_MM:.0f})")
+    if joint_limit_margin(q0)[0] < JOINT_LIMIT_SLOW_DEG:
+        problems.append(f"J{joint_limit_margin(q0)[1]} is {joint_limit_margin(q0)[0]:.1f} deg from its limit "
+                        f"(need >= {JOINT_LIMIT_SLOW_DEG:.0f})")
     if singular_distance(q0[2]) < ELBOW_SLOW_DEG:
         problems.append(f"J3 is {singular_distance(q0[2]):.1f} deg from straight (need >= {ELBOW_SLOW_DEG:.0f})")
     if singular_distance(q0[4]) < J5_SLOW_DEG:
