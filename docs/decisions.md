@@ -492,6 +492,26 @@ at r 300, z -150 J3 reaches -148.3 deg, near the +/-150 limit used in 19.
 The tool is rotated 180 deg about its axis compared with A (rz +90 vs -90); J6 = 180 would keep A's
 hand rotation but moves the TCP by the 40 mm z offset.
 
+## 2026-10-12 — Ready pose C applied (Simulation); runs pinned to performance cores
+
+**Decision:** the RB5 ready pose for the leader position mapping is C = (180, 4, -111, 17, -90, 0) deg,
+J6 = 0 (tool rotated 180 deg about its axis compared with A). Move with
+`taskset -c 0-11 python scripts/19_move_joint_sim.py --pose 180 4 -111 17 -90 0 --speed 30`.
+J1 = 180 is for Simulation; for Real it is set again from the table direction.
+
+**Reason:** the grasp is top-down (approach from above). The tool must point down, and the wrist must
+not fold in toward the base as in A (J4 = 195, wrist point inside the TCP radius), which got in the
+way of picking. C keeps the tool down with the wrist outside (wrist point radius 469 mm vs TCP 430 mm),
+at the same TCP place as A, with more shoulder margin (358 vs 283 mm) and slightly less joint motion
+per mm (0.156 vs 0.168 deg/mm).
+
+**Known limit of C:** low and inner targets bend J3 toward its limit (+/-150 used): at z = start - 150
+and r = 300 the margin is 1.7 deg (grid over the cylinder, independent of azimuth). Joint limit watch
+and the inner radius are decided next.
+
+**Performance cores:** from the next run, scripts are started with `taskset -c 0-11` (offline: planning
+p99 5-6 ms instead of 8-9 ms). The CPU governor stays `powersave` unless the user decides otherwise.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
