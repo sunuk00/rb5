@@ -88,7 +88,7 @@ class TestSettings(unittest.TestCase):
     def test_relations(self):
         d = raw(SIM); d["safety"]["j5_stop_deg"] = 25.0
         self.assert_problem(d, "J5 stop")
-        d = raw(SIM); d["range"]["r_min_mm"] = 600.0
+        d = raw(SIM); d["range"]["r_min_mm"] = d["range"]["r_max_mm"] + 1.0
         self.assert_problem(d, "r_min_mm")
         d = raw(SIM); d["gripper"]["open_below"] = 0.7
         self.assert_problem(d, "open_below")

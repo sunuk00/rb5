@@ -787,6 +787,16 @@ The user's own edit `mapping.scale: 2.0` is kept.
 - Not done and not changed by the code: collision detection is Off and tool mass is 0 kg on the
   controller; move_servo_l has not been used on the real robot before (18 was Simulation).
 
+## 2026-10-12 — Sim: r_max 600 -> 800 mm (reach x 750)
+
+**Why x stayed below 600 at scale 2.0:** the cylinder r_max 600; the TCP azimuth is 13.4 deg, so
+x = r cos(13.4) <= 584. x 750 needs r 771 at that azimuth.
+
+**Check (DH model, the ready pose orientation kept, worst of azimuth -30 / 0 / +30, z -37 .. 213):**
+every point up to r 850 is reachable. Elbow distance from straight: r 600 >= 70, r 700 >= 70, r 750
+>= 58, r 800 >= 43, r 850 >= 19.5 deg (only at the top z 213: slowdown). Joint limit margins grow with
+r (>= 55 deg). Decision: r_max 800 (no slowdown anywhere in the range).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

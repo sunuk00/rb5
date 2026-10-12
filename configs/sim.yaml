@@ -32,7 +32,8 @@ yaw:                            # RB5 yaw change = leader J6 change (method B)
 
 range:                          # cylinder piece about the base z axis, fixed at start (ready pose: r 367, z 63)
   r_min_mm: 350.0               # J3 (+/-165) margin >= 10 deg over the range (DH grid, 2026-10-12)
-  r_max_mm: 600.0               # elbow >= 25 deg from straight up to here
+  r_max_mm: 800.0               # was 600 (x stopped at about 585); elbow >= 43 deg up to r 800 (DH grid, z -37..213,
+                                # azimuth +/-30); x 750 needs r 771 at the start azimuth 13.4 deg
   z_below_mm: 100.0             # start z - 100 (about -37 mm)
   z_above_mm: 150.0             # start z + 150 (about 213 mm)
   z_min_abs_mm: null            # absolute floor; null = not used in Simulation
