@@ -254,6 +254,63 @@ chain is used only as a startup self-test (max difference 6e-8 over 50 random po
 
 **Rejected alternatives:** direct numpy FK as the main path (kept as the self-test only).
 
+## 2026-10-12 — 21: leader -> RB5 position mapping, first Simulation results
+
+**Setup:** `scripts/21_leader_rb5_position.py`, leader wrist center -> RB5 TCP position, orientation
+fixed, clutch + B (drop the excess) + speed limit, move_servo_l at 50 Hz, J5 watch with the DH model.
+Leader FK is the numpy URDF chain (20's self-test reference) so that it runs in the `rb5` env.
+
+**Results (user runs, Simulation):**
+
+| run | speed limit | RB5 path / hand path | speed limited | joint speed limited | range limited |
+|---|---|---|---|---|---|
+| 092533, 093034 | 50 mm/s | 22 % / 26 % | 86 % / 83 % | 0 % / 0.2 % | 7 % / 8 % |
+| 094517 | 200 mm/s (lead limit 8 mm) | 38 % (54 % if only the 200 mm/s cap) | 52 % | 52 % | 9 % |
+
+- Hand speed while engaged: p50 143-206 mm/s, p90 343-570 mm/s. The slow segment (16 % speed
+  limited) followed 0.90 of the hand. With B, fast-out / slow-back moves shift the hand-robot offset
+  (segment 5: hand net 10 mm, RB5 49 mm).
+- Direction: cos(hand step, target step) median 1.000, no reversed step.
+- "J1 barely turns": at the 092533 start pose J1 moves 0.318 deg per mm of TCP x but only 0.018 per mm
+  of y. J1 follows the wrist point P05, not the TCP; with the orientation fixed and the 187 mm TCP
+  offset, P05 sat about 60 deg away from the TCP direction. With a fixed orientation the joint motion
+  of a pure translation does not depend on the TCP offset (TCP and flange give the same numbers).
+- 094517 ended in a shoulder singularity: P05 horizontal radius 135.7 -> 110.8 mm (d4 = 110.7), up to
+  14.2 deg of joint motion per mm. Only the joint speed limit held it (actual max 1.57 deg/cycle).
+
+**Decisions:**
+- `--speed-mm-s` (default 50, at most 200 in Simulation); the lead limit is 2 x the step (a fixed
+  2 mm froze every 4 mm step).
+- Shoulder singularity watch: margin = P05 horizontal radius - d4 (Rainbow IK
+  `th1 = atan2(...) - acos(d4 / r)`). Below 50 mm: warning and slower (0.25x at 20 mm); below 20 mm:
+  stop; start needs >= 50 mm. Thresholds chosen from 094517: at a 25 mm margin 0.67 deg/mm, at 8 mm
+  1.1 deg/mm, at 1.7 mm 2.4 deg/mm.
+- Per-cycle timing columns (leader read, plan, send call, work, real send interval) and a late check
+  right before sending; the new target is applied only if that check passes.
+
+**Late check gap (also in 13 and 08):** the late check measured "last send -> start of the next
+cycle's check". After an overrun the loop waits a full period (08 rule), so the real send gap was
+40-50 ms while `late` stayed 0. 21 had 6 / 6 / 27 such cycles (all while engaged, cause not found;
+planning is 1.8 ms mean, not related to button read failures). 13 and 08 use the same check and have
+the same blind spot; their logs' `late = 0` does not prove there were no 40 ms gaps. Not fixed in
+13 / 08.
+
+## 2026-10-12 — RB5 ready pose proposal for pick and place (not applied)
+
+**Proposal A:** q = (180, -15, -90, -165, 90, 0) deg. Tool (flange -Y) points straight down.
+Controller `calc_fk_tcp`: TCP (417.9, 110.7, 196.5) mm, (rx, ry, rz) = (90, 0, -90); DH model z
+differs by 2 mm. Flange (377.9, 110.7, 381.6), elbow above the wrist.
+- Margins: J5 90 deg from singular; shoulder P05 radius 393.8 mm -> margin 283.1 mm; elbow J3 90 deg
+  from 0 / 180; J3 limit (+/-150 or +/-165 by model, manual 1.6) 60 deg left.
+- Max joint motion per 1 mm of TCP move: x 0.168, y 0.152, z 0.141 deg (TCP and flange the same,
+  orientation fixed). For comparison, the 21 start pose: x 0.318, y 0.140, z 0.440.
+- J1 = 180 puts the tool on the base +x side; J1 only rotates the setup and does not change the
+  margins. The physical +x direction is not checked yet (22).
+- Alternative B (180, -15, -90, 15, -90, 0): same height, TCP x 559 mm, arm more stretched, shoulder
+  margin 498.8 mm.
+- Note: the current Simulation start pose has J3 = -160.6 deg, beyond +/-150 (so this RB5 has the
+  +/-165 limit, or the value needs checking).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
