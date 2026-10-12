@@ -696,6 +696,32 @@ holds its position.
 - Clutch: after 3 failed reads in a row, treat it as released. Reason: motion must stop when the input
   is not known.
 
+## 2026-10-12 — Teleop cleanup: teleop.py + teleop/ modules + configs + tests
+
+**Decision:** the experiment scripts stay as they are. The teleop is `teleop.py` with modules in
+`teleop/` (settings, kinematics, safety, mapping, leader, rb5, preflight, loop, log), settings in
+`configs/sim.yaml` (values tested with 21) and `configs/real.yaml` (conservative, TBD values as null:
+z lower bound, expected TCP offset, ready pose), tests with `unittest` in `tests/` (no new packages).
+Simulation is the default; `--real` needs a valid real.yaml and typing REAL. At start the teleop
+checks the leader (latency, ping), the RB5 (mode, not moving, errors, TCP offset), moves to the ready
+pose after showing the change and a typed "yes" (skipped when already there; Real: clear-area note and
+a warning for wrist turns over 90 deg), then checks the start pose.
+
+**Behavior equal to 21:** plan_step gives the same results as 21 on 600 random cases (including near
+the wrist singularity, the J3 limit and the elbow), and a combined script through both loops gives the
+same targets, yaw and flags.
+
+**Changes from 21:** gripper signal is `grip_close = trigger / 1000` (pulled = closed, untouched = open;
+example 35 maps trigger / 1000 to a gripper target whose open / closed end depends on the gripper and
+its GRIPPER_DIRECTION flag, so the source does not settle it). Optional absolute z floor
+(`range.z_min_abs_mm`). Settings are checked (unknown keys, ranges, stop < slow, t1 = period).
+
+**udev rule:** `udev/99-rby1-leader-arm.rules` sets the latency timer on the usb-serial device and
+matches vendor / product / serial (FT62AJW7) on its parent USB device (checked with `udevadm info -a`;
+`udevadm verify` passes). Not installed yet (needs sudo).
+
+**Next feature candidate:** left handle button switches the scale (precise 0.5 / fast 1.5).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
