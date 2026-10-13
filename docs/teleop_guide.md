@@ -11,7 +11,7 @@ The leader arm's FTDI adapter needs `latency_timer = 1` (default 16 ms makes eac
 script 11). The rule also creates `/dev/rby1_leader_arm`.
 
 ```
-sudo cp udev/99-rby1-leader-arm.rules /etc/udev/rules.d/
+sudo cp assets/udev/99-rby1-leader-arm.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```

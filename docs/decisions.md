@@ -1000,3 +1000,8 @@ run it, its options and what it moves.
 
 Changes the earlier "scripts keep their refs/ paths" (user request): all code now reads
 `assets/leader_arm/model.urdf`; `refs/` is reference only. The example 35 diff was regenerated.
+
+## 2026-10-14 — udev rule moved to assets/udev/
+
+`udev/99-rby1-leader-arm.rules` -> `assets/udev/` (user request: no single-file folder at the root).
+Still not installed; the install commands in `docs/teleop_guide.md` use the new path.
