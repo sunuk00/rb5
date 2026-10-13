@@ -18,7 +18,7 @@ from teleop.safety import Watch, joint_limit_margin, ramp_scale, singular_distan
 from teleop.settings import load_settings  # noqa: E402
 
 from fixtures import TEST as SIM, test_raw  # noqa: E402  (pose D era values, same as 21)
-URDF = ROOT / "refs" / "rby1-sdk" / "models" / "leader_arm" / "model.urdf"
+URDF = ROOT / "assets" / "leader_arm" / "model.urdf"
 OFFSET = [0.0, -187.0, -40.0]
 POSE_D = np.array([182.0, -11.0, -110.1, 31.1, -90.0, -2.0])   # pose D (tests are written for it)
 

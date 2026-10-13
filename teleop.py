@@ -34,7 +34,7 @@ from teleop.loop import CSV_HEADER, StopRequest, TeleopLoop, print_event  # noqa
 from teleop.safety import Watch  # noqa: E402
 from teleop.settings import SettingsError, load_settings  # noqa: E402
 
-URDF_PATH = ROOT / "refs" / "rby1-sdk" / "models" / "leader_arm" / "model.urdf"
+URDF_PATH = ROOT / "assets" / "leader_arm" / "model.urdf"
 
 
 def refuse(title, problems):

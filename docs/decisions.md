@@ -927,6 +927,19 @@ adds `leader_used_x/y/z_mm` and `leader_j6_used_deg` (what the mapping used).
 If the shake is still felt, next options: servo alpha < 1 (controller smoothing, adds delay) or a
 low-pass on the position.
 
+## 2026-10-14 — Leader arm URDF committed under assets/
+
+**Problem:** `teleop.py` and `tests/test_core.py` read the leader URDF from `refs/rby1-sdk/`, which is
+gitignored, so the teleop and the tests did not run from a fresh clone.
+
+**Decision:** an unmodified copy at `assets/leader_arm/model.urdf` (rby1-sdk v0.10.0, Apache 2.0) with
+`LICENSE`, `NOTICE` and a README (source, version, SHA-256). Only the URDF; the meshes are not used.
+Scripts 15, 20 and 21 keep their `refs/` paths (kept as they were run).
+
+**Rejected:** a git submodule of rby1-sdk (whole SDK for one 12 kB file); installing the rby1-sdk
+Python package and reading its model (extra dependency, and the path inside the package is not
+confirmed).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
