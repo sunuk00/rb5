@@ -963,3 +963,15 @@ change behavior without notice). rby1_sdk (scripts 14, 15, 20, env `rby1`) is on
 (`teleop_sim_*`, `teleop_real_*`, with their settings copies) were moved there. Script outputs stay in
 `data/` (named by script number). `data/` is not committed. Demonstration data will get its own folder
 once its format (e.g. LeRobot) is chosen.
+
+## 2026-10-14 — Teleop entry point moved into the package: python -m teleop
+
+**Problem:** `teleop.py` next to the `teleop/` package had the same name (confusing to read; Python
+picks the package on import).
+
+**Decision (user):** `teleop.py` -> `teleop/__main__.py` (git mv, history kept), relative imports,
+`ROOT` is the repository root. Run from the repository root: `python -m teleop` (`--real`,
+`--config` unchanged). README, teleop_guide and the package docstring updated; earlier entries in
+this file still say `teleop.py`.
+
+**Rejected:** renaming to `run_teleop.py` (still a second top-level name for the same thing).

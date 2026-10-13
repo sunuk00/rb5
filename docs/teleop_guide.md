@@ -1,6 +1,6 @@
 # Teleop guide (leader arm -> RB5)
 
-`teleop.py` maps the RB-Y1 leader arm's right handle to the RB5 tool: position (wrist center),
+`python -m teleop` (`teleop/__main__.py`) maps the RB-Y1 leader arm's right handle to the RB5 tool: position (wrist center),
 yaw (handle twist = leader J6), and a gripper signal (trigger, logged only). Simulation is the
 default. Real mode is not cleared yet: see `docs/real_first_run_checklist.md`.
 
@@ -42,8 +42,8 @@ conda env `rb5` (rbpodo, dynamixel-sdk, numpy, PyYAML). Tests: `python -m unitte
 ## 3. Run
 ```
 conda activate rb5
-python teleop.py                 # Simulation, configs/sim.yaml
-python teleop.py --config other.yaml
+python -m teleop                 # Simulation, configs/sim.yaml
+python -m teleop --config other.yaml
 ```
 The process pins itself to the performance cores (`runtime.cpu_cores: [0, 11]` in the settings;
 planning p99 5-6 ms instead of 8-9 ms, decisions 2026-10-12). No `taskset` needed.

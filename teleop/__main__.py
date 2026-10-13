@@ -12,9 +12,10 @@ Steps:
   6. CSV and a copy of the settings saved in the log folder
 
 Usage:
-    python teleop.py                       # Simulation, configs/sim.yaml
-    python teleop.py --config my_sim.yaml  # another Simulation settings file
-    python teleop.py --real                # REAL robot, configs/real.yaml (asks to type REAL)
+    python -m teleop                       # Simulation, configs/sim.yaml
+    python -m teleop --config my_sim.yaml  # another Simulation settings file
+    python -m teleop --real                # REAL robot, configs/real.yaml (asks to type REAL)
+Run from the repository root.
 The process pins itself to the CPU cores in settings runtime.cpu_cores (no taskset needed).
 """
 import argparse
@@ -24,15 +25,15 @@ from pathlib import Path
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT))
-from teleop import preflight  # noqa: E402
-from teleop.kinematics import RB5Model  # noqa: E402
-from teleop.leader import LeaderArm, LeaderModel, read_latency_timer  # noqa: E402
-from teleop.log import run_paths, save_run  # noqa: E402
-from teleop.loop import CSV_HEADER, StopRequest, TeleopLoop, print_event  # noqa: E402
-from teleop.safety import Watch  # noqa: E402
-from teleop.settings import SettingsError, load_settings  # noqa: E402
+from . import preflight
+from .kinematics import RB5Model
+from .leader import LeaderArm, LeaderModel, read_latency_timer
+from .log import run_paths, save_run
+from .loop import CSV_HEADER, StopRequest, TeleopLoop, print_event
+from .safety import Watch
+from .settings import SettingsError, load_settings
+
+ROOT = Path(__file__).resolve().parent.parent   # repository root
 
 URDF_PATH = ROOT / "assets" / "leader_arm" / "model.urdf"
 
@@ -49,7 +50,7 @@ def ask(prompt, answer):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(prog="python -m teleop", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--real", action="store_true", help="REAL robot (uses configs/real.yaml unless --config)")
     parser.add_argument("--config", help="settings file")
     args = parser.parse_args()
@@ -88,7 +89,7 @@ def main():
     dxl_port_handler.LATENCY_TIMER = s.leader.required_latency_timer_ms   # reply timeout follows this (12)
     leader_model = LeaderModel(URDF_PATH)
 
-    from teleop.rb5 import RB5
+    from .rb5 import RB5
     rb5 = RB5(s.robot.ip, s.servo)
     rb5.set_mode(real, s.robot.speed_bar)
     reached, waited = rb5.wait_for_mode(real)
