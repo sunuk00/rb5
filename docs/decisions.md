@@ -1,5 +1,80 @@
 # Decisions
 
+## Contents
+
+Entries below are in date order; this list groups them by topic. Open items: [PENDING](#pending).
+
+**Leader arm (RB-Y1 scripts 14, 20, leader signal)**
+- [2026-10-10 — 14: align the leader arm to the RB-Y1 READY pose at startup](#2026-10-10--14-align-the-leader-arm-to-the-rb-y1-ready-pose-at-startup)
+- [2026-10-10 — 14: one dynamixel_sdk PortHandler for the leader arm](#2026-10-10--14-one-dynamixel_sdk-porthandler-for-the-leader-arm)
+- [2026-10-10 — 14: leader arm torque constant chosen per ID from the actual model (differs from Rainbow)](#2026-10-10--14-leader-arm-torque-constant-chosen-per-id-from-the-actual-model-differs-from-rainbow)
+- [2026-10-10 — 14: leader arm holds its pose while the clutch is released (rule changed)](#2026-10-10--14-leader-arm-holds-its-pose-while-the-clutch-is-released-rule-changed)
+- [2026-10-10 — 14: leader wrist joints always torque off after the alignment](#2026-10-10--14-leader-wrist-joints-always-torque-off-after-the-alignment)
+- [2026-10-11 — 14: leader thread + Fast Sync Read; --period 0.02 (default) / 0.01; C++ not needed](#2026-10-11--14-leader-thread--fast-sync-read---period-002-default--001-c-not-needed)
+- [2026-10-12 — 20: leader arm FK with rby1_sdk.dynamics; tip = wrist center](#2026-10-12--20-leader-arm-fk-with-rby1_sdkdynamics-tip--wrist-center)
+- [2026-10-12 — Leader handle point instead of the wrist center: small effect, not applied](#2026-10-12--leader-handle-point-instead-of-the-wrist-center-small-effect-not-applied)
+- [2026-10-12 — Leader deadband (hysteresis) against the wrist shake](#2026-10-12--leader-deadband-hysteresis-against-the-wrist-shake)
+
+**RB5 API probes (17-19)**
+- [2026-10-12 — 17/18: TCP pose sources and the move_servo_l probe](#2026-10-12--1718-tcp-pose-sources-and-the-move_servo_l-probe)
+- [2026-10-12 — 18 results: move_servo_l convention confirmed; wrist singularity near J5 = 0](#2026-10-12--18-results-move_servo_l-convention-confirmed-wrist-singularity-near-j5--0)
+- [2026-10-12 — 18 rz away from J5 = 0: wrist singularity hypothesis supported](#2026-10-12--18-rz-away-from-j5--0-wrist-singularity-hypothesis-supported)
+- [2026-10-12 — 19: move_j speed is scaled by the speed bar](#2026-10-12--19-move_j-speed-is-scaled-by-the-speed-bar)
+- [2026-10-12 — 19: --pose mode (all joints), shortest equivalent angles, RB5 joint limits](#2026-10-12--19---pose-mode-all-joints-shortest-equivalent-angles-rb5-joint-limits)
+
+**Ready pose**
+- [2026-10-12 — RB5 ready pose proposal for pick and place (not applied)](#2026-10-12--rb5-ready-pose-proposal-for-pick-and-place-not-applied)
+- [2026-10-12 — Ready pose: wrist folded inward in A (user); proposal C with the wrist outside](#2026-10-12--ready-pose-wrist-folded-inward-in-a-user-proposal-c-with-the-wrist-outside)
+- [2026-10-12 — Ready pose C applied (Simulation); runs pinned to performance cores](#2026-10-12--ready-pose-c-applied-simulation-runs-pinned-to-performance-cores)
+- [2026-10-12 — Object on the RB5 table (z 0): ready pose D, cylinder r 450-550 mm](#2026-10-12--object-on-the-rb5-table-z-0-ready-pose-d-cylinder-r-450-550-mm)
+- [2026-10-12 — Teleop: ready pose from the real RB5, scale 1.5, J3 +/-165, range around the new pose](#2026-10-12--teleop-ready-pose-from-the-real-rb5-scale-15-j3--165-range-around-the-new-pose)
+- [2026-10-12 — Real ready-pose move 3 deg/s](#2026-10-12--real-ready-pose-move-3-degs)
+
+**Mapping, range and safety limits (21 -> teleop)**
+- [2026-10-12 — 21: leader -> RB5 position mapping, first Simulation results](#2026-10-12--21-leader---rb5-position-mapping-first-simulation-results)
+- [2026-10-12 — 21: cylinder range; range excess was being dropped (also in 13)](#2026-10-12--21-cylinder-range-range-excess-was-being-dropped-also-in-13)
+- [2026-10-12 — 21: three singularities watched, r_max 500 mm, C mode (catch-up up to a lag)](#2026-10-12--21-three-singularities-watched-r_max-500-mm-c-mode-catch-up-up-to-a-lag)
+- [2026-10-12 — 21: default is C with a 30 mm lag](#2026-10-12--21-default-is-c-with-a-30-mm-lag)
+- [2026-10-12 — 21: --scale 0.5 Simulation result (104723, C 30 mm, 200 mm/s)](#2026-10-12--21---scale-05-simulation-result-104723-c-30-mm-200-mms)
+- [2026-10-12 — 21: joint limit watch, r_min 375 mm; pick positions r 400-500 mm recommended](#2026-10-12--21-joint-limit-watch-r_min-375-mm-pick-positions-r-400-500-mm-recommended)
+- [2026-10-12 — 21 from ready pose D: depth reached; vertical-hand habit halves the backward drift](#2026-10-12--21-from-ready-pose-d-depth-reached-vertical-hand-habit-halves-the-backward-drift)
+- [2026-10-12 — 21: joint speed limit per joint (Simulation)](#2026-10-12--21-joint-speed-limit-per-joint-simulation)
+- [2026-10-12 — Sim: r_max 600 -> 800 mm (reach x 750)](#2026-10-12--sim-r_max-600---800-mm-reach-x-750)
+- [2026-10-12 — Real: range as wide as Simulation (user request)](#2026-10-12--real-range-as-wide-as-simulation-user-request)
+- [2026-10-12 — Sim z upper bound +200 (same as Real)](#2026-10-12--sim-z-upper-bound-200-same-as-real)
+- [2026-10-12 — z upper bound +400 with an outer radius that falls with height (Sim and Real)](#2026-10-12--z-upper-bound-400-with-an-outer-radius-that-falls-with-height-sim-and-real)
+
+**Timing and CPU**
+- [2026-10-12 — 21: cause of the late cycles (offline test)](#2026-10-12--21-cause-of-the-late-cycles-offline-test)
+- [2026-10-12 — 21: one Jacobian per cycle; late-cycle cause is CPU power saving + hybrid cores](#2026-10-12--21-one-jacobian-per-cycle-late-cycle-cause-is-cpu-power-saving--hybrid-cores)
+
+**Yaw and gripper**
+- [2026-10-12 — Yaw mapping: RB5 yaw change = leader J6 change (method B)](#2026-10-12--yaw-mapping-rb5-yaw-change--leader-j6-change-method-b)
+- [2026-10-12 — Yaw mapping Simulation result (115603, ready pose D, scale 0.5, C)](#2026-10-12--yaw-mapping-simulation-result-115603-ready-pose-d-scale-05-c)
+- [2026-10-12 — Gripper signal from the leader trigger: rules](#2026-10-12--gripper-signal-from-the-leader-trigger-rules)
+- [2026-10-12 — Gripper direction fixed: grip_close = 1 - trigger / 1000](#2026-10-12--gripper-direction-fixed-grip_close--1---trigger--1000)
+
+**Teleop code and settings**
+- [2026-10-12 — Teleop cleanup: teleop.py + teleop/ modules + configs + tests](#2026-10-12--teleop-cleanup-teleoppy--teleop-modules--configs--tests)
+- [2026-10-12 — Sim: speed 400 mm/s and lag 50 mm; Real: provisional values for a first test](#2026-10-12--sim-speed-400-mms-and-lag-50-mm-real-provisional-values-for-a-first-test)
+
+**Real runs (2026-10-12)**
+- [2026-10-12 — Real runs 132310 / 133219; faster Real settings; measured joints logged](#2026-10-12--real-runs-132310--133219-faster-real-settings-measured-joints-logged)
+- [2026-10-12 — Real run 133743 (50 mm/s, C 20 mm) and z upper bound +200](#2026-10-12--real-run-133743-50-mms-c-20-mm-and-z-upper-bound-200)
+- [2026-10-12 — Real run 134902 and TCP speed 100 mm/s](#2026-10-12--real-run-134902-and-tcp-speed-100-mms)
+- [2026-10-12 — Real run 135230 (100 mm/s) and ready move 5 deg/s](#2026-10-12--real-run-135230-100-mms-and-ready-move-5-degs)
+- [2026-10-12 — Real joint speed limit 0.8 deg/cycle (40 deg/s)](#2026-10-12--real-joint-speed-limit-08-degcycle-40-degs)
+
+**Repository structure (2026-10-14)**
+- [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
+- [2026-10-14 — environment.yml for the rb5 env](#2026-10-14--environmentyml-for-the-rb5-env)
+- [2026-10-14 — Teleop logs in data/teleop/](#2026-10-14--teleop-logs-in-datateleop)
+- [2026-10-14 — Teleop entry point moved into the package: python -m teleop](#2026-10-14--teleop-entry-point-moved-into-the-package-python--m-teleop)
+- [2026-10-14 — One robot file: configs/robot.yaml](#2026-10-14--one-robot-file-configsrobotyaml)
+- [2026-10-14 — config.py moved to scripts/](#2026-10-14--configpy-moved-to-scripts)
+- [2026-10-14 — Scripts 15, 20, 21 also use the assets/ URDF](#2026-10-14--scripts-15-20-21-also-use-the-assets-urdf)
+- [2026-10-14 — udev rule moved to assets/udev/](#2026-10-14--udev-rule-moved-to-assetsudev)
+
 ## 2026-10-10 — 14: align the leader arm to the RB-Y1 READY pose at startup
 
 **Decision:** At startup, script 14 moves the real leader arm to the RB-Y1 READY arm pose
@@ -940,12 +1015,6 @@ Scripts 15, 20 and 21 keep their `refs/` paths (kept as they were run).
 Python package and reading its model (extra dependency, and the path inside the package is not
 confirmed).
 
-## PENDING
-
-- **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
-  nearest link distance is below 2 cm (`detect_collisions_or_nearest_links`, lines 1226-1240).
-  Skipped for now (simulator only); needed before any real RB-Y1 use. Measure its cost in the 50 Hz loop.
-
 ## 2026-10-14 — environment.yml for the rb5 env
 
 **Decision:** `environment.yml` lists Python 3.10 and only the packages the code imports, pinned to
@@ -1005,3 +1074,9 @@ Changes the earlier "scripts keep their refs/ paths" (user request): all code no
 
 `udev/99-rby1-leader-arm.rules` -> `assets/udev/` (user request: no single-file folder at the root).
 Still not installed; the install commands in `docs/teleop_guide.md` use the new path.
+
+## PENDING
+
+- **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
+  nearest link distance is below 2 cm (`detect_collisions_or_nearest_links`, lines 1226-1240).
+  Skipped for now (simulator only); needed before any real RB-Y1 use. Measure its cost in the 50 Hz loop.
