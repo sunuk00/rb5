@@ -956,3 +956,10 @@ imports them all and runs the 43 tests (OK).
 **Rejected:** `pip freeze` / `conda env export` of the whole env (it also lists the system ROS 2
 packages and Jupyter, which the code does not use); unpinned versions (a later numpy or rbpodo could
 change behavior without notice). rby1_sdk (scripts 14, 15, 20, env `rby1`) is only noted, not added.
+
+## 2026-10-14 — Teleop logs in data/teleop/
+
+**Decision:** `logging.dir: data/teleop` in both settings files; the 34 earlier teleop files
+(`teleop_sim_*`, `teleop_real_*`, with their settings copies) were moved there. Script outputs stay in
+`data/` (named by script number). `data/` is not committed. Demonstration data will get its own folder
+once its format (e.g. LeRobot) is chosen.

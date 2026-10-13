@@ -57,7 +57,7 @@ What happens:
    already there.
 4. Checks at the ready pose: DH model vs controller (<= 5 mm), TCP inside the range, singularity and
    joint limit margins.
-5. Teleop until Ctrl+C. The log is saved as `data/teleop_sim_<time>.csv` with
+5. Teleop until Ctrl+C. The log is saved as `data/teleop/teleop_sim_<time>.csv` with
    `..._settings.yaml` (a copy of the settings used).
 
 ## 4. Controls (right handle)

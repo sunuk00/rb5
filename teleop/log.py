@@ -7,7 +7,7 @@ import yaml
 
 
 def run_paths(log_dir, mode, root):
-    """(csv path, settings copy path) for a new run, e.g. data/teleop_sim_20261012_130000.csv."""
+    """(csv path, settings copy path) for a new run, e.g. data/teleop/teleop_sim_20261012_130000.csv."""
     folder = Path(log_dir)
     if not folder.is_absolute():
         folder = Path(root) / folder
