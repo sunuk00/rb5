@@ -945,3 +945,14 @@ confirmed).
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
   nearest link distance is below 2 cm (`detect_collisions_or_nearest_links`, lines 1226-1240).
   Skipped for now (simulator only); needed before any real RB-Y1 use. Measure its cost in the 50 Hz loop.
+
+## 2026-10-14 — environment.yml for the rb5 env
+
+**Decision:** `environment.yml` lists Python 3.10 and only the packages the code imports, pinned to
+the versions in the lab PC's `rb5` env (rbpodo 0.16.14, dynamixel-sdk 4.1.0, numpy 2.2.6, PyYAML
+6.0.3, matplotlib 3.10.9, evdev 1.9.3), all through pip. Checked: a new env built from the file
+imports them all and runs the 43 tests (OK).
+
+**Rejected:** `pip freeze` / `conda env export` of the whole env (it also lists the system ROS 2
+packages and Jupyter, which the code does not use); unpinned versions (a later numpy or rbpodo could
+change behavior without notice). rby1_sdk (scripts 14, 15, 20, env `rby1`) is only noted, not added.

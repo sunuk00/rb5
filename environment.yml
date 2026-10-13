@@ -1,0 +1,20 @@
+# Conda environment for this repository (teleop, tests, scripts except 14, 15, 20).
+# Create:  conda env create -f environment.yml   then   conda activate rb5
+# Versions are the ones installed in the lab PC's rb5 env on 2026-10-14 (pip list).
+# Only the packages the code imports are listed; the ROS 2 packages that pip list also shows
+# come from the system ROS installation, not from this env.
+# Scripts 14, 15 and 20 use rby1_sdk and were run in a separate env (rby1: Python 3.12,
+# rby1-sdk 0.10.0); the teleop does not need it.
+name: rb5
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - rbpodo==0.16.14         # RB5 API (teleop, scripts)
+      - dynamixel-sdk==4.1.0    # leader arm (teleop, scripts); pulls in pyserial
+      - numpy==2.2.6
+      - PyYAML==6.0.3           # configs/*.yaml
+      - matplotlib==3.10.9      # plots in scripts 09-11
+      - evdev==1.9.3            # keyboard input in scripts 05, 07, 08 (Linux only)
