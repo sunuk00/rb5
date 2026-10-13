@@ -1,4 +1,4 @@
-# Robot connection shared by the teleop (teleop/settings.py) and the scripts (config.py).
+# Robot connection shared by the teleop (teleop/settings.py) and the scripts (scripts/config.py).
 # Change the IP or the speed bar here only.
 ip: 10.0.2.6                    # RB5 control box
 speed_bar: 0.1                  # CLAUDE.md: <= 0.1. Scales move_j (19), not servo (06)

@@ -988,3 +988,10 @@ Scripts 01 and 02 still have the IP written in them (kept as run).
 
 **Rejected:** deleting `config.py` and editing the 14 scripts (they are kept as run); `config.py`
 reading `sim.yaml` (the IP would still be in two settings files).
+
+## 2026-10-14 — config.py moved to scripts/
+
+Only the scripts use it (`import config`). In `scripts/` Python finds it without any change to the
+scripts, because the folder of the script being run is on the import path. The repository root
+keeps only folders, README and environment.yml. `scripts/README.md` now lists, per script, how to
+run it, its options and what it moves.
