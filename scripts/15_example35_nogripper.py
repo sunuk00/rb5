@@ -3,8 +3,9 @@
 ######################################################################
 # RB_Cobot copy (step 15): refs/rby1-sdk/examples/python/35_leader_arm_teleop_with_monitor.py with
 # the gripper usage removed (no /dev/rby1_gripper in this setup), the leader arm URDF path pointed at
-# refs/rby1-sdk, and simulator fixes: the "12v" power device (absent; the simulator has only "main")
-# replaced by the --power pattern, and a failed tool flange voltage setting only warns.
+# assets/leader_arm (copy of the rby1-sdk file), and simulator fixes: the "12v" power device (absent;
+# the simulator has only "main") replaced by the --power pattern, and a failed tool flange voltage
+# setting only warns.
 # The Gripper class is left in place but never created.
 # Full difference: docs/patches/15_example35_nogripper.diff
 ######################################################################
@@ -47,7 +48,7 @@ import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # URDF_PATH = os.path.join(SCRIPT_DIR, "models", "leader_arm", "model.urdf")
-URDF_PATH = os.path.join(SCRIPT_DIR, "../refs/rby1-sdk/models/leader_arm", "model.urdf")  # RB_Cobot copy: path from scripts/
+URDF_PATH = os.path.join(SCRIPT_DIR, "../assets/leader_arm", "model.urdf")  # RB_Cobot copy: same file as rby1-sdk v0.10.0
 LEADER_ARM_DEVICE_NAME = rby.upc.resolve_leader_arm_device_name()
 
 GRIPPER_DIRECTION = False
