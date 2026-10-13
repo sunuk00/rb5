@@ -5,9 +5,7 @@
 # placeholders marked PROVISIONAL, to be replaced by table height + gripper length and the lab's TCP.
 mode: real
 
-robot:
-  ip: 10.0.2.6
-  speed_bar: 0.1                # CLAUDE.md: <= 0.1
+# robot (ip, speed_bar): configs/robot.yaml, shared with the scripts
 
 servo:                          # same as Simulation (06, 10, 13 Real)
   period_s: 0.02

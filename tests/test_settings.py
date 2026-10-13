@@ -73,7 +73,6 @@ class TestSettings(unittest.TestCase):
 
     def test_value_checks(self):
         cases = [
-            (("robot", "speed_bar"), 0.2, "above 0.1"),
             (("mapping", "scale"), "0.5", "expected a number"),
             (("safety", "joint_limit_deg"), [360.0] * 5, "list of 6"),
             (("safety", "max_late_cycles"), 2.5, "integer"),
@@ -84,6 +83,17 @@ class TestSettings(unittest.TestCase):
             d = raw(SIM)
             d[sec][key] = value
             self.assert_problem(d, text)
+
+    def test_robot_file(self):
+        s, d = load_settings(SIM)
+        self.assertEqual(s.robot.ip, raw(ROOT / "configs" / "robot.yaml")["ip"])
+        self.assertIn("robot", d)                       # the run log's settings copy includes it
+        with self.assertRaises(SettingsError) as cm:   # speed bar above 0.1 in robot.yaml
+            load_settings(SIM, robot_path=write_tmp({"ip": "10.0.2.6", "speed_bar": 0.2}))
+        self.assertTrue(any("above 0.1" in p for p in cm.exception.problems), cm.exception.problems)
+        d = raw(SIM)                                    # a robot section in a settings file is refused
+        d["robot"] = {"ip": "10.0.2.6", "speed_bar": 0.1}
+        self.assert_problem(d, "robot: set in robot.yaml")
 
     def test_relations(self):
         d = raw(SIM); d["safety"]["j5_stop_deg"] = 25.0

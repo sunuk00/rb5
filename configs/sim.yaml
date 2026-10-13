@@ -2,9 +2,7 @@
 # scripts/21_leader_rb5_position.py on 2026-10-12 (see docs/decisions.md for each decision).
 mode: sim
 
-robot:
-  ip: 10.0.2.6
-  speed_bar: 0.1                # CLAUDE.md: <= 0.1. Scales move_j (19), not servo (06)
+# robot (ip, speed_bar): configs/robot.yaml, shared with the scripts
 
 servo:                          # move_servo_l arguments (rb_cobot_docs UI Script 7.35)
   period_s: 0.02                # 50 Hz send loop

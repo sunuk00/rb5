@@ -975,3 +975,16 @@ picks the package on import).
 this file still say `teleop.py`.
 
 **Rejected:** renaming to `run_teleop.py` (still a second top-level name for the same thing).
+
+## 2026-10-14 — One robot file: configs/robot.yaml
+
+**Problem:** the robot IP was in `config.py`, `configs/sim.yaml` and `configs/real.yaml`.
+
+**Decision (user):** `configs/robot.yaml` (ip, speed_bar) is the only place. `load_settings` adds it as
+the `robot` section and checks it with the same schema (speed bar <= 0.1); a settings file that still
+has a `robot` section is refused. `config.py` reads the same file and keeps `ROBOT_IP` and `SPEED`, so
+the 14 scripts that import it are unchanged. Sim and Real now share one speed bar (both were 0.1).
+Scripts 01 and 02 still have the IP written in them (kept as run).
+
+**Rejected:** deleting `config.py` and editing the 14 scripts (they are kept as run); `config.py`
+reading `sim.yaml` (the IP would still be in two settings files).

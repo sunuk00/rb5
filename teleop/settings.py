@@ -130,6 +130,8 @@ SCHEMA = {
     },
 }
 
+ROBOT_FILE = Path(__file__).resolve().parent.parent / "configs" / "robot.yaml"
+
 # Null is allowed in Simulation (meaning "not used / not checked") but not in Real.
 REQUIRED_FOR_REAL = ("range.z_min_abs_mm", "tcp.expected_offset_mm", "ready_pose.joints_deg")
 
@@ -271,13 +273,20 @@ def _freeze(value):
     return value
 
 
-def load_settings(path, real=False):
+def load_settings(path, real=False, robot_path=ROBOT_FILE):
     """Load and check a settings file. real=True also applies the Real requirements and limits.
-    Returns (settings, raw dict). Raises SettingsError listing every problem."""
+    The robot section (ip, speed_bar) comes from robot_path (configs/robot.yaml, shared with the
+    scripts) and must not be in the settings file. Returns (settings, raw dict with the robot section).
+    Raises SettingsError listing every problem."""
     path = Path(path)
     with open(path) as f:
         d = yaml.safe_load(f)
     problems = []
+    if "robot" in d:
+        problems.append(f"robot: set in {Path(robot_path).name}, not in this file")
+        raise SettingsError(path, problems)
+    with open(robot_path) as f:
+        d = {"robot": yaml.safe_load(f), **d}
     _check(SCHEMA, d, "", problems)
     if not problems:
         _check_relations(d, problems)

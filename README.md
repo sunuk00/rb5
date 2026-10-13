@@ -4,7 +4,8 @@ RB5-850 + Allegro Hand V4 test repository: robot API tests and RB-Y1 leader arm 
 - `scripts/` - numbered experiment scripts (01-22), kept as they were run
 - `teleop/` - leader arm -> RB5 teleop (position, yaw, gripper signal). Run from the repository root:
   `python -m teleop` (Simulation by default; `--real` for the real robot)
-- `configs/` - teleop settings (`sim.yaml`, conservative `real.yaml` with TBD values)
+- `configs/` - `robot.yaml` (robot IP and speed bar, shared by the teleop and the scripts via `config.py`),
+  teleop settings `sim.yaml` and conservative `real.yaml`
 - `environment.yml` - conda env `rb5`: `conda env create -f environment.yml`
 - `assets/leader_arm/` - leader arm URDF (copy from rby1-sdk, Apache 2.0)
 - `tests/` - automated tests with fake devices: `python -m unittest discover tests`
