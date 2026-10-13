@@ -13,7 +13,7 @@ Copy:   scripts/15_example35_nogripper.py (step 15). Changes: header note, URDF 
 +# refs/rby1-sdk, and simulator fixes: the "12v" power device (absent; the simulator has only "main")
 +# replaced by the --power pattern, and a failed tool flange voltage setting only warns.
 +# The Gripper class is left in place but never created.
-+# Full difference: docs/15_example35_nogripper.diff
++# Full difference: docs/patches/15_example35_nogripper.diff
 +######################################################################
  # This example initializes the robot, gripper, and leader arm connected to a UPC, moves the robot to a
  # ready pose, and streams teleoperation commands that map leader arm joint motion and trigger input to
