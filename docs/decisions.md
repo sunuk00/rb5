@@ -995,3 +995,8 @@ Only the scripts use it (`import config`). In `scripts/` Python finds it without
 scripts, because the folder of the script being run is on the import path. The repository root
 keeps only folders, README and environment.yml. `scripts/README.md` now lists, per script, how to
 run it, its options and what it moves.
+
+## 2026-10-14 — Scripts 15, 20, 21 also use the assets/ URDF
+
+Changes the earlier "scripts keep their refs/ paths" (user request): all code now reads
+`assets/leader_arm/model.urdf`; `refs/` is reference only. The example 35 diff was regenerated.
