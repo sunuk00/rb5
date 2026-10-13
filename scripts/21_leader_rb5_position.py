@@ -131,7 +131,7 @@ LEADER_JOINTS = ["J0_Shoulder_Pitch_R", "J1_Shoulder_Roll_R", "J2_Shoulder_Yaw_R
 TOOL_ID = 0x80             # right tool
 TOOL_READ_PAUSE_S = 100e-6 # rby1-sdk ReadButtonStatus sleeps 100 us after the read
 TICKS_PER_REV = 4096
-URDF_PATH = ROOT / "refs" / "rby1-sdk" / "models" / "leader_arm" / "model.urdf"
+URDF_PATH = ROOT / "assets" / "leader_arm" / "model.urdf"   # copy of rby1-sdk v0.10.0 (was refs/rby1-sdk)
 
 # --- Gripper signal from the tool trigger (decisions 2026-10-12)
 TRIGGER_FULL = 1000.0      # trigger 0 = fully closed, 1000 = fully open (user measurement)

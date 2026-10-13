@@ -141,6 +141,8 @@ class TestLeader(unittest.TestCase):
 
 def load_21():
     """The original script 21 with its constants set to configs/sim.yaml, or None if it cannot load."""
+    if str(ROOT / "scripts") not in sys.path:
+        sys.path.append(str(ROOT / "scripts"))   # script 21 imports scripts/config.py
     try:
         spec = importlib.util.spec_from_file_location("s21", ROOT / "scripts" / "21_leader_rb5_position.py")
         m = importlib.util.module_from_spec(spec)

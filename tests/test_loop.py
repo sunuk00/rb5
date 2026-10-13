@@ -244,6 +244,8 @@ class TestLoop(unittest.TestCase):
 
 
 def load_21():
+    if str(ROOT / "scripts") not in sys.path:
+        sys.path.append(str(ROOT / "scripts"))   # script 21 imports scripts/config.py
     try:
         spec = importlib.util.spec_from_file_location("s21", ROOT / "scripts" / "21_leader_rb5_position.py")
         m = importlib.util.module_from_spec(spec)

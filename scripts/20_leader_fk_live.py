@@ -39,7 +39,7 @@ import numpy as np
 import rby1_sdk as rby
 
 ROOT = Path(__file__).resolve().parent.parent
-URDF_PATH = ROOT / "refs" / "rby1-sdk" / "models" / "leader_arm" / "model.urdf"
+URDF_PATH = ROOT / "assets" / "leader_arm" / "model.urdf"   # copy of rby1-sdk v0.10.0 (was refs/rby1-sdk)
 
 PROTOCOL_VERSION = 2.0     # rby1-sdk dynamixel_bus.h
 BAUDRATE = 2000000

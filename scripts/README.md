@@ -10,7 +10,7 @@ by number). The teleop is not here: `python -m teleop` (see `docs/teleop_guide.m
   01 and 02 have the IP written in the file.
 - Every script prints its options with `--help` (all except 01, 02, 04 and 17, which have none).
 - Leader arm scripts need `/dev/ttyUSB0` with FTDI `latency_timer` = 1 (`docs/teleop_guide.md`, udev rule).
-- 20 and 21 read the leader URDF from `refs/rby1-sdk/` (not committed); the teleop uses `assets/`.
+- The leader arm URDF is `assets/leader_arm/model.urdf` (teleop, 20, 21); 15 still uses `refs/rby1-sdk/`.
 - Outputs go to `data/` (not committed), measurement plots to `docs/measurements/`.
 - Values that are not options (poses, speeds, limits) are UPPER_CASE constants at the top of each file.
 
