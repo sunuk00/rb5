@@ -40,6 +40,36 @@ CSV_HEADER = (["t_s", "cycle_interval_ms", "button_raw", "clutch_engaged"]
               + ["left_button_raw", "left_mode_active", "accel_limited"])
 
 
+def csv_row(t, interval, button_raw, engaged, leader_q, leader_p, desired, target, tcp, q, j5_pred, sh_pred,
+            max_dq, flags, late, late_early, stale, state_age, t_leader, t_plan, t_send, t_work, send_interval,
+            el_pred, lag, dropped, jl_pred, yaw_desired, yaw_target, yaw_tcp, yaw_lag, dropped_yaw, grip, measured,
+            used_p, used_j6, left_raw, left_active):
+    """One CSV row in the order of CSV_HEADER (times in s, written in ms where the header says ms)."""
+    def f(v, fmt="{:.3f}"):
+        return [fmt.format(x) for x in v]
+    empty3 = [""] * 3
+    return ([f"{t:.4f}", "" if interval is None else f"{interval * 1000:.3f}",
+             "" if button_raw is None else button_raw, int(engaged)]
+            + (f(np.degrees(leader_q)) if leader_q is not None else [""] * 7)
+            + (f(leader_p) if leader_p is not None else empty3)
+            + (f(desired) if desired is not None else empty3) + f(target) + f(tcp[:3]) + f(q)
+            + [f"{j5_pred:.2f}", f"{sh_pred:.1f}", f"{max_dq:.3f}"]
+            + [int(flags.get(k, False)) for k in ("speed", "j5slow", "shslow", "jspeed", "range", "lead")]
+            + [int(late), int(late_early), int(stale), f"{state_age * 1000:.2f}"]
+            + [f"{t_leader * 1000:.2f}", f"{t_plan * 1000:.2f}", f"{t_send * 1000:.2f}", f"{t_work * 1000:.2f}",
+               "" if send_interval is None else f"{send_interval * 1000:.2f}"]
+            + [f"{el_pred:.2f}", int(flags.get("elslow", False)), f"{lag:.3f}", f"{dropped:.3f}"]
+            + [f"{jl_pred:.2f}", int(flags.get("jlslow", False))]
+            + ["" if yaw_desired is None else f"{yaw_desired:.3f}", f"{yaw_target:.3f}", f"{yaw_tcp:.3f}"]
+            + [int(flags.get(k, False)) for k in ("yspeed", "yrange", "ylead")]
+            + [f"{yaw_lag:.3f}", f"{dropped_yaw:.3f}"]
+            + ["" if grip.trigger is None else grip.trigger, "" if grip.close is None else f"{grip.close:.3f}",
+               "" if grip.closed is None else int(grip.closed), int(button_raw is None)]
+            + measured
+            + ([f"{v:.3f}" for v in used_p] + [f"{used_j6:.3f}"] if used_p is not None else [""] * 4)
+            + ["" if left_raw is None else left_raw, int(left_active), int(flags.get("accel", False))])
+
+
 class StopRequest(Exception):
     """Controlled stop: end servo mode normally (hold target, move_speed_j(0), poll)."""
 
@@ -68,6 +98,19 @@ class TeleopLoop:
         p = self.model.tcp(q_meas)[0]
         return ([f"{v:.3f}" for v in q_meas] + [f"{v:.3f}" for v in p]
                 + [f"{np.linalg.norm(np.asarray(target) - p):.3f}"])
+
+    def _status_line(self, clutch, mapper, grip, tcp0, q, leader_fail_total, leader_reads):
+        tool_rate = 100.0 * clutch.failures / max(clutch.reads, 1)
+        leader_rate = 100.0 * leader_fail_total / max(leader_reads, 1)
+        sys.stdout.write(
+            f"{CLEAR_LINE}clutch {'ENGAGED ' if clutch.engaged else 'released'}"
+            f"{(' ' + self.s.mapping.left_button.upper()) if mapper.left_active else ''}  "
+            f"target-start {np.round(mapper.target - tcp0[:3], 1)} mm  yaw {mapper.yaw:6.1f}  "
+            f"J5 {singular_distance(q[4]):5.1f}  shoulder {self.model.shoulder_margin(q):5.0f} mm  "
+            f"grip {'-' if grip.close is None else f'{grip.close:.2f}'}"
+            f"{'' if grip.closed is None else (' CLOSED' if grip.closed else ' OPEN')}  |  "
+            f"button fail {tool_rate:4.1f}%  leader fail {leader_rate:4.1f}%")
+        sys.stdout.flush()
 
     def labels(self):
         s, lim = self.s, self.lim
@@ -238,44 +281,21 @@ class TeleopLoop:
             send_interval = None if last_send is None else t_send0 - last_send
             last_send = t_send0
 
-            f = lambda v, fmt="{:.3f}": [fmt.format(x) for x in v]   # noqa: E731
-            empty3 = [""] * 3
-            self.rows.append(
-                [f"{t_cycle - t_start:.4f}", "" if interval is None else f"{interval * 1000:.3f}",
-                 "" if button_raw is None else button_raw, int(clutch.engaged)]
-                + (f(np.degrees(leader_q)) if leader_q is not None else [""] * 7)
-                + (f(leader_p) if leader_p is not None else empty3)
-                + (f(desired) if desired is not None else empty3) + f(mapper.target) + f(tcp[:3]) + f(q)
-                + [f"{j5_pred:.2f}", f"{sh_pred:.1f}", f"{max_dq:.3f}"]
-                + [int(flags.get(k, False)) for k in ("speed", "j5slow", "shslow", "jspeed", "range", "lead")]
-                + [int(late), int(late_early), int(stale), f"{state_age * 1000:.2f}"]
-                + [f"{t_leader * 1000:.2f}", f"{t_plan * 1000:.2f}", f"{(t_send_end - t_send0) * 1000:.2f}",
-                   f"{(t_send_end - t_cycle) * 1000:.2f}", "" if send_interval is None else f"{send_interval * 1000:.2f}"]
-                + [f"{el_pred:.2f}", int(flags.get("elslow", False)), f"{lag:.3f}",
-                   f"{np.linalg.norm(dropped) if not late else 0.0:.3f}"]
-                + [f"{jl_pred:.2f}", int(flags.get("jlslow", False))]
-                + ["" if yaw_desired is None else f"{yaw_desired:.3f}", f"{mapper.yaw:.3f}", f"{yaw_tcp:.3f}"]
-                + [int(flags.get(k, False)) for k in ("yspeed", "yrange", "ylead")]
-                + [f"{yaw_lag:.3f}", f"{abs(plan.dropped_yaw) if plan is not None and not late else 0.0:.3f}"]
-                + ["" if grip.trigger is None else grip.trigger, "" if grip.close is None else f"{grip.close:.3f}",
-                   "" if grip.closed is None else int(grip.closed), int(button_raw is None)]
-                + self._measured_columns(q_meas, mapper.target)
-                + ([f"{v:.3f}" for v in used_p] + [f"{used_j6:.3f}"] if used_p is not None else [""] * 4)
-                + ["" if left_raw is None else left_raw, int(mapper.left_active), int(flags.get("accel", False))])
+            self.rows.append(csv_row(
+                t=t_cycle - t_start, interval=interval, button_raw=button_raw, engaged=clutch.engaged,
+                leader_q=leader_q, leader_p=leader_p, desired=desired, target=mapper.target, tcp=tcp, q=q,
+                j5_pred=j5_pred, sh_pred=sh_pred, max_dq=max_dq, flags=flags, late=late, late_early=late_early,
+                stale=stale, state_age=state_age, t_leader=t_leader, t_plan=t_plan, t_send=t_send_end - t_send0,
+                t_work=t_send_end - t_cycle, send_interval=send_interval, el_pred=el_pred, lag=lag,
+                dropped=0.0 if late else np.linalg.norm(dropped), jl_pred=jl_pred, yaw_desired=yaw_desired,
+                yaw_target=mapper.yaw, yaw_tcp=yaw_tcp, yaw_lag=yaw_lag,
+                dropped_yaw=abs(plan.dropped_yaw) if plan is not None and not late else 0.0, grip=grip,
+                measured=self._measured_columns(q_meas, mapper.target), used_p=used_p, used_j6=used_j6,
+                left_raw=left_raw, left_active=mapper.left_active))
 
             # 7. Status line
             if self.status and cycle % STATUS_EVERY == 0:
-                tool_rate = 100.0 * clutch.failures / max(clutch.reads, 1)
-                leader_rate = 100.0 * leader_fail_total / max(leader_reads, 1)
-                sys.stdout.write(
-                    f"{CLEAR_LINE}clutch {'ENGAGED ' if clutch.engaged else 'released'}"
-                    f"{(' ' + s.mapping.left_button.upper()) if mapper.left_active else ''}  "
-                    f"target-start {np.round(mapper.target - tcp0[:3], 1)} mm  yaw {mapper.yaw:6.1f}  "
-                    f"J5 {singular_distance(q[4]):5.1f}  shoulder {self.model.shoulder_margin(q):5.0f} mm  "
-                    f"grip {'-' if grip.close is None else f'{grip.close:.2f}'}"
-                    f"{'' if grip.closed is None else (' CLOSED' if grip.closed else ' OPEN')}  |  "
-                    f"button fail {tool_rate:4.1f}%  leader fail {leader_rate:4.1f}%")
-                sys.stdout.flush()
+                self._status_line(clutch, mapper, grip, tcp0, q, leader_fail_total, leader_reads)
 
             # 8. Sleep until the next cycle; after an overrun wait a full period (08, as in 13)
             cycle += 1

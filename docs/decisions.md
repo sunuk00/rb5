@@ -90,6 +90,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — real-1 closed: summary](#2026-10-16--real-1-closed-summary)
 - [2026-10-16 — Cleanup before the gripper: cylindrical mapping and the script-21 comparisons removed](#2026-10-16--cleanup-before-the-gripper-cylindrical-mapping-and-the-script-21-comparisons-removed)
 - [2026-10-16 — Gripper signal moved to teleop/gripper.py](#2026-10-16--gripper-signal-moved-to-teleopgripperpy)
+- [2026-10-16 — Loop: CSV row and status line out of run()](#2026-10-16--loop-csv-row-and-status-line-out-of-run)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1632,6 +1633,15 @@ moved unchanged from `teleop/leader.py` to a new `teleop/gripper.py`, so the gri
 before the Allegro Hand is connected (its commands will go there). leader.py keeps the leader arm only
 (joints, handles, FK, filter, clutch). The class is byte-identical to before; the module notes that the
 trigger direction is not confirmed on the hardware (PENDING). 58 tests pass.
+
+## 2026-10-16 — Loop: CSV row and status line out of run()
+
+**Decision (user, cleanup list item 2):** in `teleop/loop.py` the CSV row is built by a module-level
+`csv_row(...)` next to `CSV_HEADER` (named arguments, same order as the header), and the status line by
+`TeleopLoop._status_line(...)`. No change in behaviour: five fake-device scenarios (normal, fast with C,
+rotate + azimuth lock + acceleration limit, vertical, read failures and gripper) give byte-identical rows
+and stop messages before and after (the wall-clock timing columns excluded; the baseline itself was
+checked to be repeatable). The status line was run once with the status enabled. 58 tests pass.
 
 ## PENDING
 
