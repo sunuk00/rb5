@@ -113,6 +113,22 @@ class TestLeader(unittest.TestCase):
         self.assertAlmostEqual(f.update([0, 0, 0], -179.97)[1], 179.95)      # 0.08 deg across +/-180: ignored
         self.assertAlmostEqual(f.update([0, 0, 0], -179.8)[1], -179.8)       # 0.25 deg across +/-180: taken
 
+    def test_leader_low_pass(self):
+        f = LeaderFilter(0.0, 0.0, tau_s=0.03, period_s=0.02)               # alpha = 0.02 / 0.05 = 0.4
+        np.testing.assert_allclose(f.update([0, 0, 0], 0.0)[0], [0, 0, 0])  # first value passes as is
+        np.testing.assert_allclose(f.update([10, 0, 0], 0.0)[0], [4, 0, 0])
+        np.testing.assert_allclose(f.update([10, 0, 0], 0.0)[0], [6.4, 0, 0])
+        for _ in range(30):
+            p, j6 = f.update([10, 0, 0], 5.0)
+        np.testing.assert_allclose(p, [10, 0, 0], atol=1e-5)                 # settles on the hand
+        self.assertEqual(j6, 5.0)                                            # J6 is not low-passed
+        f = LeaderFilter(0.0, 0.0, tau_s=0.0)
+        np.testing.assert_allclose(f.update([1, 2, 3], 0.0)[0], [1, 2, 3])
+        np.testing.assert_allclose(f.update([4, 5, 6], 0.0)[0], [4, 5, 6])  # tau 0 = off
+        f = LeaderFilter(0.3, 0.15, tau_s=0.03)
+        outs = [f.update([0.0, 0.0, 0.1 * (i % 2)], 0.0)[0] for i in range(6)]
+        np.testing.assert_allclose(outs, np.zeros((6, 3)))                   # flicker still removed at rest
+
     def test_clutch(self):
         c = Clutch()
         self.assertEqual(c.update(0x100), (1, None))            # held at start: not armed

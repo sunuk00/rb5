@@ -22,6 +22,8 @@ mapping:
   lead_per_step: 2.0            # target may lead tcp_ref by this x one step
   max_lag_mm: 50.0              # C: lag kept for catch-up; 0 = B (was 30; 50 is the settings maximum)
   leader_deadband_mm: 0.3       # ignore leader wrist center changes < 0.3 mm (encoder flicker, run 141108)
+  leader_filter_tau_s: 0.03     # low-pass on the wrist center against the encoder-step jitter that shook the RB5 at
+                                # 200 mm/s (20261016_021514); offline: jitter 1.73 -> about 0.6 m/s^2, +30 ms delay
 
 yaw:                            # RB5 yaw change = leader J6 change (method B)
   enabled: true

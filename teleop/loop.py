@@ -95,8 +95,9 @@ class TeleopLoop:
         labels = self.labels()
         clutch, grip = self.clutch, self.grip
         leader_q = leader_p = None
-        lf = LeaderFilter(s.mapping.leader_deadband_mm, s.yaw.leader_deadband_deg)
-        used_p = used_j6 = None   # leader values after the deadband (what the mapping uses)
+        lf = LeaderFilter(s.mapping.leader_deadband_mm, s.yaw.leader_deadband_deg,
+                          s.mapping.leader_filter_tau_s, s.servo.period_s)
+        used_p = used_j6 = None   # leader values after the deadband and low-pass (what the mapping uses)
         leader_fails = leader_fail_total = leader_reads = 0
         flags_prev = {}
         last_send = prev_cycle_t = None

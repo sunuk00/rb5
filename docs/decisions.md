@@ -68,6 +68,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 **Real teleop speed (real-1)**
 - [2026-10-16 — real-1: trial protocol for faster Real teleop](#2026-10-16--real-1-trial-protocol-for-faster-real-teleop)
 - [2026-10-16 — Real speed limits to option B: TCP 200 mm/s, joints 1.2 deg/cycle (60 deg/s)](#2026-10-16--real-speed-limits-to-option-b-tcp-200-mms-joints-12-degcycle-60-degs)
+- [2026-10-16 — Low-pass filter on the leader wrist center (tau 30 ms) against the shake at 200 mm/s](#2026-10-16--low-pass-filter-on-the-leader-wrist-center-tau-30-ms-against-the-shake-at-200-mms)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1133,6 +1134,29 @@ speed: 200 mm/s is 4x the energy at 100 mm/s, 300 mm/s would be 9x. B removes mo
 **Condition:** collision detection ON before every Real run (user turns it on with the lab; required
 item at the top of `docs/real_first_run_checklist.md`). First run at the new speeds: slow, small
 motions near the ready pose first.
+
+## 2026-10-16 — Low-pass filter on the leader wrist center (tau 30 ms) against the shake at 200 mm/s
+
+**Observation (Real run 20261016_021514, option B, user felt a shake):** compared with the 100 mm/s
+runs, the target acceleration jitter rose from a median of 0.13-0.22 to 1.23 m/s^2 and the measured
+joint acceleration p99 from 482-638 to 823 deg/s^2 (J2-J4 fast wobble p99 0.11-0.15 deg). The hand
+itself was not jerkier (acceleration p99 3.7-4.4 m/s^2 in all runs). The jitter was larger when the
+speed limit was **not** active (1.66 vs 0.41 m/s^2): the target then follows the hand step by step,
+and the hand step per cycle jumps (e.g. 3.3, 4.0, 3.6 mm) because one leader encoder tick moves the
+wrist center by about 0.5 mm (J0, J1) / 0.25 mm (J2, J3). At 100 mm/s the cap (2 mm per cycle) hid it.
+The log is at 50 Hz, so vibration above 25 Hz cannot be seen.
+
+**Decision (user, item 1 of 4):** a first-order low-pass on the wrist center after the deadband,
+`mapping.leader_filter_tau_s` 0.03 s in sim.yaml and real.yaml (0 = off). J6 / yaw is not filtered.
+Replay of 021514 through `LeaderFilter`: hand acceleration jitter median 1.74 -> 0.65 m/s^2, p99 4.4 ->
+2.1; delay about 30 ms (largest filtered - raw distance 19 mm at the fastest hand motion). Offline
+alternatives: 20 ms -> 0.77, 60 ms -> 0.47, 100 ms -> 0.38 m/s^2.
+
+**Rejected / later:** servo alpha < 1 (controller filter; 06: alpha 0.5 added 19 ms and the settling
+took 213 ms instead of 81 ms); an acceleration limit on the target (does not remove jitter below the
+limit). Next items, one at a time after a Real check of this one: option A speeds (300 mm/s, 80 deg/s,
+yaw 45 deg/s), C lag 20 -> 50 mm (275 mm of a forward reach was dropped in 021514), yaw range +/-45 ->
++/-90 (yaw at the range end 43 % of the clutch time).
 
 ## PENDING
 

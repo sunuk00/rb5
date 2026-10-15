@@ -27,6 +27,8 @@ mapping:
   max_lag_mm: 20.0              # C: catch up to 20 mm after the hand stops (0.1 s at 200 mm/s); was 0 (B). Yaw stays B
                                 # because yaw.max_lag_deg is 0
   leader_deadband_mm: 0.3       # ignore leader wrist center changes < 0.3 mm (encoder flicker, run 141108)
+  leader_filter_tau_s: 0.03     # low-pass on the wrist center against the encoder-step jitter that shook the RB5 at
+                                # 200 mm/s (20261016_021514); offline: jitter 1.73 -> about 0.6 m/s^2, +30 ms delay
 
 yaw:
   enabled: true

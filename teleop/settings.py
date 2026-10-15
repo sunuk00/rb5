@@ -68,6 +68,7 @@ SCHEMA = {
         "lead_per_step": _num(1.0, 5.0),
         "max_lag_mm": _num(0.0, 50.0),
         "leader_deadband_mm": _num(0.0, 5.0),         # leader wrist center changes smaller than this are ignored
+        "leader_filter_tau_s": _num(0.0, 0.2),        # low-pass time constant on the wrist center; 0 = off
     },
     "yaw": {
         "enabled": _bool(),
