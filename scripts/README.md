@@ -45,6 +45,7 @@ default, Real with `--real` and typed confirmation; **leader** = writes torque t
 | 21 | `21_leader_rb5_position.py` | Leader wrist center -> RB5 TCP with move_servo_l | RB5 (Sim) | replaced |
 | 22 | `22_base_axis_check.py` | Where the RB5 base +x / +y point on the real robot | - | tool (Real checklist) |
 | 23 | `23_trial_summary.py` | Summary of Real teleop trials from the logs (real-1) | - (log files only) | tool |
+| 24 | `24_run_report.py` | Full report on teleop runs: speeds, limits per mode, drops, smoothness with the real sample times, lag, timing | - (log files only) | tool |
 
 ## Usage per script
 
@@ -299,3 +300,16 @@ python scripts/23_trial_summary.py data/teleop/teleop_real_20261016_*.csv --tria
 
 Prints one line per trial (time, clutch presses, follow %, dropped mm, which limits were active) and a
 summary per setting without the practice trials. Protocol: `docs/real_trial_protocol.md`.
+
+### 24 run report
+```
+python scripts/24_run_report.py data/teleop/teleop_real_20261016_051339.csv          # full report
+python scripts/24_run_report.py data/teleop/teleop_real_20261016_*.csv --compare     # one line per run
+```
+| Option | Meaning |
+|---|---|
+| `logs` | teleop logs (`_settings.yaml` files are skipped; the settings next to each log give its caps and range) |
+| `--compare` | one line per run: presses, speed / joint limit shares, drops, jitter, joint acceleration, lag, late, slowdowns |
+
+Joint speeds and accelerations are computed from the RB5 reference with the real sample times
+(`t_s - state_age_ms`; the state arrives 13-22 ms apart). Runs without clutch time are reported as such.

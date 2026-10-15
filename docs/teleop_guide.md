@@ -63,7 +63,7 @@ What happens:
 4. Checks at the ready pose: DH model vs controller (<= 5 mm), inside the range, singularity and joint
    limit margins.
 5. Teleop until Ctrl+C. The log is saved as `data/teleop/teleop_<sim|real>_<time>.csv` with a copy of
-   the settings (`..._settings.yaml`). Summary of runs: `python scripts/23_trial_summary.py <logs>`.
+   the settings (`..._settings.yaml`). Summary of runs: `python scripts/23_trial_summary.py <logs>`; full report: `python scripts/24_run_report.py <log>`.
 
 ## 4. Controls
 | input | effect |

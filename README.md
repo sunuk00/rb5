@@ -9,7 +9,7 @@ Next: gripper, demonstration recording. Platform: Linux only for now (Windows: n
   `configs/sim.yaml`) or `python -m teleop --real` (`configs/real.yaml`). Guide: `docs/teleop_guide.md`
 - `configs/` - `robot.yaml` (robot IP and speed bar, shared with the scripts via `scripts/config.py`),
   `real.yaml` (real-1 final) and `sim.yaml` (the same values, checked by a test)
-- `scripts/` - numbered experiment and analysis scripts (01-23), kept as they were run; list in
+- `scripts/` - numbered experiment and analysis scripts (01-24), kept as they were run; list in
   `scripts/README.md`
 - `tests/` - automated tests with fake devices: `python -m unittest discover -s tests`
 - `assets/` - leader arm URDF (`leader_arm/`, copy from rby1-sdk, Apache 2.0) and the leader arm udev
