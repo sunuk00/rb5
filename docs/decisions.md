@@ -88,6 +88,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — Joint speed limit on the step only (the robot's lag is no longer added)](#2026-10-16--joint-speed-limit-on-the-step-only-the-robots-lag-is-no-longer-added)
 - [2026-10-16 — real-1 final settings frozen; Simulation = Real](#2026-10-16--real-1-final-settings-frozen-simulation--real)
 - [2026-10-16 — real-1 closed: summary](#2026-10-16--real-1-closed-summary)
+- [2026-10-16 — Cleanup before the gripper: cylindrical mapping and the script-21 comparisons removed](#2026-10-16--cleanup-before-the-gripper-cylindrical-mapping-and-the-script-21-comparisons-removed)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1606,6 +1607,22 @@ more useful; still available as `left_button: vertical`).
 **Tools:** `scripts/23_trial_summary.py` (trial summary), `scripts/24_run_report.py` (full run report,
 `--compare`), `docs/real_trial_protocol.md` (trial protocol, not needed in the end: the user chose
 changes from the measured hand speed).
+
+## 2026-10-16 — Cleanup before the gripper: cylindrical mapping and the script-21 comparisons removed
+
+**Decision (user, cleanup list items 6, 3, 4):**
+- The cylindrical mapping (`mapping.mode`, `pivot_xy_mm`, `min_pivot_radius_mm`) is removed from the code,
+  the settings and the tests. It was tried once (031043) and reverted; it was the most complex part of the
+  Mapper (an integrated desired position and a pending state). The vertical mode and `yaw.mode: leader_j6`
+  stay (small, settings only).
+- The tests that compared plan_step and the loop with scripts/21 (`TestSameAs21.test_random_steps`,
+  `TestLoopSameAs21`) are retired: the teleop has deliberately diverged from 21 (joint check on the step,
+  acceleration limit, modes), and keeping them needed workarounds (joint caps out of reach, pinned
+  values). The behaviour tests stay; the joint-check test moved to `TestPlanStep`. 66 -> 58 tests (the 8
+  removed: 6 cylindrical / 21 tests in test_core and test_loop, by name).
+- Small: unused imports in the tests; stale comments in the settings (C lag time at 250 mm/s; the yaw
+  values are used only with `leader_j6`); the mapping docstring no longer says "without changes in
+  behavior" from 21.
 
 ## PENDING
 

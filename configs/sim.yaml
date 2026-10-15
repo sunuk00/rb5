@@ -29,16 +29,10 @@ mapping:
   accel_mm_s2: 2500.0           # target acceleration limit (2026-10-16): the largest joint accelerations came when the
                                 # speed / joint limits switched on and off (040257: 97 % / 82 % of the top 1 %); the
                                 # hand's own acceleration p99 is about 4 m/s^2. 0 = off
-  max_lag_mm: 20.0              # C: catch up to 20 mm after the hand stops (0.1 s at 200 mm/s); was 0 (B). Yaw stays B
-                                # because yaw.max_lag_deg is 0
+  max_lag_mm: 20.0              # C: catch up to 20 mm after the hand stops (0.08 s at 250 mm/s); was 0 (B)
   leader_deadband_mm: 0.3       # ignore leader wrist center changes < 0.3 mm (encoder flicker, run 141108)
   leader_filter_tau_s: 0.03     # low-pass on the wrist center against the encoder-step jitter that shook the RB5 at
                                 # 200 mm/s (20261016_021514); offline: jitter 1.73 -> about 0.6 m/s^2, +30 ms delay
-  mode: cartesian               # "cylindrical" (a hand swing about the pivot turns J1 by the same angle) was tried on
-                                # 2026-10-16 (031043): J1 easier, but it felt worse and hit the speed cap 65 % of the time
-  pivot_xy_mm: [0.0, 0.0]       # leader base center: hand 205 mm or more from it in 95 % of the clutch time (right
-                                # shoulder (0, -150): 87 mm), sideways gain about 1.6x median (shoulder 2.3x)
-  min_pivot_radius_mm: 150.0    # angle = sideways motion / max(hand radius, 150): bounded gain near the axis
   left_button: rotate           # left handle button held: "rotate" = radius and z fixed, sideways hand motion turns
                                 # J1 (user 2026-10-16); "vertical" = x, y fixed, only z follows (straight descents);
                                 # "off" = button not read
@@ -54,7 +48,8 @@ mapping:
 
 yaw:
   mode: follow_base             # user 2026-10-16: RB5 J6 stays still; the tool turns with J1 (leader J6 not used).
-                                # "leader_j6" = twist the handle to turn the tool (the settings below)
+                                # "leader_j6" = twist the handle to turn the tool; the values below are used only
+                                # in that mode (and leader_deadband_deg for the logged J6)
   enabled: true
   speed_deg_s: 30.0             # was 15. Real max 30
   range_deg: 45.0               # conservative

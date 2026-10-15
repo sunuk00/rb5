@@ -87,7 +87,7 @@ Range (absolute, base frame): radius 350-800 mm, height -50..465 mm (the outer r
 makes the robot jump.
 
 Other settings modes (not used now): `mapping.left_button: vertical` (left button = x, y fixed, only z,
-x 1.5), `mapping.lock_azimuth: false` (left / right moves the robot sideways), `mapping.mode: cylindrical`,
+x 1.5), `mapping.lock_azimuth: false` (left / right moves the robot sideways),
 `yaw.mode: leader_j6` (twist the handle to turn the tool). Change real.yaml and sim.yaml together.
 
 ## 5. Stop

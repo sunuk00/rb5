@@ -1,6 +1,5 @@
 """Tests for teleop.kinematics, teleop.safety, teleop.mapping and teleop.leader (no hardware).
 Run: python -m unittest discover tests"""
-import importlib.util
 import sys
 import unittest
 from pathlib import Path
@@ -15,9 +14,8 @@ from teleop.kinematics import CylinderRange, RB5Model, rot_zyx, tcp_offset_from,
 from teleop.leader import Clutch, GripSignal, LeaderFilter, LeaderModel  # noqa: E402
 from teleop.mapping import Limits, Mapper, clip_step, plan_step  # noqa: E402
 from teleop.safety import Watch, joint_limit_margin, ramp_scale, singular_distance  # noqa: E402
-from teleop.settings import load_settings  # noqa: E402
 
-from fixtures import TEST as SIM, ns, test_raw  # noqa: E402  (pose D era values, same as 21)
+from fixtures import TEST as SIM, test_raw  # noqa: E402  (pose D era values, 2026-10-12)
 URDF = ROOT / "assets" / "leader_arm" / "model.urdf"
 OFFSET = [0.0, -187.0, -40.0]
 POSE_D = np.array([182.0, -11.0, -110.1, 31.1, -90.0, -2.0])   # pose D (tests are written for it)
@@ -157,69 +155,9 @@ class TestLeader(unittest.TestCase):
         self.assertEqual(out[10], (0.38, False))
 
 
-def load_21():
-    """The original script 21 with its constants set to configs/sim.yaml, or None if it cannot load."""
-    if str(ROOT / "scripts") not in sys.path:
-        sys.path.append(str(ROOT / "scripts"))   # script 21 imports scripts/config.py
-    try:
-        spec = importlib.util.spec_from_file_location("s21", ROOT / "scripts" / "21_leader_rb5_position.py")
-        m = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(m)
-    except Exception:
-        return None
-    m.MAX_STEP_MM, m.MAX_LEAD_MM, m.MAX_LAG_MM, m.MAX_YAW_LAG_DEG = 4.0, 8.0, 30.0, 15.0
-    m.CYL_R_MIN, m.CYL_R_MAX, m.CYL_Z_HALF, m.CYL_AZ_HALF_DEG = 450.0, 550.0, 150.0, 90.0
-    return m
 
+class TestPlanStep(unittest.TestCase):
 
-class TestSameAs21(unittest.TestCase):
-    """plan_step must give the same result as scripts/21 for the same inputs (sim.yaml values)."""
-
-    def test_random_steps(self):
-        m = load_21()
-        if m is None:
-            self.skipTest("scripts/21 needs rbpodo and dynamixel_sdk (conda env rb5)")
-        rng = np.random.default_rng(1)
-        model, watch = RB5Model(OFFSET), Watch(SIM.safety)
-        seen = set()
-        # 21 added the robot's lag to the joint speed check; since 2026-10-16 only the step counts (own test
-        # below). Joint caps out of reach on both sides, so everything else is compared one to one.
-        m.MAX_DQ_DEG = np.full(6, 1e6)
-        for lag in (30.0, 0.0):
-            m.MAX_LAG_MM, m.MAX_YAW_LAG_DEG = lag, (15.0 if lag else 0.0)
-            s = test_raw()
-            s["mapping"]["max_lag_mm"] = lag
-            lim = Limits(_ns(s))
-            lim.max_dq_deg = np.full(6, 1e6)
-            for i in range(300):
-                q = POSE_D + rng.normal(0, 8, 6)
-                # also poses near the wrist singularity, the J3 limit and the elbow singularity
-                if i % 3 == 1:
-                    q[4] = rng.normal(0, 14)
-                elif i % 3 == 2:
-                    q[2] = rng.choice([rng.uniform(-150, -128), rng.uniform(-25, -5)])
-                tcp = model.tcp(q)[0]
-                p0 = model.tcp(POSE_D)[0]
-                target = tcp + rng.normal(0, 2, 3)
-                desired = target + rng.normal(0, 40, 3)
-                yaw = {"target": rng.normal(0, 20), "desired": rng.normal(0, 60), "tcp": rng.normal(0, 20)}
-                yaw["tcp"] = yaw["target"] + rng.normal(0, 1)
-                a = plan_step(target, desired, tcp, q, model, CylinderRange.from_settings(SIM.range), yaw, lim, watch)
-                b = m.plan_step(target, desired, tcp, q, m.RB5Model(OFFSET), m.CylinderRange(p0), dict(yaw))
-                np.testing.assert_allclose(a.target, b.target, atol=1e-9)
-                self.assertAlmostEqual(a.yaw, b.yaw, places=9)
-                np.testing.assert_allclose(a.dropped, b.dropped, atol=1e-9)
-                self.assertAlmostEqual(a.dropped_yaw, b.dropped_yaw, places=9)
-                self.assertEqual({k: v for k, v in a.flags.items() if k != "accel"}, b.flags)   # accel is new (off here)
-                np.testing.assert_allclose(a.margins, b.margins, atol=1e-9)
-                self.assertAlmostEqual(a.max_dq, b.max_dq, places=9)
-                self.assertAlmostEqual(a.lag, b.lag, places=9)
-                self.assertEqual(a.stop, b.stop)
-                seen.update(k for k, v in a.flags.items() if v)
-                seen.update(["stop"] if a.stop else [])
-        # the cases must exercise the limits, the watches and the stop
-        for key in ("speed", "yspeed", "range", "lead", "j5slow", "elslow", "jlslow", "stop"):
-            self.assertIn(key, seen)
 
     def test_joint_speed_limit_ignores_the_lag(self):
         model, watch = RB5Model(OFFSET), Watch(SIM.safety)
@@ -266,25 +204,6 @@ class TestMapper(unittest.TestCase):
         self.assertAlmostEqual(yaw, 7.0)
 
 
-def cyl_settings(scale=1.0, pivot=(0.0, 0.0), min_radius=150.0):
-    d = test_raw()
-    d["mapping"].update(mode="cylindrical", scale=scale, pivot_xy_mm=list(pivot), min_pivot_radius_mm=min_radius)
-    return ns(d)
-
-
-def follow(mp, points, dropped=None):
-    """Feed leader points, applying each desired position as the target (nothing cut)."""
-    for p in points:
-        pos, _ = mp.desired(p, 0.0)
-        mp.apply(SimpleNamespace(target=pos, yaw=0.0, dropped=np.zeros(3) if dropped is None else dropped,
-                                 dropped_yaw=0.0))
-    return pos
-
-
-def arc(radius, deg_from, deg_to, n, z=0.0, center=(0.0, 0.0)):
-    a = np.radians(np.linspace(deg_from, deg_to, n + 1)[1:])
-    return [[center[0] + radius * np.cos(t), center[1] + radius * np.sin(t), z] for t in a]
-
 
 class TestClipStep(unittest.TestCase):
     def test_sideways_faster_than_radial_and_vertical(self):
@@ -298,47 +217,6 @@ class TestClipStep(unittest.TestCase):
         np.testing.assert_allclose(d / np.linalg.norm(d), np.array([4.0, 6.0, 0]) / np.hypot(4, 6))   # same direction
         np.testing.assert_allclose(clip_step(np.array([1.0, 1.0, 1.0]), at, 4.0, 6.0), [1, 1, 1])   # small: unchanged
 
-
-class TestCylindricalMapper(unittest.TestCase):
-    def setUp(self):
-        self.mp = Mapper(cyl_settings(), [500.0, 0.0, 200.0])
-        self.mp.engage([300.0, 0.0, 0.0], 0.0)
-
-    def test_swing_turns_the_base_by_the_same_angle(self):
-        pos = follow(self.mp, arc(300.0, 0.0, 30.0, 60))
-        self.assertAlmostEqual(np.degrees(np.arctan2(pos[1], pos[0])), 30.0, places=6)
-        self.assertAlmostEqual(np.hypot(pos[0], pos[1]), 500.0, places=6)    # radius kept
-        self.assertAlmostEqual(pos[2], 200.0, places=9)
-
-    def test_radius_and_height_times_scale(self):
-        pos = follow(self.mp, [[350.0, 0.0, -40.0]])
-        np.testing.assert_allclose(pos, [550.0, 0.0, 160.0])
-        mp = Mapper(cyl_settings(scale=0.5), [500.0, 0.0, 200.0])
-        mp.engage([300.0, 0.0, 0.0], 0.0)
-        np.testing.assert_allclose(follow(mp, [[350.0, 0.0, -40.0]]), [525.0, 0.0, 180.0])
-
-    def test_pivot_and_gain_bound_near_the_axis(self):
-        mp = Mapper(cyl_settings(pivot=(0.0, -150.0)), [500.0, 0.0, 200.0])
-        mp.engage([300.0, -150.0, 0.0], 0.0)
-        pos = follow(mp, arc(300.0, 0.0, 20.0, 40, center=(0.0, -150.0)))
-        self.assertAlmostEqual(np.degrees(np.arctan2(pos[1], pos[0])), 20.0, places=6)   # about the pivot
-        mp = Mapper(cyl_settings(), [500.0, 0.0, 200.0])
-        mp.engage([50.0, 0.0, 0.0], 0.0)
-        pos = follow(mp, arc(50.0, 0.0, 90.0, 180))       # 90 deg at a 50 mm radius: angle x 50 / 150
-        self.assertAlmostEqual(np.degrees(np.arctan2(pos[1], pos[0])), 30.0, places=6)
-
-    def test_dropped_part_and_unapplied_cycle(self):
-        follow(self.mp, [[310.0, 0.0, 0.0]], dropped=np.array([4.0, 0.0, 0.0]))   # 10 mm out, 4 dropped
-        np.testing.assert_allclose(self.mp.des, [506.0, 0.0, 200.0])
-        self.mp.desired([320.0, 0.0, 0.0], 0.0)              # late cycle: not applied
-        pos = follow(self.mp, [[330.0, 0.0, 0.0]])
-        np.testing.assert_allclose(pos, [526.0, 0.0, 200.0])   # the motion of the late cycle is not lost
-
-    def test_cartesian_mode_unchanged(self):
-        mp = Mapper(SIM, [400.0, 100.0, 200.0])
-        mp.engage([10.0, 0.0, 0.0], 0.0)
-        self.assertFalse(mp.cylindrical)
-        np.testing.assert_allclose(mp.desired([30.0, 0.0, -10.0], 0.0)[0], [410.0, 100.0, 195.0])
 
 
 if __name__ == "__main__":

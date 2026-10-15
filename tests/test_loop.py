@@ -4,7 +4,6 @@ The fake RB5 follows the full pose target (position and orientation) with the DH
 leader plays a script of (button, wrist center [mm], J6 [deg], trigger or None for a failed read).
 """
 import copy
-import importlib.util
 import sys
 import time
 import types
@@ -18,11 +17,10 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 from teleop.kinematics import RB5Model, rot_zyx, zyx_from_rot  # noqa: E402
 from teleop.loop import CSV_HEADER, StopRequest, TeleopLoop  # noqa: E402
-from teleop.settings import load_settings  # noqa: E402
 
 from fixtures import test_raw  # noqa: E402
 
-RAW = test_raw()   # pose D era values, same as scripts/21
+RAW = test_raw()   # pose D era values (2026-10-12)
 OFFSET = [0.0, -187.0, -40.0]
 D = np.array([182.0, -11.0, -110.1, 31.1, -90.0, -2.0])   # pose D (tests are written for it)
 IX = {h: i for i, h in enumerate(CSV_HEADER)}
@@ -154,20 +152,6 @@ class TestLoop(unittest.TestCase):
         zc = col("target_z") - p0[2]
         self.assertAlmostEqual(zc[-1] - zc[k], -30.0, delta=2e-3)              # C: 30 mm more after the hand stops
 
-    def test_cylindrical_swing_turns_j1(self):
-        # the hand swings 20 deg about the pivot (leader base center) on a 300 mm circle, slowly
-        s = settings(mapping__mode="cylindrical", mapping__pivot_xy_mm=[0.0, 0.0], mapping__min_pivot_radius_mm=150.0)
-        a = np.radians(np.linspace(0.0, 20.0, 101))
-        path = [[300.0 * np.cos(t), 300.0 * np.sin(t), 0.0] for t in a]           # circle about the pivot
-        arm = [(0, path[0], 0)] * 3 + [(1, path[0], 0)] * 3
-        steps = arm + [(1, p, 0) for p in path[1:]] + [(1, path[-1], 0)] * 30
-        loop, p0, p1, col, stop = run(steps, s)
-        self.assertIsNone(stop if stop != "script end" else None)
-        az = np.degrees(np.arctan2(col("target_y"), col("target_x")))
-        r = np.hypot(col("target_x"), col("target_y"))
-        self.assertAlmostEqual(az[-1] - az[0], 20.0, delta=0.05)                   # J1 turned with the hand
-        self.assertAlmostEqual(r[-1], r[0], delta=0.05)
-        self.assertAlmostEqual(col("target_z")[-1], col("target_z")[0], delta=1e-3)
 
     def test_vertical_mode(self):
         s = settings(mapping__left_button="vertical")
@@ -448,66 +432,6 @@ class TestLoop(unittest.TestCase):
         self.assertIn("J5", stop)
         self.assertGreater(col("j5_slow").sum(), 0)
 
-
-def load_21():
-    if str(ROOT / "scripts") not in sys.path:
-        sys.path.append(str(ROOT / "scripts"))   # script 21 imports scripts/config.py
-    try:
-        spec = importlib.util.spec_from_file_location("s21", ROOT / "scripts" / "21_leader_rb5_position.py")
-        m = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(m)
-    except Exception:
-        return None
-    m.MAX_STEP_MM, m.MAX_LEAD_MM, m.MAX_LAG_MM, m.MAX_YAW_LAG_DEG = 4.0, 8.0, 30.0, 15.0
-    m.CYL_R_MIN, m.CYL_R_MAX, m.CYL_Z_HALF, m.CYL_AZ_HALF_DEG = 450.0, 550.0, 150.0, 90.0
-    m.PERIOD_S, m.MAX_GAP_S, m.MAX_STATE_AGE_S, m.STATUS_EVERY = 0.0005, 10.0, 10.0, 10 ** 9
-    m.event = lambda msg: None
-    return m
-
-
-class TestLoopSameAs21(unittest.TestCase):
-    """The same script through scripts/21 run_loop and TeleopLoop gives the same targets."""
-
-    def test_combined_script(self):
-        m = load_21()
-        if m is None:
-            self.skipTest("scripts/21 needs rbpodo and dynamixel_sdk (conda env rb5)")
-        n = 80
-        steps = (ARM + [(1, [3.0 * i, 1.0 * i, -4.0 * i], 0.8 * i, 1000 if i > 40 else 0) for i in range(1, n + 1)]
-                 + [(1, [240, 80, -320], 64, 1000)] * 30 + [(0, [240, 80, -320], 64, 0)] * 5)
-        loop, _, _, col, _ = run(steps, settings(mapping__max_lag_mm=30.0))
-
-        class RC:
-            def error(self):
-                return types.SimpleNamespace(throw_if_not_empty=lambda: None)
-
-            def clear(self):
-                pass
-
-        class Robot21(FakeRB5):
-            def flush(self, rc):
-                pass
-
-            def move_servo_l(self, rc, pnt, *a):
-                self.send_servo(pnt[:3], pnt[3:])
-
-        model = RB5Model(OFFSET)
-        robot = Robot21(D, model)
-        leader = ScriptLeader(steps)
-        p0 = robot.pose()
-        ctx = {"target": None, "rows": [], "clutch": None, "rpy": p0[3:].copy()}
-        args = types.SimpleNamespace(yaw_deg=0.0, scale=0.5, no_yaw=False)
-        try:
-            m.run_loop(leader, ScriptModel(leader), robot, RC(), FakeReader(robot), m.RB5Model(OFFSET), args, ctx)
-        except (m.StopRequest, StopRequest):
-            pass
-        h21 = {h: i for i, h in enumerate(m.CSV_HEADER)}
-        for k in ("target_x", "target_y", "target_z", "yaw_target_deg", "clutch_engaged", "speed_limited", "range_limited"):
-            a = col(k)
-            b = np.array([float(r[h21[k]]) for r in ctx["rows"]])
-            np.testing.assert_allclose(a, b, atol=1e-3, err_msg=k)
-        # gripper columns: 21 logged grip_open = trigger / 1000; teleop logs grip_close = 1 - trigger / 1000
-        np.testing.assert_allclose(col("grip_close"), [1.0 - float(r[h21["grip_open"]]) for r in ctx["rows"]], atol=1e-9)
 
 
 if __name__ == "__main__":

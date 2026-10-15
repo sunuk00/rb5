@@ -1,5 +1,5 @@
 """Settings used by the tests: configs/sim.yaml with the values the tests were written for (pose D era,
-the same values as scripts/21), so the tests do not change when sim.yaml is tuned."""
+2026-10-12, first taken from scripts/21), so the tests do not change when the settings are tuned."""
 import copy
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,7 +21,6 @@ def test_raw():
     d["mapping"]["speed_mm_s"] = 200.0
     d["mapping"]["leader_deadband_mm"] = 0.0      # 21 had no deadband
     d["mapping"]["leader_filter_tau_s"] = 0.0     # nor a low-pass
-    d["mapping"]["mode"] = "cartesian"            # and mapped in cartesian
     d["mapping"]["left_button"] = "off"           # without the left button modes
     d["mapping"]["rotate_deg_per_mm"] = 0.3
     d["mapping"]["lock_azimuth"] = False
