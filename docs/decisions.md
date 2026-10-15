@@ -89,6 +89,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — real-1 final settings frozen; Simulation = Real](#2026-10-16--real-1-final-settings-frozen-simulation--real)
 - [2026-10-16 — real-1 closed: summary](#2026-10-16--real-1-closed-summary)
 - [2026-10-16 — Cleanup before the gripper: cylindrical mapping and the script-21 comparisons removed](#2026-10-16--cleanup-before-the-gripper-cylindrical-mapping-and-the-script-21-comparisons-removed)
+- [2026-10-16 — Gripper signal moved to teleop/gripper.py](#2026-10-16--gripper-signal-moved-to-teleopgripperpy)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1623,6 +1624,14 @@ changes from the measured hand speed).
 - Small: unused imports in the tests; stale comments in the settings (C lag time at 250 mm/s; the yaw
   values are used only with `leader_j6`); the mapping docstring no longer says "without changes in
   behavior" from 21.
+
+## 2026-10-16 — Gripper signal moved to teleop/gripper.py
+
+**Decision (user, cleanup list item 1):** `GripSignal` (leader trigger -> grip_close with hysteresis)
+moved unchanged from `teleop/leader.py` to a new `teleop/gripper.py`, so the gripper has its own module
+before the Allegro Hand is connected (its commands will go there). leader.py keeps the leader arm only
+(joints, handles, FK, filter, clutch). The class is byte-identical to before; the module notes that the
+trigger direction is not confirmed on the hardware (PENDING). 58 tests pass.
 
 ## PENDING
 

@@ -11,7 +11,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 from teleop.kinematics import CylinderRange, RB5Model, rot_zyx, tcp_offset_from, wrap_deg, zyx_from_rot  # noqa: E402
-from teleop.leader import Clutch, GripSignal, LeaderFilter, LeaderModel  # noqa: E402
+from teleop.gripper import GripSignal  # noqa: E402
+from teleop.leader import Clutch, LeaderFilter, LeaderModel  # noqa: E402
 from teleop.mapping import Limits, Mapper, clip_step, plan_step  # noqa: E402
 from teleop.safety import Watch, joint_limit_margin, ramp_scale, singular_distance  # noqa: E402
 

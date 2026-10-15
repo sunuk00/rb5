@@ -15,7 +15,8 @@ import time
 import numpy as np
 
 from .kinematics import CylinderRange, wrap_deg
-from .leader import Clutch, GripSignal, LeaderFilter
+from .gripper import GripSignal
+from .leader import Clutch, LeaderFilter
 from .mapping import Limits, Mapper, plan_step
 from .safety import Watch, joint_limit_margin, singular_distance
 
