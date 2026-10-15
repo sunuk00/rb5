@@ -84,6 +84,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — Joint-limit slow threshold 20 -> 15 deg](#2026-10-16--joint-limit-slow-threshold-20---15-deg)
 - [2026-10-16 — Azimuth range widened on the minus side: -160 .. 133 deg](#2026-10-16--azimuth-range-widened-on-the-minus-side--160--133-deg)
 - [2026-10-16 — J1 a bit faster (sideways 360 mm/s, J1 75 deg/s); acceleration limit moved to the last stage](#2026-10-16--j1-a-bit-faster-sideways-360-mms-j1-75-degs-acceleration-limit-moved-to-the-last-stage)
+- [2026-10-16 — Radial / vertical speed cap 200 -> 250 mm/s](#2026-10-16--radial--vertical-speed-cap-200---250-mms)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1490,6 +1491,22 @@ cycles (like the real 13-22 ms timing; harsher than reality): target accel p99 r
 the delay: J1 p90 49 -> 58 deg/s, dropped while rotating 765 -> 506 mm, no cap exceeded, range flag in
 the rotate mode 20.6 -> 1.5 s. The 6.9 m/s^2 seen on the real robot did not appear in the replay without
 the delay (the fake state is exact), which supports the diagnosis.
+
+## 2026-10-16 — Radial / vertical speed cap 200 -> 250 mm/s
+
+**Run 045859 (sideways 360 mm/s, J1 75 deg/s, acceleration limit last, Real):** rotate-mode target jitter
+p99 6.9 -> 2.5 m/s^2 (same as the normal mode), robot J1 in the rotate mode p90 / max 46 / 55 deg/s (42 /
+49), dropped while rotating 1174 -> 287 mm, rotate range-flag flicker gone; the sideways cap (360 mm/s =
+46 deg/s at r 450) was active 71 % of the rotate time, the J1 joint cap 16 %. J1 in the normal mode 0.75
+deg (slowing down after faster releases, no return). Now the normal mode is the bottleneck: speed cap
+73 % of the normal time, hand above 200 mm/s 28 %, 1167 mm dropped there (80 % of all drops); radial /
+vertical speed asked p90 199 / 194 mm/s.
+
+**Decision (user, option A):** `mapping.speed_mm_s` 200 -> 250 in Real, `REAL_MAX` 250 (kinetic energy
+1.56x at the cap). Sideways 360 and the joint caps unchanged. Replay of 045859 (TeleopLoop, Real settings,
+fake robot, no state delay): normal-mode speed cap 73 -> 65 %, dropped in the normal mode 1129 -> 606 mm,
+no joint cap exceeded, target jitter p99 2.5 m/s^2. Far / low corners need up to 0.393 deg/mm, so the
+J2-J6 joint caps (60 deg/s) can bind there at 250 mm/s (98 deg/s needed); not seen in the replay.
 
 ## PENDING
 

@@ -33,8 +33,8 @@ its own step, with the lab, not as part of a Simulation session.
 - [ ] Nothing in the reach of the robot along the ready-pose move (large wrist turns are warned).
 
 ## Speeds (conservative in real.yaml; RB5 specification still to be found)
-- [ ] Now (2026-10-16, option B): TCP 200 mm/s, joints 1.2 deg/cycle (60 deg/s), yaw 30 deg/s, C 20 mm,
-      ready move 5 deg/s. Option A (300 mm/s, 80 deg/s, yaw 45) only after B has been checked.
+- [ ] Now (2026-10-16): TCP radial / vertical 250 mm/s, sideways (turning J1) 360 mm/s, joints J1 75 deg/s and
+      J2-J6 60 deg/s, acceleration 2.5 m/s^2, C 20 mm (rotate mode 15 deg), ready move 5 deg/s.
 - [ ] First run at the new speeds: slow, small motions near the ready pose first; check for controller
       errors and late cycles before moving fast.
 - [ ] Per-joint speed limits from the RB5 specification (manual lists only "joint max 180 deg/s, tool

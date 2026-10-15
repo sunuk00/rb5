@@ -114,7 +114,7 @@ class TestSettings(unittest.TestCase):
         d = raw(REAL)
         d["tcp"]["expected_offset_mm"] = [0.0, -187.0, -40.0]
         d["ready_pose"]["joints_deg"] = [182.0, -11.0, -110.1, 31.1, -90.0, -2.0]
-        for (sec, key), value in ((("mapping", "speed_mm_s"), 250.0), (("yaw", "speed_deg_s"), 60.0),
+        for (sec, key), value in ((("mapping", "speed_mm_s"), 300.0), (("yaw", "speed_deg_s"), 60.0),
                                   (("safety", "joint_speed_deg_per_cycle"), [1.6] * 6)):
             dd = copy.deepcopy(d)
             dd[sec][key] = value

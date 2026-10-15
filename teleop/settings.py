@@ -151,7 +151,7 @@ REQUIRED_FOR_REAL = ("tcp.expected_offset_mm", "ready_pose.joints_deg")
 
 # Upper limits for Real on top of SCHEMA (conservative until the RB5 values are confirmed).
 REAL_MAX = {
-    "mapping.speed_mm_s": 200.0,               # user, 2026-10-16 option B (was 100, 50); decisions 2026-10-16
+    "mapping.speed_mm_s": 250.0,               # user, 2026-10-16: radial / vertical (was 200, 100, 50)
     "mapping.speed_tangential_mm_s": 360.0,    # user, 2026-10-16: faster J1 only (sideways); was 300
     "mapping.scale": 1.0,
     "yaw.speed_deg_s": 30.0,
