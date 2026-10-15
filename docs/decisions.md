@@ -83,6 +83,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — Range in absolute base-frame values; ready pose = the user's pose at r 450](#2026-10-16--range-in-absolute-base-frame-values-ready-pose--the-users-pose-at-r-450)
 - [2026-10-16 — Joint-limit slow threshold 20 -> 15 deg](#2026-10-16--joint-limit-slow-threshold-20---15-deg)
 - [2026-10-16 — Azimuth range widened on the minus side: -160 .. 133 deg](#2026-10-16--azimuth-range-widened-on-the-minus-side--160--133-deg)
+- [2026-10-16 — J1 a bit faster (sideways 360 mm/s, J1 75 deg/s); acceleration limit moved to the last stage](#2026-10-16--j1-a-bit-faster-sideways-360-mms-j1-75-degs-acceleration-limit-moved-to-the-last-stage)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1462,6 +1463,33 @@ clockwise seen from above): `range.azimuth_min_deg` -107 -> -160 in Real and Sim
 8 .. 301 deg (limit +/-360). That side and the back of the RB5 must be clear (checklist).
 
 **Rejected:** shifting the whole range to -160 .. 80 (user keeps the + side).
+
+## 2026-10-16 — J1 a bit faster (sideways 360 mm/s, J1 75 deg/s); acceleration limit moved to the last stage
+
+**Run 044916 (azimuth -160 .. 133, Real):** the whole new range was used (-160 .. 120). Faster operation
+than before (normal-mode speed cap 52 %, hand above 200 mm/s 30 %). User: J1 turns a little slowly. In
+the rotate mode the hand asked J1 p50 / p90 / p99 36 / 89 / 121 deg/s, the robot did 35 / 42 / max 49:
+capped by the sideways speed (300 mm/s = 49 deg/s at r 350, 37 at r 459) and the J1 joint cap (60 deg/s;
+the joint speed limit was active 50 % of the rotate time). Target jitter p99 6.9 m/s^2 in the rotate mode
+(2.5 in the normal mode), 92 % of the top 1 % in the rotate mode: the joint limit factor came after the
+acceleration limit and changed from cycle to cycle, because the joint prediction includes the robot's
+lag, which jitters with the 13-22 ms state timing. 21 s of "range limited" in the rotate mode were the
+rotate circle lying exactly on r_min (350): every straight step cut inside it and was pushed back.
+
+**Decisions (user, all three):**
+1. `mapping.speed_tangential_mm_s` 300 -> 360 and J1 joint cap 1.2 -> 1.5 deg/cycle (75 deg/s; J2-J6 stay
+   1.2) in Real; `REAL_MAX` tangential 360, joint 1.5. Sim unchanged.
+2. The acceleration limit is the last stage of plan_step (after the speed and joint limits), so a switching
+   limit cannot make the step jump. While it slows down a cap can be exceeded for a few cycles.
+3. The rotate circle is at least r_min + 1 mm.
+
+**Replay of 044916 (TeleopLoop, Real settings, fake robot).** With the state delayed by a random 1-2
+cycles (like the real 13-22 ms timing; harsher than reality): target accel p99 rotate / normal 10.0 / 9.7
+-> 2.5 / 2.5 m/s^2; J1 in the rotate mode p90 41 -> 58 deg/s, max 61 -> 77; dropped while rotating 2261
+-> 1535 mm; a joint above its cap by at most 0.012 -> 0.043 deg/cycle (about 2 deg/s, 36 cycles). Without
+the delay: J1 p90 49 -> 58 deg/s, dropped while rotating 765 -> 506 mm, no cap exceeded, range flag in
+the rotate mode 20.6 -> 1.5 s. The 6.9 m/s^2 seen on the real robot did not appear in the replay without
+the delay (the fake state is exact), which supports the diagnosis.
 
 ## PENDING
 

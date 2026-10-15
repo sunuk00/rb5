@@ -23,7 +23,8 @@ mapping:
   frame_yaw_deg: 0.0            # TBD with the operator position; 0 = leader x forward = RB5 +x
   speed_mm_s: 200.0             # Real max (user, 2026-10-16, option B); was 100, 50. Hand faster than 100 in 63 %
                                 # of the clutch time, than 200 in 22 % (10-14 Real runs; decisions 2026-10-16)
-  speed_tangential_mm_s: 300.0  # sideways about the base z axis (turning J1), Real max (user 2026-10-16): J1 was
+  speed_tangential_mm_s: 360.0  # sideways about the base z axis (turning J1), Real max. 2026-10-16: 300 -> 360 (J1 a bit
+                                # faster; 044916: robot J1 p90 42 deg/s while the hand asked 89). Before that: J1 was
                                 # speed-limited 46-59 % of its turning time at 200 (about 25 deg/s at r 450)
   lead_per_step: 2.0
   accel_mm_s2: 2500.0           # target acceleration limit (2026-10-16): the largest joint accelerations came when the
@@ -80,9 +81,10 @@ range:                          # absolute in the RB5 base frame (2026-10-16; be
   azimuth_max_deg: 133.0        # unchanged (was the ready pose of 13.4 deg + 120)
 
 safety:
-  joint_speed_deg_per_cycle: [1.2, 1.2, 1.2, 1.2, 1.2, 1.2]   # 60 deg/s = Real max (user, 2026-10-16, option B; was
-                                # 0.8, 0.5). Following the hand needed > 40 deg/s in 35 % and > 60 in 18 % of the
-                                # clutch time (estimate, 10-14 runs). TBD from the RB5 specification
+  joint_speed_deg_per_cycle: [1.5, 1.2, 1.2, 1.2, 1.2, 1.2]   # J1 1.5 = 75 deg/s since 2026-10-16 (J1 a bit
+                                # faster in the rotate mode); J2-J6 60 deg/s (user, 2026-10-16, option B; was 0.8,
+                                # 0.5). Following the hand needed > 40 deg/s in 35 % and > 60 in 18 % of the clutch
+                                # time (estimate, 10-14 runs). TBD from the RB5 specification
   joint_limit_deg: [360.0, 360.0, 165.0, 360.0, 360.0, 360.0] # J3 +/-165 (user checked on the pendant, 2026-10-12)
   joint_limit_slow_deg: 15.0    # was 20 (2026-10-16): the smallest J3 margin anywhere in the range is 16.7 deg (inner low
                                 # corner r 350, z -50), so the stop (10) cannot be reached inside the range; 20 slowed

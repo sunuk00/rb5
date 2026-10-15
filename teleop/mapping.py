@@ -26,12 +26,15 @@ Yaw:      desired = RB5 yaw at press + (leader J6 now - at press) [deg], about b
 Yaw mode follow_base (yaw.mode): the tool yaw follows the azimuth of the target about the base z axis,
 so the gripper turns with the arm and the RB5 wrist joints (J6) stay still when J1 turns; the leader J6
 is not used and the yaw speed / range limits do not apply (the position limits do).
-Per cycle (plan_step): range first (the excess outside the range is kept), then the acceleration limit
-(mapping.accel_mm_s2: the step may differ from the previous cycle's step by at most a x dt^2, and is
-not larger than the step from which it can still stop at that acceleration), then the speed limits
+Per cycle (plan_step): range first (the excess outside the range is kept), then the speed limits
 scaled by the singularity / joint limit watches (sideways about the base z axis up to
 speed_tangential_mm_s, radial and vertical up to speed_mm_s: (t / T)^2 + (o / O)^2 <= 1), then the
-per-joint speed limit, then the lead limit.
+per-joint speed limit, then the acceleration limit as the last stage (mapping.accel_mm_s2: the step may
+differ from the previous cycle's step by at most a x dt^2, and is not larger than the step from which it
+can still stop at that acceleration), then the lead limit. The acceleration limit is last so that a
+speed or joint limit that switches from one cycle to the next (the joint prediction includes the robot's
+lag, which jitters with the 13-22 ms state timing) cannot make the step jump; while it slows down, a
+cap can be exceeded for a few cycles (by less than the step change of those cycles).
 B drops the cut part of the step; C keeps the lag up to max_lag and drops only the part beyond it.
 """
 from types import SimpleNamespace
@@ -106,14 +109,6 @@ def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch, prev_ste
     lead_p, lead_y = target - tcp_pos, yaw["target"] - yaw["tcp"]   # parts that are only the robot catching up
     asked = step   # what the hand asked for this cycle (the cut parts below go to the lag / are dropped)
 
-    # Acceleration limit: change the step by at most max_dstep, and not faster than it can still stop
-    if lim.max_dstep_mm > 0.0:
-        prev = np.zeros(3) if prev_step is None else np.asarray(prev_step, dtype=float)
-        a, d = lim.max_dstep_mm, np.linalg.norm(step)
-        want = clip_norm(step, 0.5 * (-a + np.sqrt(a * a + 8.0 * a * d)))   # v + (v - a) + ... <= d: stops in time
-        step = prev + clip_norm(want - prev, lim.max_dstep_mm)
-        flags["accel"] = bool(np.linalg.norm(step - asked) > 1e-9)
-
     # Speed limits, scaled by the predicted singularity / joint limit margins of a full-size step
     full = clip_step(step, target, lim.max_step_mm, lim.max_tangential_step_mm)
     yfull = (wrap_deg(yaw_at(target + full) - yaw["target"]) if follow
@@ -137,6 +132,17 @@ def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch, prev_ste
         f = max(0.0, np.min((lim.max_dq_deg[over] - dq_lead[over]) / (dq_step[over] - dq_lead[over])))
         limited, ylimited = limited * f, ylimited * f
         flags["jspeed"] = True
+
+    # Acceleration limit, last: change the step by at most max_dstep, and not faster than it can still stop
+    if lim.max_dstep_mm > 0.0:
+        prev = np.zeros(3) if prev_step is None else np.asarray(prev_step, dtype=float)
+        a, d = lim.max_dstep_mm, np.linalg.norm(asked)
+        want = clip_norm(limited, 0.5 * (-a + np.sqrt(a * a + 8.0 * a * d)))   # v + (v - a) + ... <= d: stops in time
+        smooth = prev + clip_norm(want - prev, a)
+        flags["accel"] = bool(np.linalg.norm(smooth - limited) > 1e-9)
+        limited = smooth
+        if follow:
+            ylimited = wrap_deg(yaw_at(target + limited) - yaw["target"])
     new = target + limited
     clamped = cyl.clamp(new)   # a straight step between two inside points can cut the inner radius
     flags["range"] = flags["range"] or bool(np.any(clamped != new))
@@ -207,6 +213,7 @@ class Mapper:
         self.vertical_z_scale = s.mapping.vertical_z_scale  # extra z gain in the vertical mode
         self.rotate_deg_per_mm = s.mapping.rotate_deg_per_mm
         self.rotate_max_lag_deg = s.mapping.rotate_max_lag_deg
+        self.r_min = s.range.r_min_mm   # the rotate circle stays 1 mm outside it (no range flag flicker)
         self.max_dstep = s.mapping.accel_mm_s2 * s.servo.period_s ** 2   # acceleration limit per cycle^2
         self.prev_step = np.zeros(3)   # position step applied in the last cycle (acceleration limit)
         self.lock_azimuth = s.mapping.lock_azimuth
@@ -237,6 +244,7 @@ class Mapper:
         self.vertical_xy = stop[:2].copy()
         a = np.arctan2(stop[1], stop[0])
         _, r, z = to_cyl(self.target)
+        r = max(r, self.r_min + 1.0)   # a circle on r_min itself: every straight step cut inside it (flag flicker)
         self.rotate_anchor = (np.degrees(a), r, z)   # the radius and z of the target, the azimuth where it stops
 
     @property
