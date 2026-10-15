@@ -2,8 +2,8 @@
 
 | File / folder | What it is | Read it when |
 |---|---|---|
-| `teleop_guide.md` | How to run the teleop: one-time setup (udev rule, Python), checks before a run, run command, handle controls, stopping, error messages | running the teleop |
-| `real_first_run_checklist.md` | What must be done before the first Real teleop run (collision detection, tool mass, TCP, base +x, z floor, speeds, people) | before moving to the real robot |
+| `teleop_guide.md` | How to run the teleop: setup (Python, network, udev rule), before a run, run, controls (normal / rotate mode), speeds and range, stopping, error messages | running the teleop |
+| `real_first_run_checklist.md` | Required items before every Real run, and the open items with the lab (tool mass, TCP, base +x, z floor) | before every Real run |
 | `real_trial_protocol.md` | How Real teleop trials are run and measured (real-1): task, 3 practice + 5 measured trials per setting, measures, stepwise speed plan | before and after each Real speed change |
 | `hardware.md` | Lab hardware facts: RB5, PC, leader arm, Allegro Hand, with sources and TBD items | checking a device fact |
 | `decisions.md` | Every decision with date, reason, measurements and rejected options; topic list at the top, open items (PENDING) at the end | "why is this value like this?" |

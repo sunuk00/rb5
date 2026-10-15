@@ -15,8 +15,9 @@ Decisions and measurements behind them are in `docs/decisions.md`.
   cable connector. **TBD:** where +X points on the real robot (check with `scripts/22_base_axis_check.py`).
 - TCP offset set on the controller: (0, -187, -40) mm from the flange, orientation 0 (17). Who set
   it and what it should be: **TBD** (lab).
-- Controller state: **tool mass 0 kg, collision detection Off.** Treat any Real-mode motion as high
-  risk. Do not change these without asking (CLAUDE.md).
+- Controller state: **tool mass 0 kg**; collision detection was Off and must be **ON before every Real
+  run** (checklist, 2026-10-16). Treat any Real-mode motion as high risk. Do not change controller
+  settings without asking (CLAUDE.md).
 - The speed bar scales move_j (19), not move_servo_* (06). The scripts and the teleop use 0.1.
 - Real arm following move_servo_l: about 80 ms behind the command, joint error within 0.23 deg
   (run 133743).
