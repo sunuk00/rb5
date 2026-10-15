@@ -1,5 +1,9 @@
 # Real teleop trial protocol (real-1)
 
+**Status (2026-10-16):** not used in the end. The settings were changed step by step from the measured hand
+speed and the user's feedback instead (docs/decisions.md, real-1). Kept for comparing settings with
+fixed trials later, e.g. before demonstration collection.
+
 Goal: make Real teleop fast enough for demonstration collection, changing one setting at a time and
 measuring each change the same way. Summary tool: `scripts/23_trial_summary.py`.
 

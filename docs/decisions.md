@@ -87,6 +87,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — Radial / vertical speed cap 200 -> 250 mm/s](#2026-10-16--radial--vertical-speed-cap-200---250-mms)
 - [2026-10-16 — Joint speed limit on the step only (the robot's lag is no longer added)](#2026-10-16--joint-speed-limit-on-the-step-only-the-robots-lag-is-no-longer-added)
 - [2026-10-16 — real-1 final settings frozen; Simulation = Real](#2026-10-16--real-1-final-settings-frozen-simulation--real)
+- [2026-10-16 — real-1 closed: summary](#2026-10-16--real-1-closed-summary)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1561,8 +1562,74 @@ deg, low-pass 30 ms. Range (absolute): r 350-800, z -50..465 (outer radius 800 -
 465), azimuth -160..133 deg. Ready pose (173.650, 4.300, -119.566, 31.666, -87.544, 53.521). Watches:
 J5 / shoulder / elbow slow 20 deg / 50 mm / 20 deg, joint limit slow 15 (stop 10 / 20 / 10 / 10).
 
+## 2026-10-16 — real-1 closed: summary
+
+**Goal (user):** make Real teleop easy enough for pick-and-place demonstrations (it was too slow and the
+operator had to drag the robot with many clutch presses).
+
+**Start (2026-10-14, run 035701):** scale 1.0, 100 mm/s, joints 40 deg/s, cartesian mapping, the leader J6
+turned the tool, ready pose r 367 (17 mm from r_min), range relative to the start pose, z floor 30 mm.
+Speed cap active 72 % of the clutch time, 1540 mm of hand motion dropped, target jitter p99 3.5 m/s^2.
+
+**End (run 051339, settings frozen):** see "real-1 final settings frozen" for every value. In short:
+- Normal mode: J1 locked; forward / back = along the arm, up / down = height; 250 mm/s.
+- Left button: rotate mode, J1 only, 0.3 deg/mm, 15 deg catch-up, sideways up to 360 mm/s.
+- The tool turns with J1 (RB5 J6 still).
+- Joint caps applied to the step (J1 75, J2-J6 60 deg/s); acceleration 2.5 m/s^2 as the last stage.
+- Leader low-pass 30 ms; absolute range with azimuth -160..133; ready pose at r 450; J3 slowdown at 15 deg.
+
+Measured: joint speeds up to the caps and not above, target jitter p99 2.5 m/s^2, lag p99 0.9 steps,
+J1 locked to 0.09 deg in the normal mode, descents nearly vertical (0.05 radius change per mm), no
+slowdowns, one late cycle in 83 s. The hand is now about 2.5x faster than at the start (radial /
+vertical asked p90 235 / 252 mm/s), and the caps are again what limits it (by choice: no further raise).
+
+**What helped most (in order of effect on the operator):**
+1. Speed caps step by step with the hand speed measured from the logs (B, then sideways, then 250).
+2. Modes that keep the hand's natural arcs out of the other axes: J1 lock + rotate mode, the tool following the base.
+3. Moving the ready pose away from r_min.
+4. Smoothness: leader low-pass, acceleration limit (last stage).
+5. Removing the robot's lag from the joint speed check: it held the joints at half their caps.
+
+**Tried and reverted:** cylindrical mapping (J1 easier, but "does not go where I want"; speed cap 65 %);
+vertical mode on the left button (worked: x, y fixed; replaced by the rotate mode, which the user found
+more useful; still available as `left_button: vertical`).
+
+**Lessons recorded in the entries:**
+- Measure the RB5 state with its real sample times (13-22 ms apart).
+- A replay needs the real state delay to reproduce problems, but a delay model harsher than the logs
+  invents new ones.
+- Values relative to the start pose move with every new ready pose.
+- A limit later in the chain can undo a smoothing stage earlier in it.
+- Adding a new flag means checking every place that uses the flags (a missing label would have stopped
+  the teleop).
+
+**Tools:** `scripts/23_trial_summary.py` (trial summary), `scripts/24_run_report.py` (full run report,
+`--compare`), `docs/real_trial_protocol.md` (trial protocol, not needed in the end: the user chose
+changes from the measured hand speed).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
   nearest link distance is below 2 cm (`detect_collisions_or_nearest_links`, lines 1226-1240).
   Skipped for now (simulator only); needed before any real RB-Y1 use. Measure its cost in the 50 Hz loop.
+
+- **real-1 follow-ups (2026-10-16):**
+  - **Gripper:** connect it to the leader trigger. The right trigger read 0 for whole runs (the left one
+    stayed at 0-2), and the closing direction is not confirmed. Log the gripper state with the demonstrations.
+  - **Before mounting any tool:**
+    - Raise `range.z_min_mm` (now -50 because nothing is mounted): tool tip height + margin.
+    - Set the tool mass and the lab's TCP offset (controller settings: ask first).
+    - Recheck the ready pose margins with the new TCP.
+  - **Base +x direction:** confirm with `scripts/22_base_axis_check.py` and a tape. `frame_yaw_deg` 0 is
+    still an assumption, although the operation felt right.
+  - **Collision detection sensitivity** with the lab (it is required ON before every Real run).
+  - **RB5 joint speed specification** for this model, to replace our own caps (75 / 60 deg/s).
+  - **Demonstration recording for ACT / LeRobot:** format, rate (50 Hz like ALOHA), what to record
+    (joints, TCP, modes, gripper, cameras).
+  - **Windows** (only if needed):
+    - environment.yml (evdev only on Linux)
+    - CPU pinning and the FTDI latency check per OS
+    - the port name
+    - Python 3.11+ for the sleep resolution
+  - **Optional, when the operator wants more speed:** sideways 400 mm/s, radial / vertical 300 mm/s.
+    Each raise is a Real limit change and needs its own decision.
