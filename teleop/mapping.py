@@ -3,7 +3,13 @@
 Moved from scripts/21_leader_rb5_position.py without changes in behavior; the limits come from the
 settings instead of module constants.
 
-Position: desired = RB5 start + scale * Rz(frame_yaw) * (leader wrist center now - at press) [mm].
+Position (mapping.mode):
+  cartesian:   desired = RB5 start + scale * Rz(frame_yaw) * (leader wrist center now - at press) [mm].
+  cylindrical: the leader motion is split about a vertical pivot axis (mapping.pivot_xy_mm, leader frame)
+               into an angle, a radius and a height change, applied to the RB5 target about the base z
+               axis: angle 1:1 (so a swing of the hand turns J1), radius and height x scale. The angle is
+               the sideways motion / max(hand radius, min_pivot_radius_mm), so the gain stays bounded
+               near the axis. Integrated per cycle; frame_yaw is not used.
 Yaw:      desired = RB5 yaw at press + (leader J6 now - at press) [deg], about base z, TCP fixed.
 Per cycle (plan_step): range first (the excess outside the range is kept), then the speed limits
 scaled by the singularity / joint limit watches, then the per-joint speed limit, then the lead limit.
@@ -101,6 +107,15 @@ def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch):
                            stop=stop)
 
 
+def to_cyl(p):
+    """(angle [rad], radius, z) of a point about the z axis."""
+    return np.arctan2(p[1], p[0]), np.hypot(p[0], p[1]), p[2]
+
+
+def from_cyl(angle, radius, z):
+    return np.array([radius * np.cos(angle), radius * np.sin(angle), z])
+
+
 class Mapper:
     """Clutch-relative mapping state: the RB5 and leader references taken at each press, shifted by
     the dropped parts (B / C) so they are not caught up later."""
@@ -108,6 +123,10 @@ class Mapper:
     def __init__(self, s, target0):
         self.scale = s.mapping.scale
         self.frame = rot_z(s.mapping.frame_yaw_deg)
+        self.cylindrical = s.mapping.mode == "cylindrical"
+        self.pivot = np.asarray(s.mapping.pivot_xy_mm, dtype=float)
+        self.min_pivot_radius = s.mapping.min_pivot_radius_mm
+        self.des = self.leader_prev = self.pending = None   # cylindrical: desired position and last leader used
         self.yaw_enabled = s.yaw.enabled
         self.target = np.array(target0, dtype=float)   # RB5 TCP position target [mm]
         self.yaw = 0.0                                  # RB5 yaw relative to the start rz [deg]
@@ -117,16 +136,37 @@ class Mapper:
     def engage(self, leader_p_mm, leader_j6_deg):
         self.rb5_start, self.leader_start = self.target.copy(), np.array(leader_p_mm, dtype=float)
         self.yaw_rb5_start, self.yaw_leader_start = self.yaw, leader_j6_deg
+        self.des, self.leader_prev, self.pending = self.target.copy(), self.leader_start.copy(), None
+
+    def _cylindrical_step(self, leader_p_mm):
+        """Desired position after the leader moved from the last used reading to leader_p_mm."""
+        p = np.asarray(leader_p_mm, dtype=float)
+        (x0, y0), (x1, y1) = self.leader_prev[:2] - self.pivot, p[:2] - self.pivot
+        a0, r0, a1, r1 = np.arctan2(y0, x0), np.hypot(x0, y0), np.arctan2(y1, x1), np.hypot(x1, y1)
+        r_mid = 0.5 * (r0 + r1)
+        d_angle = np.radians(wrap_deg(np.degrees(a1 - a0))) * r_mid / max(r_mid, self.min_pivot_radius)
+        angle, radius, z = to_cyl(self.des)
+        return from_cyl(angle + d_angle, max(radius + self.scale * (r1 - r0), 1.0),
+                        z + self.scale * (p[2] - self.leader_prev[2]))
 
     def desired(self, leader_p_mm, leader_j6_deg):
         """(desired position, desired yaw) for the current leader reading."""
-        pos = self.rb5_start + self.scale * (self.frame @ (np.asarray(leader_p_mm) - self.leader_start))
+        if self.cylindrical:
+            pos = self._cylindrical_step(leader_p_mm)
+            self.pending = (pos.copy(), np.array(leader_p_mm, dtype=float))   # taken by apply()
+        else:
+            pos = self.rb5_start + self.scale * (self.frame @ (np.asarray(leader_p_mm) - self.leader_start))
         yaw = (self.yaw_rb5_start + wrap_deg(leader_j6_deg - self.yaw_leader_start)) if self.yaw_enabled else 0.0
         return pos, yaw
 
     def apply(self, plan):
-        """Take the planned target and shift the leader references by the dropped parts."""
-        self.leader_start = self.leader_start + self.frame.T @ plan.dropped / self.scale
+        """Take the planned target and shift the leader references by the dropped parts. A cycle that is
+        not applied (late) leaves the cylindrical state as it was, so its motion is taken next cycle."""
+        if self.cylindrical:
+            pos, leader_p = self.pending
+            self.des, self.leader_prev, self.pending = pos - plan.dropped, leader_p, None
+        else:
+            self.leader_start = self.leader_start + self.frame.T @ plan.dropped / self.scale
         self.target = np.array(plan.target, dtype=float)
         self.yaw_leader_start += plan.dropped_yaw
         self.yaw = plan.yaw

@@ -17,7 +17,7 @@ from teleop.mapping import Limits, Mapper, plan_step  # noqa: E402
 from teleop.safety import Watch, joint_limit_margin, ramp_scale, singular_distance  # noqa: E402
 from teleop.settings import load_settings  # noqa: E402
 
-from fixtures import TEST as SIM, test_raw  # noqa: E402  (pose D era values, same as 21)
+from fixtures import TEST as SIM, ns, test_raw  # noqa: E402  (pose D era values, same as 21)
 URDF = ROOT / "assets" / "leader_arm" / "model.urdf"
 OFFSET = [0.0, -187.0, -40.0]
 POSE_D = np.array([182.0, -11.0, -110.1, 31.1, -90.0, -2.0])   # pose D (tests are written for it)
@@ -238,6 +238,68 @@ class TestMapper(unittest.TestCase):
         pos, yaw = mp.desired([30.0, 0.0, -10.0], 40.0)
         np.testing.assert_allclose(pos, [406.0, 100.0, 195.0])   # 4 mm dropped
         self.assertAlmostEqual(yaw, 7.0)
+
+
+def cyl_settings(scale=1.0, pivot=(0.0, 0.0), min_radius=150.0):
+    d = test_raw()
+    d["mapping"].update(mode="cylindrical", scale=scale, pivot_xy_mm=list(pivot), min_pivot_radius_mm=min_radius)
+    return ns(d)
+
+
+def follow(mp, points, dropped=None):
+    """Feed leader points, applying each desired position as the target (nothing cut)."""
+    for p in points:
+        pos, _ = mp.desired(p, 0.0)
+        mp.apply(SimpleNamespace(target=pos, yaw=0.0, dropped=np.zeros(3) if dropped is None else dropped,
+                                 dropped_yaw=0.0))
+    return pos
+
+
+def arc(radius, deg_from, deg_to, n, z=0.0, center=(0.0, 0.0)):
+    a = np.radians(np.linspace(deg_from, deg_to, n + 1)[1:])
+    return [[center[0] + radius * np.cos(t), center[1] + radius * np.sin(t), z] for t in a]
+
+
+class TestCylindricalMapper(unittest.TestCase):
+    def setUp(self):
+        self.mp = Mapper(cyl_settings(), [500.0, 0.0, 200.0])
+        self.mp.engage([300.0, 0.0, 0.0], 0.0)
+
+    def test_swing_turns_the_base_by_the_same_angle(self):
+        pos = follow(self.mp, arc(300.0, 0.0, 30.0, 60))
+        self.assertAlmostEqual(np.degrees(np.arctan2(pos[1], pos[0])), 30.0, places=6)
+        self.assertAlmostEqual(np.hypot(pos[0], pos[1]), 500.0, places=6)    # radius kept
+        self.assertAlmostEqual(pos[2], 200.0, places=9)
+
+    def test_radius_and_height_times_scale(self):
+        pos = follow(self.mp, [[350.0, 0.0, -40.0]])
+        np.testing.assert_allclose(pos, [550.0, 0.0, 160.0])
+        mp = Mapper(cyl_settings(scale=0.5), [500.0, 0.0, 200.0])
+        mp.engage([300.0, 0.0, 0.0], 0.0)
+        np.testing.assert_allclose(follow(mp, [[350.0, 0.0, -40.0]]), [525.0, 0.0, 180.0])
+
+    def test_pivot_and_gain_bound_near_the_axis(self):
+        mp = Mapper(cyl_settings(pivot=(0.0, -150.0)), [500.0, 0.0, 200.0])
+        mp.engage([300.0, -150.0, 0.0], 0.0)
+        pos = follow(mp, arc(300.0, 0.0, 20.0, 40, center=(0.0, -150.0)))
+        self.assertAlmostEqual(np.degrees(np.arctan2(pos[1], pos[0])), 20.0, places=6)   # about the pivot
+        mp = Mapper(cyl_settings(), [500.0, 0.0, 200.0])
+        mp.engage([50.0, 0.0, 0.0], 0.0)
+        pos = follow(mp, arc(50.0, 0.0, 90.0, 180))       # 90 deg at a 50 mm radius: angle x 50 / 150
+        self.assertAlmostEqual(np.degrees(np.arctan2(pos[1], pos[0])), 30.0, places=6)
+
+    def test_dropped_part_and_unapplied_cycle(self):
+        follow(self.mp, [[310.0, 0.0, 0.0]], dropped=np.array([4.0, 0.0, 0.0]))   # 10 mm out, 4 dropped
+        np.testing.assert_allclose(self.mp.des, [506.0, 0.0, 200.0])
+        self.mp.desired([320.0, 0.0, 0.0], 0.0)              # late cycle: not applied
+        pos = follow(self.mp, [[330.0, 0.0, 0.0]])
+        np.testing.assert_allclose(pos, [526.0, 0.0, 200.0])   # the motion of the late cycle is not lost
+
+    def test_cartesian_mode_unchanged(self):
+        mp = Mapper(SIM, [400.0, 100.0, 200.0])
+        mp.engage([10.0, 0.0, 0.0], 0.0)
+        self.assertFalse(mp.cylindrical)
+        np.testing.assert_allclose(mp.desired([30.0, 0.0, -10.0], 0.0)[0], [410.0, 100.0, 195.0])
 
 
 if __name__ == "__main__":

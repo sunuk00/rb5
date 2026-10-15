@@ -70,6 +70,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — Real speed limits to option B: TCP 200 mm/s, joints 1.2 deg/cycle (60 deg/s)](#2026-10-16--real-speed-limits-to-option-b-tcp-200-mms-joints-12-degcycle-60-degs)
 - [2026-10-16 — Low-pass filter on the leader wrist center (tau 30 ms) against the shake at 200 mm/s](#2026-10-16--low-pass-filter-on-the-leader-wrist-center-tau-30-ms-against-the-shake-at-200-mms)
 - [2026-10-16 — Ready pose moved to r 500, z 200 (Real and Sim); range kept in absolute terms](#2026-10-16--ready-pose-moved-to-r-500-z-200-real-and-sim-range-kept-in-absolute-terms)
+- [2026-10-16 — Cylindrical mapping trial (Sim and Real): a hand swing about the leader base center turns J1](#2026-10-16--cylindrical-mapping-trial-sim-and-real-a-hand-swing-about-the-leader-base-center-turns-j1)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1189,6 +1190,35 @@ thresholds; r 500 has the most J3 margin and room to r_min, z 200 is 50 mm above
 
 **Next if descending is still awkward:** a "vertical mode" switched by the left handle button
 (plan to be proposed separately). Cylindrical mapping for J1: on hold.
+
+## 2026-10-16 — Cylindrical mapping trial (Sim and Real): a hand swing about the leader base center turns J1
+
+**Problem (user):** turning the RB5 base (J1) is hard. Run 022416: up to 45 deg of J1 per clutch press
+for about 240 mm of sideways hand motion, 99 deg in 30 presses; with the cartesian mapping 1 deg of J1
+needs 7 mm of sideways motion at r 400 (10.5 mm at r 600).
+
+**Decision (user, trial, to be reverted if it feels worse):** `mapping.mode: cylindrical` in sim.yaml
+and real.yaml. Each cycle the leader motion is split about a vertical pivot axis (leader frame) into an
+angle, a radius and a height change; the RB5 target turns about the base z axis by the same angle
+(1:1), radius and height change x scale. Angle = sideways motion / max(hand radius,
+`min_pivot_radius_mm` 150), so the gain stays bounded near the axis. The state is integrated per cycle;
+B / C dropped parts are taken off the desired position (same meaning as the cartesian reference shift);
+a late cycle that is not applied keeps its motion for the next cycle. Limits, range, watches, yaw and
+servo are unchanged. Revert: `mode: cartesian` (identical to the mapping before; the old tests run in
+cartesian).
+
+**Pivot:** `pivot_xy_mm` [0, 0] = leader base center. From the 10-14 / 10-16 Real logs the hand was
+205 mm or more from it in 95 % of the clutch time (sideways gain r_RB5 / r_hand median 1.6x, p95 2.4x);
+about the right shoulder (0, -150) it was 87 mm (gain 2.3x median, 5.1x p95), too jumpy.
+
+**Replay of 022416 (mapping only, no limits):** J1 swing per press median 7.3 -> 25.1 deg, max 36 -> 79
+deg, total 411 -> 815 deg (2.0x).
+
+**Expected side effects:** sideways motions are larger, so the speed cap (200 mm/s) is hit more often;
+a straight sideways hand motion becomes an arc. Not addressed: the descent drift (the hand moves back
+0.5-0.9 x the descent); about the base center that is a radius decrease and is mapped as one. Ready
+pose r 500 removed the r_min stops (025735: 0 cycles at r_min), but the user still finds descending
+awkward: next candidate is the "vertical mode" on the left handle button.
 
 ## PENDING
 

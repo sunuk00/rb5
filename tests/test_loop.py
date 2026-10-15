@@ -148,6 +148,21 @@ class TestLoop(unittest.TestCase):
         zc = col("target_z") - p0[2]
         self.assertAlmostEqual(zc[-1] - zc[k], -30.0, delta=2e-3)              # C: 30 mm more after the hand stops
 
+    def test_cylindrical_swing_turns_j1(self):
+        # the hand swings 20 deg about the pivot (leader base center) on a 300 mm circle, slowly
+        s = settings(mapping__mode="cylindrical", mapping__pivot_xy_mm=[0.0, 0.0], mapping__min_pivot_radius_mm=150.0)
+        a = np.radians(np.linspace(0.0, 20.0, 101))
+        path = [[300.0 * np.cos(t), 300.0 * np.sin(t), 0.0] for t in a]           # circle about the pivot
+        arm = [(0, path[0], 0)] * 3 + [(1, path[0], 0)] * 3
+        steps = arm + [(1, p, 0) for p in path[1:]] + [(1, path[-1], 0)] * 30
+        loop, p0, p1, col, stop = run(steps, s)
+        self.assertIsNone(stop if stop != "script end" else None)
+        az = np.degrees(np.arctan2(col("target_y"), col("target_x")))
+        r = np.hypot(col("target_x"), col("target_y"))
+        self.assertAlmostEqual(az[-1] - az[0], 20.0, delta=0.05)                   # J1 turned with the hand
+        self.assertAlmostEqual(r[-1], r[0], delta=0.05)
+        self.assertAlmostEqual(col("target_z")[-1], col("target_z")[0], delta=1e-3)
+
     def test_release_freezes(self):
         steps = ARM + [(1, [2.0 * i, 0, 0], 0) for i in range(1, 11)] + [(0, [2.0 * i, 0, 0], 0) for i in range(11, 40)]
         _, p0, _, col, _ = run(steps)

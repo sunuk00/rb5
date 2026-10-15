@@ -24,6 +24,11 @@ mapping:
   leader_deadband_mm: 0.3       # ignore leader wrist center changes < 0.3 mm (encoder flicker, run 141108)
   leader_filter_tau_s: 0.03     # low-pass on the wrist center against the encoder-step jitter that shook the RB5 at
                                 # 200 mm/s (20261016_021514); offline: jitter 1.73 -> about 0.6 m/s^2, +30 ms delay
+  mode: cylindrical             # 2026-10-16 trial (user): a swing of the hand about the pivot turns J1 by the same
+                                # angle; radius and height x scale. "cartesian" = the mapping before (revert here)
+  pivot_xy_mm: [0.0, 0.0]       # leader base center: hand 205 mm or more from it in 95 % of the clutch time (right
+                                # shoulder (0, -150): 87 mm), sideways gain about 1.6x median (shoulder 2.3x)
+  min_pivot_radius_mm: 150.0    # angle = sideways motion / max(hand radius, 150): bounded gain near the axis
 
 yaw:                            # RB5 yaw change = leader J6 change (method B)
   enabled: true
