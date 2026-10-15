@@ -36,7 +36,7 @@ CSV_HEADER = (["t_s", "cycle_interval_ms", "button_raw", "clutch_engaged"]
               + ["trigger_raw", "grip_close", "grip_state_closed", "tool_read_failed"]
               + [f"jnt_ang_{i}" for i in range(6)] + [f"meas_tcp_{a}" for a in "xyz"] + ["target_minus_meas_mm"]
               + [f"leader_used_{a}_mm" for a in "xyz"] + ["leader_j6_used_deg"]
-              + ["left_button_raw", "left_mode_active"])
+              + ["left_button_raw", "left_mode_active", "accel_limited"])
 
 
 class StopRequest(Exception):
@@ -193,7 +193,7 @@ class TeleopLoop:
                 desired, yaw_desired = mapper.desired(used_p, used_j6)
                 plan = plan_step(mapper.target, desired, tcp[:3], q, self.model, cyl,
                                  {"target": mapper.yaw, "desired": yaw_desired, "tcp": yaw_tcp, "base_az0": base_az0},
-                                 self.lim, self.watch)
+                                 self.lim, self.watch, mapper.prev_step)
                 dropped, flags = plan.dropped, plan.flags
                 j5_pred, sh_pred, el_pred, jl_pred = plan.margins
                 max_dq, lag, yaw_lag = plan.max_dq, plan.lag, plan.lag_yaw
@@ -212,9 +212,11 @@ class TeleopLoop:
             elif plan is not None:
                 mapper.apply(plan)
                 self.rpy[2] = wrap_deg(rpy0[2] + mapper.yaw)
+            if late or plan is None:
+                mapper.prev_step = np.zeros(3)   # the target did not move this cycle
             self.target = mapper.target
             for key, on in flags.items():
-                if on and not flags_prev.get(key, False):
+                if on and not flags_prev.get(key, False) and key in labels:   # accel: CSV only (switches often)
                     self.event(f"[{time.monotonic() - t_start:7.2f} s] {labels[key]}")
             flags_prev = flags
             if flags.get("j5slow") and not warned["j5slow"]:
@@ -257,7 +259,7 @@ class TeleopLoop:
                    "" if grip.closed is None else int(grip.closed), int(button_raw is None)]
                 + self._measured_columns(q_meas, mapper.target)
                 + ([f"{v:.3f}" for v in used_p] + [f"{used_j6:.3f}"] if used_p is not None else [""] * 4)
-                + ["" if left_raw is None else left_raw, int(mapper.left_active)])
+                + ["" if left_raw is None else left_raw, int(mapper.left_active), int(flags.get("accel", False))])
 
             # 7. Status line
             if self.status and cycle % STATUS_EVERY == 0:

@@ -26,6 +26,9 @@ mapping:
   speed_tangential_mm_s: 300.0  # sideways about the base z axis (turning J1), Real max (user 2026-10-16): J1 was
                                 # speed-limited 46-59 % of its turning time at 200 (about 25 deg/s at r 450)
   lead_per_step: 2.0
+  accel_mm_s2: 2500.0           # target acceleration limit (2026-10-16): the largest joint accelerations came when the
+                                # speed / joint limits switched on and off (040257: 97 % / 82 % of the top 1 %); the
+                                # hand's own acceleration p99 is about 4 m/s^2. 0 = off
   max_lag_mm: 20.0              # C: catch up to 20 mm after the hand stops (0.1 s at 200 mm/s); was 0 (B). Yaw stays B
                                 # because yaw.max_lag_deg is 0
   leader_deadband_mm: 0.3       # ignore leader wrist center changes < 0.3 mm (encoder flicker, run 141108)

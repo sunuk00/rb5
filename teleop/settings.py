@@ -66,6 +66,7 @@ SCHEMA = {
         "frame_yaw_deg": _num(-180.0, 180.0),
         "speed_mm_s": _num(1.0, 400.0),               # Real is capped lower (REAL_MAX)
         "speed_tangential_mm_s": _num(1.0, 400.0),    # sideways about the base z axis (turning J1)
+        "accel_mm_s2": _num(0.0, 20000.0),            # target acceleration limit; 0 = off
         "lead_per_step": _num(1.0, 5.0),
         "max_lag_mm": _num(0.0, 50.0),
         "leader_deadband_mm": _num(0.0, 5.0),         # leader wrist center changes smaller than this are ignored

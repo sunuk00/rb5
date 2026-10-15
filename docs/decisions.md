@@ -78,6 +78,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — Faster J1 (sideways 300 mm/s), RB5 J6 still (tool follows the base), vertical z x 1.5](#2026-10-16--faster-j1-sideways-300-mms-rb5-j6-still-tool-follows-the-base-vertical-z-x-15)
 - [2026-10-16 — Left button = J1 rotate mode; azimuth range +/-120](#2026-10-16--left-button--j1-rotate-mode-azimuth-range--120)
 - [2026-10-16 — Azimuth lock: J1 turns only in the rotate mode](#2026-10-16--azimuth-lock-j1-turns-only-in-the-rotate-mode)
+- [2026-10-16 — Target acceleration limit 2.5 m/s^2 against the shake when the limits switch](#2026-10-16--target-acceleration-limit-25-ms2-against-the-shake-when-the-limits-switch)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1340,6 +1341,38 @@ target along the arm's current direction (radius), up / down (z) x scale moves z
 (user's choice "along the arm": after turning J1, forward still extends the arm). B / C: the radial and
 z parts of a dropped vector shift the leader x / z reference. With the tool following the base, the
 normal mode now moves J2-J5 in the arm's vertical plane only.
+
+## 2026-10-16 — Target acceleration limit 2.5 m/s^2 against the shake when the limits switch
+
+**Run 040257 (current operation, Real):** the user finds this operation the best for pick and place so
+far. J1 locked in the normal mode (0.087 deg in total), descents nearly vertical (radius change 0.13 x
+the descent, was 0.5-0.9), RB5 J6 6 deg, work p99 11.1 ms, no late cycle. But the joint acceleration
+p99 was the highest so far (1295 deg/s^2, target 5.7 m/s^2 p99), and of the top 1 % of joint
+accelerations 97 % were next to the TCP speed limit switching and 82 % next to the joint speed limit
+(0 % next to a mode switch): the target velocity jumped from the hand's to the cap in one cycle.
+
+**Decision (user, item 1 of the refinement list):** `mapping.accel_mm_s2` 2500 (Sim and Real; 0 = off).
+In plan_step, before the speed limits, the step may differ from the previous cycle's step by at most
+a x dt^2 (1.0 mm at 20 ms), and is at most (-a + sqrt(a^2 + 8 a d)) / 2 for a remaining distance d, so
+it can still stop in time without overshoot (the continuous sqrt(2 a d) overshot 1.9 mm in the test).
+The cut part goes to the C lag / is dropped like the other limits. A release, a late or a stale cycle
+still freezes the target at once (the previous step is reset to zero). CSV column `accel_limited`; no
+terminal message for it.
+
+**Replay of 040257 through TeleopLoop (Real settings, fake robot, same hand data):**
+
+| accel limit | target accel p99 / max | joint accel p99 / max | desired - target p50 / p95 | dropped |
+|---|---|---|---|---|
+| off | 4.0 / 20.6 m/s^2 | 971 / 2530 deg/s^2 | 0.3 / 51.9 mm | 2161 mm |
+| 2.5 m/s^2 | 2.5 / 2.8 | 412 / 605 | 5.7 / 29.8 mm | 2526 mm |
+| 4.0 m/s^2 | 4.0 / 4.5 | 579 / 977 | 3.5 / 36.8 mm | 2354 mm |
+
+Cost of 2.5: about 5 mm more lag behind the hand (median) and 17 % more dropped motion. The test found
+a missing event label for the new flag that would have stopped the teleop at the first limited cycle.
+
+**Remaining list:** rotate-mode catch-up in degrees (1457 mm dropped while rotating), radial / vertical
+cap 250 mm/s, asymmetric azimuth range (-120 reached, +120 unused), radius kept exactly on the circle in
+the rotate mode (1.2 mm chord drift).
 
 ## PENDING
 

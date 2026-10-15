@@ -204,7 +204,7 @@ class TestSameAs21(unittest.TestCase):
                 self.assertAlmostEqual(a.yaw, b.yaw, places=9)
                 np.testing.assert_allclose(a.dropped, b.dropped, atol=1e-9)
                 self.assertAlmostEqual(a.dropped_yaw, b.dropped_yaw, places=9)
-                self.assertEqual(a.flags, b.flags)
+                self.assertEqual({k: v for k, v in a.flags.items() if k != "accel"}, b.flags)   # accel is new (off here)
                 np.testing.assert_allclose(a.margins, b.margins, atol=1e-9)
                 self.assertAlmostEqual(a.max_dq, b.max_dq, places=9)
                 self.assertAlmostEqual(a.lag, b.lag, places=9)

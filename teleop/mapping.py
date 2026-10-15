@@ -22,7 +22,9 @@ Yaw:      desired = RB5 yaw at press + (leader J6 now - at press) [deg], about b
 Yaw mode follow_base (yaw.mode): the tool yaw follows the azimuth of the target about the base z axis,
 so the gripper turns with the arm and the RB5 wrist joints (J6) stay still when J1 turns; the leader J6
 is not used and the yaw speed / range limits do not apply (the position limits do).
-Per cycle (plan_step): range first (the excess outside the range is kept), then the speed limits
+Per cycle (plan_step): range first (the excess outside the range is kept), then the acceleration limit
+(mapping.accel_mm_s2: the step may differ from the previous cycle's step by at most a x dt^2, and is
+not larger than the step from which it can still stop at that acceleration), then the speed limits
 scaled by the singularity / joint limit watches (sideways about the base z axis up to
 speed_tangential_mm_s, radial and vertical up to speed_mm_s: (t / T)^2 + (o / O)^2 <= 1), then the
 per-joint speed limit, then the lead limit.
@@ -42,6 +44,7 @@ class Limits:
         period = s.servo.period_s
         self.max_step_mm = s.mapping.speed_mm_s * period
         self.max_tangential_step_mm = s.mapping.speed_tangential_mm_s * period
+        self.max_dstep_mm = s.mapping.accel_mm_s2 * period * period   # 0 = no acceleration limit
         self.max_lead_mm = s.mapping.lead_per_step * max(self.max_step_mm, self.max_tangential_step_mm)
         self.max_lag_mm = s.mapping.max_lag_mm
         self.max_yaw_step_deg = s.yaw.speed_deg_s * period
@@ -71,16 +74,17 @@ def azimuth_from(p, az0_deg):
     return wrap_deg(np.degrees(np.arctan2(p[1], p[0])) - az0_deg)
 
 
-def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch):
+def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch, prev_step=None):
     """One cycle of the limits for the position and the yaw.
 
     yaw: dict with "target", "desired", "tcp" = yaw about base z relative to the start rz [deg], and
     "base_az0" = the start azimuth [deg] when the yaw follows the base (follow_base), else None.
+    prev_step: the position step of the previous cycle [mm] (zero after a release or a frozen cycle).
     Returns a SimpleNamespace: target (new position), yaw (new yaw), dropped (position vector),
     dropped_yaw, flags, margins (J5, shoulder, elbow, joint limit), max_dq, lag, lag_yaw, stop.
     """
     flags = dict.fromkeys(("speed", "j5slow", "shslow", "elslow", "jlslow", "jspeed", "range", "lead",
-                           "yspeed", "yrange", "ylead"), False)
+                           "yspeed", "yrange", "ylead", "accel"), False)
     az0 = yaw.get("base_az0")
     follow = az0 is not None
     yaw_at = (lambda p: azimuth_from(p, az0)) if follow else None   # follow_base: yaw of a position
@@ -95,6 +99,15 @@ def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch):
     ystep = wrap_deg(ydes_in - yaw["target"]) if follow else ydes_in - yaw["target"]
     jac = model.jacobian(q)   # all predictions below are from the same q: compute it once
     lead_p, lead_y = target - tcp_pos, yaw["target"] - yaw["tcp"]   # parts that are only the robot catching up
+    asked = step   # what the hand asked for this cycle (the cut parts below go to the lag / are dropped)
+
+    # Acceleration limit: change the step by at most max_dstep, and not faster than it can still stop
+    if lim.max_dstep_mm > 0.0:
+        prev = np.zeros(3) if prev_step is None else np.asarray(prev_step, dtype=float)
+        a, d = lim.max_dstep_mm, np.linalg.norm(step)
+        want = clip_norm(step, 0.5 * (-a + np.sqrt(a * a + 8.0 * a * d)))   # v + (v - a) + ... <= d: stops in time
+        step = prev + clip_norm(want - prev, lim.max_dstep_mm)
+        flags["accel"] = bool(np.linalg.norm(step - asked) > 1e-9)
 
     # Speed limits, scaled by the predicted singularity / joint limit margins of a full-size step
     full = clip_step(step, target, lim.max_step_mm, lim.max_tangential_step_mm)
@@ -135,10 +148,10 @@ def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch):
 
     # Dropped part (the leader start is shifted by it)
     if follow:   # the yaw is not mapped from the leader: nothing to drop
-        dropped = (step - limited if lim.max_lag_mm <= 0.0 else _lag_drop(desired_in - clamped, lim.max_lag_mm))
+        dropped = (asked - limited if lim.max_lag_mm <= 0.0 else _lag_drop(desired_in - clamped, lim.max_lag_mm))
         ydropped = 0.0
     elif lim.max_lag_mm <= 0.0:
-        dropped, ydropped = step - limited, ystep - ylimited
+        dropped, ydropped = asked - limited, ystep - ylimited
     else:
         lag = desired_in - clamped
         n = np.linalg.norm(lag)
@@ -189,6 +202,7 @@ class Mapper:
         self.vertical_xy = self.rotate_anchor = self.last_desired = None
         self.vertical_z_scale = s.mapping.vertical_z_scale  # extra z gain in the vertical mode
         self.rotate_deg_per_mm = s.mapping.rotate_deg_per_mm
+        self.prev_step = np.zeros(3)   # position step applied in the last cycle (acceleration limit)
         self.lock_azimuth = s.mapping.lock_azimuth
         self.yaw_enabled = s.yaw.enabled
         self.target = np.array(target0, dtype=float)   # RB5 TCP position target [mm]
@@ -275,6 +289,7 @@ class Mapper:
             shift = self.frame.T @ plan.dropped / self.scale
             shift[2] *= self.scale / self._z_scale()
             self.leader_start = self.leader_start + shift
+        self.prev_step = np.array(plan.target, dtype=float) - self.target
         self.target = np.array(plan.target, dtype=float)
         self.yaw_leader_start += plan.dropped_yaw
         self.yaw = plan.yaw

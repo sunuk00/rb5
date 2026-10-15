@@ -21,6 +21,9 @@ mapping:
   speed_tangential_mm_s: 400.0  # sideways about the base z axis (turning J1); Real 300 (radial / vertical 200)
   speed_mm_s: 400.0             # TCP speed limit; 200 dropped 1.8-4.0 m of hand motion per run at scale 1.5-2 (130330, 130757)
   lead_per_step: 2.0            # target may lead tcp_ref by this x one step
+  accel_mm_s2: 2500.0           # target acceleration limit (2026-10-16): the largest joint accelerations came when the
+                                # speed / joint limits switched on and off (040257: 97 % / 82 % of the top 1 %); the
+                                # hand's own acceleration p99 is about 4 m/s^2. 0 = off
   max_lag_mm: 50.0              # C: lag kept for catch-up; 0 = B (was 30; 50 is the settings maximum)
   leader_deadband_mm: 0.3       # ignore leader wrist center changes < 0.3 mm (encoder flicker, run 141108)
   leader_filter_tau_s: 0.03     # low-pass on the wrist center against the encoder-step jitter that shook the RB5 at

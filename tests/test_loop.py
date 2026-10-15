@@ -282,6 +282,35 @@ class TestLoop(unittest.TestCase):
         self.assertAlmostEqual(az[-1], az[k], delta=1e-3)                          # locked again after the release
         self.assertAlmostEqual(r[-1] - r[k], 10.0, delta=0.01)                     # forward = along the turned arm
 
+    def test_acceleration_limit(self):
+        s = settings(mapping__accel_mm_s2=2500.0)                                 # 1.0 mm per cycle^2
+        def steps_of(col):
+            p = np.c_[col("target_x"), col("target_y"), col("target_z")]
+            return np.diff(p, axis=0)
+        # a sudden 40 mm hand jump (20 mm at scale 0.5): ramps up and down, no overshoot
+        steps = ARM + [(1, [40.0, 0, 0], 0)] * 60
+        _, p0, _, col, _ = run(steps, s)
+        st = steps_of(col)
+        self.assertLessEqual(np.linalg.norm(np.diff(st, axis=0), axis=1).max(), 1.0 + 2e-3)
+        x = col("target_x") - p0[0]
+        self.assertAlmostEqual(x[-1], 20.0, delta=1e-2)
+        self.assertLessEqual(x.max(), 20.0 + 1e-2)                                # no overshoot
+        # moving down at 150 mm/s (3 mm per cycle at the robot), then the hand stops: the robot slows down
+        # (along z: the fixture range is only r 450..550 around a start at r 500)
+        steps = ARM + [(1, [0, 0, -6.0 * i], 0) for i in range(1, 21)] + [(1, [0, 0, -120.0], 0)] * 40
+        _, p0, _, col, _ = run(steps, s)
+        st = steps_of(col)
+        self.assertLessEqual(np.linalg.norm(np.diff(st, axis=0), axis=1).max(), 1.0 + 2e-3)
+        z = col("target_z") - p0[2]
+        self.assertGreaterEqual(z.min(), -60.0 - 1e-2)                            # no overshoot
+        self.assertAlmostEqual(z[-1], -60.0, delta=0.05)
+        self.assertGreater(np.nansum(col("accel_limited")), 0)
+        # releasing the clutch still freezes the target at once
+        steps = ARM + [(1, [6.0 * i, 0, 0], 0) for i in range(1, 21)] + [(0, [6.0 * i, 0, 0], 0) for i in range(21, 40)]
+        _, p0, _, col, _ = run(steps, s)
+        x = col("target_x")
+        self.assertAlmostEqual(x[len(ARM) + 20], x[-1], places=9)
+
     def test_vertical_mode_read_failures(self):
         s = settings(mapping__left_button="vertical")
         steps = ARM + [(1, [0, 0, 0], 0, 1000, True, 0)] * 3 + [(1, [0, 0, 0], 0, 1000, True, 1)] * 5
