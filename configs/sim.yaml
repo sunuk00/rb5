@@ -46,7 +46,7 @@ range:                          # cylinder piece about the base z axis, fixed at
   r_min_mm: 350.0               # J3 (+/-165) margin >= 10 deg over the range (DH grid, 2026-10-12)
   r_max_mm: 800.0               # was 600 (x stopped at about 585); elbow >= 43 deg up to r 800 (DH grid, z -37..213,
                                 # azimuth +/-30); x 750 needs r 771 at the start azimuth 13.4 deg
-  z_below_mm: 237.0             # start z (about 202) - 237 = about -35 mm, the same floor as before (was 100 from 64.6)
+  z_below_mm: 252.0             # start z (about 202) - 252 = -50 mm, same floor as Real (was 237 -> about -35)
   z_above_mm: 263.0             # start z + 263 (about 465 mm, same top as before); was 400 from start z 64.6
   r_max_by_z: [[63.0, 800.0], [113.0, 775.0], [163.0, 725.0], [213.0, 700.0], [263.0, 650.0]]
                                 # [start z + dz, r_max]: largest r without any slowdown at that height (DH grid

@@ -50,15 +50,17 @@ yaw:
 range:
   r_min_mm: 350.0               # same as Simulation (user, 2026-10-12); was 340..420
   r_max_mm: 800.0               # same as Simulation; elbow >= 43 deg up to r 800 (DH grid)
-  z_below_mm: 172.0             # start z (about 202) - 172 = 30 = the floor below; was 100 from start z 64.6
+  z_below_mm: 252.0             # start z (about 202) - 252 = -50 = the floor below (was 172 -> 30)
   z_above_mm: 263.0             # start z + 263 (about 465 mm, same top as before); was 400 from start z 64.6
   r_max_by_z: [[63.0, 800.0], [113.0, 775.0], [163.0, 725.0], [213.0, 700.0], [263.0, 650.0]]
                                 # [start z + dz, r_max]: largest r without any slowdown at that height (DH grid
                                 # with the ready pose orientation, azimuth +/-90; user chose this shape 2026-10-12).
                                 # dz moved down by 137 mm with the new ready pose (2026-10-16): same absolute
                                 # heights (about 265 .. 465 mm) as before
-  z_min_abs_mm: 30.0            # PROVISIONAL: TCP never below z 30 mm (z 0 = base bottom = table?). Replace with
-                                # table height + gripper length + margin
+  z_min_abs_mm: -50.0           # TCP never below z -50 (2026-10-16, user: lower; nothing is mounted on the flange,
+                                # the TCP is 187 mm below the flange center, so the flange center is at about 140 mm
+                                # above the table). Was 30 (provisional). RAISE IT when a tool is mounted:
+                                # tool tip height + margin
   azimuth_half_deg: 90.0        # same as Simulation; was 30
 
 safety:

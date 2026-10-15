@@ -24,8 +24,9 @@ its own step, with the lab, not as part of a Simulation session.
 - [ ] **Base +x direction**: confirm with `scripts/22_base_axis_check.py` and a tape (manual
       Appendix F: +Y toward the cable connector, so +X is 90 deg clockwise from it seen from above).
 - [x] **Ready pose for Real**: the pose set by the user on the real RB5 (2026-10-12), margins checked.
-- [ ] **z lower bound** (`range.z_min_abs_mm`): PROVISIONAL 30 mm. Replace with table height + gripper
-      length + margin, in the base frame (z 0 = base bottom). The cylinder never goes below it.
+- [ ] **z lower bound** (`range.z_min_abs_mm`): -50 mm since 2026-10-16 because **nothing is mounted** on
+      the flange (the TCP is 187 mm below the flange center; flange center about 140 mm above the table
+      at the floor). **Raise it before mounting any tool**: tool tip height + margin (z 0 = base bottom).
 - [x] Range (`range.*`): same as Simulation on user request (2026-10-12): r 350-800, z -100 / +400
       (floor 30; outer radius 800 -> 650 between +200 and +400), azimuth +/-90. Keep that space clear,
       also above the robot (up to about 463 mm).

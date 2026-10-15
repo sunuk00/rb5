@@ -74,6 +74,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — Cylindrical mapping reverted to cartesian after one Real run](#2026-10-16--cylindrical-mapping-reverted-to-cartesian-after-one-real-run)
 - [2026-10-16 — Vertical mode on the left handle button (x, y fixed, only z)](#2026-10-16--vertical-mode-on-the-left-handle-button-x-y-fixed-only-z)
 - [2026-10-16 — Vertical mode z x 2 (vertical_z_scale)](#2026-10-16--vertical-mode-z-x-2-vertical_z_scale)
+- [2026-10-16 — TCP floor 30 -> -50 mm (nothing mounted on the flange)](#2026-10-16--tcp-floor-30----50-mm-nothing-mounted-on-the-flange)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1265,6 +1266,24 @@ further). The user said the many presses were mostly for turning J1, which was f
 **Decision (user):** `mapping.vertical_z_scale` 2.0 (Sim and Real): in the vertical mode z follows the
 hand x scale x 2, so a 170 mm descent needs 85 mm of hand motion. The B / C reference shift uses the
 same gain. Normal mode unchanged.
+
+## 2026-10-16 — TCP floor 30 -> -50 mm (nothing mounted on the flange)
+
+**Request (user):** go lower for pick and place (run 032657: 8 of 9 s of range limit were the 30 mm
+floor, all in the vertical mode).
+
+**Finding:** the TCP offset (0, -187, -40) points 187 mm *down* from the flange center in the ready
+orientation (the flange faces sideways, flange y is up), so at TCP z 30 the flange center is at about
+220 mm. The 30 mm floor protected a tool tip at the TCP, but nothing is mounted (user, 2026-10-16).
+
+**Decision (user):** `range.z_min_abs_mm` -50 in Real (flange center then about 140 mm above the table)
+and `z_below_mm` 252 in Real and Sim (start z about 202 -> floor -50 in both). DH check at TCP z -50 over
+r 350-800, azimuth +/-90 (ready orientation): all reachable; J5 >= 83 deg, shoulder >= 218 mm, elbow >=
+29.5 deg, joint limit >= 14.5 deg at the inner low corner (r 350, azimuth -75): below the 20 deg slow
+threshold there, so the teleop slows down in that corner (stop at 10).
+
+**Must be raised again when a tool is mounted** (tool tip height + margin); also in
+`docs/real_first_run_checklist.md`.
 
 ## PENDING
 
