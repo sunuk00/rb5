@@ -182,11 +182,15 @@ class TestSameAs21(unittest.TestCase):
         rng = np.random.default_rng(1)
         model, watch = RB5Model(OFFSET), Watch(SIM.safety)
         seen = set()
+        # 21 added the robot's lag to the joint speed check; since 2026-10-16 only the step counts (own test
+        # below). Joint caps out of reach on both sides, so everything else is compared one to one.
+        m.MAX_DQ_DEG = np.full(6, 1e6)
         for lag in (30.0, 0.0):
             m.MAX_LAG_MM, m.MAX_YAW_LAG_DEG = lag, (15.0 if lag else 0.0)
             s = test_raw()
             s["mapping"]["max_lag_mm"] = lag
             lim = Limits(_ns(s))
+            lim.max_dq_deg = np.full(6, 1e6)
             for i in range(300):
                 q = POSE_D + rng.normal(0, 8, 6)
                 # also poses near the wrist singularity, the J3 limit and the elbow singularity
@@ -214,8 +218,28 @@ class TestSameAs21(unittest.TestCase):
                 seen.update(k for k, v in a.flags.items() if v)
                 seen.update(["stop"] if a.stop else [])
         # the cases must exercise the limits, the watches and the stop
-        for key in ("speed", "yspeed", "range", "lead", "jspeed", "j5slow", "elslow", "jlslow", "stop"):
+        for key in ("speed", "yspeed", "range", "lead", "j5slow", "elslow", "jlslow", "stop"):
             self.assertIn(key, seen)
+
+    def test_joint_speed_limit_ignores_the_lag(self):
+        model, watch = RB5Model(OFFSET), Watch(SIM.safety)
+        s = test_raw()
+        s["mapping"]["max_lag_mm"] = 0.0
+        lim = Limits(_ns(s))
+        q = np.array(POSE_D, dtype=float)
+        tcp = model.tcp(q)[0]
+        cyl = CylinderRange.from_settings(SIM.range)
+        yaw = {"target": 0.0, "desired": 0.0, "tcp": 0.0}
+        step = np.array([0.0, 0.0, -3.0])                    # within the 4 mm speed cap
+        for lag in (0.0, 3.0):                                # the robot is 0 or 3 mm behind the target
+            target = tcp + np.array([0.0, 0.0, -lag])
+            a = plan_step(target, target + step, tcp, q, model, cyl, yaw, lim, watch)
+            dq = np.abs(model.predict(q, a.target - target, None, 0.0))
+            self.assertLessEqual(dq.max(), max(lim.max_dq_deg) + 1e-9)
+            np.testing.assert_allclose(a.target - target, step if not a.flags["jspeed"] else a.target - target)
+            if lag:
+                self.assertEqual(a.flags["jspeed"], without_lag)   # the lag does not change the decision
+            without_lag = a.flags["jspeed"]
 
 
 def _ns(d):

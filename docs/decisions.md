@@ -85,6 +85,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — Azimuth range widened on the minus side: -160 .. 133 deg](#2026-10-16--azimuth-range-widened-on-the-minus-side--160--133-deg)
 - [2026-10-16 — J1 a bit faster (sideways 360 mm/s, J1 75 deg/s); acceleration limit moved to the last stage](#2026-10-16--j1-a-bit-faster-sideways-360-mms-j1-75-degs-acceleration-limit-moved-to-the-last-stage)
 - [2026-10-16 — Radial / vertical speed cap 200 -> 250 mm/s](#2026-10-16--radial--vertical-speed-cap-200---250-mms)
+- [2026-10-16 — Joint speed limit on the step only (the robot's lag is no longer added)](#2026-10-16--joint-speed-limit-on-the-step-only-the-robots-lag-is-no-longer-added)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1507,6 +1508,32 @@ vertical speed asked p90 199 / 194 mm/s.
 fake robot, no state delay): normal-mode speed cap 73 -> 65 %, dropped in the normal mode 1129 -> 606 mm,
 no joint cap exceeded, target jitter p99 2.5 m/s^2. Far / low corners need up to 0.393 deg/mm, so the
 J2-J6 joint caps (60 deg/s) can bind there at 250 mm/s (98 deg/s needed); not seen in the replay.
+
+## 2026-10-16 — Joint speed limit on the step only (the robot's lag is no longer added)
+
+**Run 050415 (radial / vertical 250 mm/s, Real):** normal-mode speed cap 73 -> 59 %, dropped there 1167 ->
+873 mm (the hand was faster: above 200 mm/s 36 %). Target jitter p99 2.5 m/s^2, no late cycle, J3
+slowdown 0. New bottleneck: the joint speed limit was active 34 % of the time in both modes (was 10 %),
+mostly J4 / J3 / J2 in the normal mode; 652 of the 873 mm dropped there happened with it active. Yet the
+measured J1 stayed below its cap (max 56 of 75 deg/s).
+
+**Cause:** the per-joint speed check predicted the joint motion of "the robot's lag behind the target +
+this cycle's step". The reported state is about one cycle old (real lag while moving fast: 0.54 steps
+median, 1.01 p99, at most 6.7 mm), so at a steady speed that is about two steps, and the joints were held
+near half their caps. The lag came over from script 21 together with the pose predictions (where the
+robot will be after catching up); no reason was recorded for using it in the speed check.
+
+**Decision (user):** the joint speed limit uses this cycle's step only (position and yaw scaled by the same
+factor, f = min(cap / dq)). The pose checks (singularity, joint limit watches, stop) still predict the
+pose after catching up. The script-21 comparison test sets the joint caps out of reach on both sides (all
+else still compared one to one); a new test checks that the lag does not change the joint decision.
+
+**Replay of 050415 (TeleopLoop, Real settings, fake robot, state reported one cycle late = the real p99):**
+previous / new rule: joint limit active 63 / 2 %; dropped in the normal mode 1387 / 560 mm, while rotating
+781 / 223 mm; the fake robot's true joint speeds J1 max 41 / 59 deg/s, J2-J4 max 34 / 60 deg/s (caps 75 /
+60), never above a cap; target jitter p99 2.5 / 2.5 m/s^2. Real lag + a full step stays below the 14.4 mm
+lead limit in 0 % of the fast cycles of 050415, so the lead limit should not start acting. (A harsher model
+with a random 1-2 cycle delay triggers the lead limit; the real data does not show that delay.)
 
 ## PENDING
 

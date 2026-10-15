@@ -124,12 +124,15 @@ def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch, prev_ste
         ylimited = float(np.clip(ystep, -lim.max_yaw_step_deg * scale, lim.max_yaw_step_deg * scale))
         flags["yspeed"] = abs(ylimited) < abs(ystep) - 1e-9
 
-    # Per-joint speed limit on the combined motion; both parts are scaled by the same factor
-    dq_step = np.abs(model.predict(q, lead_p + limited, jac, lead_y + ylimited))
-    dq_lead = np.abs(model.predict(q, lead_p, jac, lead_y))
-    over = (dq_step > lim.max_dq_deg) & (dq_step > dq_lead)
+    # Per-joint speed limit on this cycle's step (position and yaw scaled by the same factor). The robot's
+    # lag (lead_p) is not added: the reported state is about one cycle old, so at a steady speed the lag is
+    # about one step that is already being executed, and adding it limited the joints at about half their
+    # cap (050415: joint limit 34 % of the time, with J1 at most 56 of 75 deg/s). The pose checks above and
+    # below still predict the pose after catching up.
+    dq_step = np.abs(model.predict(q, limited, jac, ylimited))
+    over = dq_step > lim.max_dq_deg
     if np.any(over):
-        f = max(0.0, np.min((lim.max_dq_deg[over] - dq_lead[over]) / (dq_step[over] - dq_lead[over])))
+        f = float(np.min(lim.max_dq_deg[over] / dq_step[over]))
         limited, ylimited = limited * f, ylimited * f
         flags["jspeed"] = True
 
