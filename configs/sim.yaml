@@ -33,15 +33,17 @@ yaw:                            # RB5 yaw change = leader J6 change (method B)
   leader_deadband_deg: 0.15     # ignore leader J6 changes < 0.15 deg: one encoder tick (0.088) back and forth made
                                 # the RB5 J6 shake (run 141108); two ticks (0.176) pass
 
-range:                          # cylinder piece about the base z axis, fixed at start (ready pose: r 367, z 63)
+range:                          # cylinder piece about the base z axis, fixed at start (ready pose: r 500, z 200)
   r_min_mm: 350.0               # J3 (+/-165) margin >= 10 deg over the range (DH grid, 2026-10-12)
   r_max_mm: 800.0               # was 600 (x stopped at about 585); elbow >= 43 deg up to r 800 (DH grid, z -37..213,
                                 # azimuth +/-30); x 750 needs r 771 at the start azimuth 13.4 deg
-  z_below_mm: 100.0             # start z - 100 (about -37 mm)
-  z_above_mm: 400.0             # start z + 400 (about 463 mm); the outer radius falls with height above +200:
-  r_max_by_z: [[200.0, 800.0], [250.0, 775.0], [300.0, 725.0], [350.0, 700.0], [400.0, 650.0]]
+  z_below_mm: 237.0             # start z (about 202) - 237 = about -35 mm, the same floor as before (was 100 from 64.6)
+  z_above_mm: 263.0             # start z + 263 (about 465 mm, same top as before); was 400 from start z 64.6
+  r_max_by_z: [[63.0, 800.0], [113.0, 775.0], [163.0, 725.0], [213.0, 700.0], [263.0, 650.0]]
                                 # [start z + dz, r_max]: largest r without any slowdown at that height (DH grid
-                                # with the ready pose orientation, azimuth +/-90; user chose this shape 2026-10-12)
+                                # with the ready pose orientation, azimuth +/-90; user chose this shape 2026-10-12).
+                                # dz moved down by 137 mm with the new ready pose (2026-10-16): same absolute
+                                # heights (about 265 .. 465 mm) as before
   z_min_abs_mm: null            # absolute floor; null = not used in Simulation
   azimuth_half_deg: 90.0
 
@@ -69,9 +71,10 @@ tcp:
   expected_offset_mm: null      # null = not checked in Simulation
   offset_tolerance_mm: 1.0
 
-ready_pose:                     # pose set by the user on the real RB5 (read from jnt_ang, 2026-10-12): TCP r 367,
-                                # z 63, tool 6.9 deg from straight down. Pose D was (182, -11, -110.1, 31.1, -90, -2)
-  joints_deg: [178.969, 8.514, -138.775, 46.535, -87.239, 56.265]
+ready_pose:                     # 2026-10-16: r 500, z 200 (DH), tool and azimuth as the user's 2026-10-12 pose
+                                # (178.969, 8.514, -138.775, 46.535, -87.239, 56.265; r 367). Pose D was
+                                # (182, -11, -110.1, 31.1, -90, -2)
+  joints_deg: [182.920, -0.156, -107.813, 24.418, -87.677, 52.334]
   move_speed_deg_s: 30.0        # move_j argument; x speed bar 0.1 = 3 deg/s
   tolerance_deg: 0.05           # closer than this on every joint: no move
   wrist_warning_deg: 90.0       # warn when a wrist joint turns more than this

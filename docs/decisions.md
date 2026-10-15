@@ -69,6 +69,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — real-1: trial protocol for faster Real teleop](#2026-10-16--real-1-trial-protocol-for-faster-real-teleop)
 - [2026-10-16 — Real speed limits to option B: TCP 200 mm/s, joints 1.2 deg/cycle (60 deg/s)](#2026-10-16--real-speed-limits-to-option-b-tcp-200-mms-joints-12-degcycle-60-degs)
 - [2026-10-16 — Low-pass filter on the leader wrist center (tau 30 ms) against the shake at 200 mm/s](#2026-10-16--low-pass-filter-on-the-leader-wrist-center-tau-30-ms-against-the-shake-at-200-mms)
+- [2026-10-16 — Ready pose moved to r 500, z 200 (Real and Sim); range kept in absolute terms](#2026-10-16--ready-pose-moved-to-r-500-z-200-real-and-sim-range-kept-in-absolute-terms)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1157,6 +1158,37 @@ took 213 ms instead of 81 ms); an acceleration limit on the target (does not rem
 limit). Next items, one at a time after a Real check of this one: option A speeds (300 mm/s, 80 deg/s,
 yaw 45 deg/s), C lag 20 -> 50 mm (275 mm of a forward reach was dropped in 021514), yaw range +/-45 ->
 +/-90 (yaw at the range end 43 % of the clutch time).
+
+## 2026-10-16 — Ready pose moved to r 500, z 200 (Real and Sim); range kept in absolute terms
+
+**Problem (user, Real run 20261016_022416):** going straight down to place was hard. The hand asked for
+z down to -130 mm, but the descents ran into r_min (350 mm): the leader wrist center moves back by
+0.5-0.9 x the descent (it arcs about the shoulder), and the ready pose was at r 367, only 17 mm from
+r_min (e.g. press 22: hand dz -394, dx -264, robot r 692 -> 350). The z floor (30 mm) was not the
+cause for placing: the place height is 150 mm above the table (base on the table, so z 150).
+
+**Why the ready pose was at r 367:** it is the pose the user set by hand on the real RB5 on
+2026-10-12, read from jnt_ang and used as is; r_min was lowered from 450 to 350 so that it fitted
+the range. The 17 mm gap to r_min was not pointed out then.
+
+**Decision (user):** ready pose (182.920, -0.156, -107.813, 24.418, -87.677, 52.334) deg in sim.yaml
+and real.yaml: DH TCP (486.5, 115.5, 200.0), r 500, azimuth 13.4 deg, same tool orientation as the
+2026-10-12 pose (rpy 84.2, 3.7, 145.2). Found by damped least-squares IK marched from the old pose
+(same arm configuration). The range is relative to the start z, so it was re-expressed to stay the
+same in absolute terms (start z about 202 with the controller's +2 mm): z_above 400 -> 263 (top about
+465), r_max_by_z heights -137 mm, z_below 100 -> 172 in Real (floor 30 = z_min_abs) and -> 237 in Sim
+(floor about -35 as before).
+
+**Margins (DH, Real thresholds slow 20 deg / 50 mm):** at the pose J5 87.7 deg, shoulder 386 mm, elbow
+72.2 deg, joint limit 57.2 deg (J3; was 26.2); vertical line at r 500 from z 30 to 400: at least 87.7 /
+386 / 58.0 / 43.0; place height z 150 over r 350-800, azimuth +/-60: at least 83.2 / 219 / 47.7 / 32.7.
+Room to r_min 150 mm (was 17). Largest joint change from the old pose 31 deg (J3), about 6 s at 5 deg/s.
+
+**Candidates computed:** r 450 / 475 / 500 x z 150 / 200 / 250, all with margins >= 1.6x the slow
+thresholds; r 500 has the most J3 margin and room to r_min, z 200 is 50 mm above the place height.
+
+**Next if descending is still awkward:** a "vertical mode" switched by the left handle button
+(plan to be proposed separately). Cylindrical mapping for J1: on hold.
 
 ## PENDING
 
