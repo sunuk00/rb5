@@ -71,6 +71,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — Low-pass filter on the leader wrist center (tau 30 ms) against the shake at 200 mm/s](#2026-10-16--low-pass-filter-on-the-leader-wrist-center-tau-30-ms-against-the-shake-at-200-mms)
 - [2026-10-16 — Ready pose moved to r 500, z 200 (Real and Sim); range kept in absolute terms](#2026-10-16--ready-pose-moved-to-r-500-z-200-real-and-sim-range-kept-in-absolute-terms)
 - [2026-10-16 — Cylindrical mapping trial (Sim and Real): a hand swing about the leader base center turns J1](#2026-10-16--cylindrical-mapping-trial-sim-and-real-a-hand-swing-about-the-leader-base-center-turns-j1)
+- [2026-10-16 — Cylindrical mapping reverted to cartesian after one Real run](#2026-10-16--cylindrical-mapping-reverted-to-cartesian-after-one-real-run)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1219,6 +1220,17 @@ a straight sideways hand motion becomes an arc. Not addressed: the descent drift
 0.5-0.9 x the descent); about the base center that is a radius decrease and is mapped as one. Ready
 pose r 500 removed the r_min stops (025735: 0 cycles at r_min), but the user still finds descending
 awkward: next candidate is the "vertical mode" on the left handle button.
+
+## 2026-10-16 — Cylindrical mapping reverted to cartesian after one Real run
+
+**Run 031043 (cylindrical, Real):** J1 swing per clutch press median 9.1 -> 21.5 deg (vs 025735), but
+the sideways speed the hand asked for rose to 127 mm/s median / 237 mm/s p90, the speed cap was hit in
+65 % of the clutch time (29 %), joint speed limit 11 % (3 %), 2627 mm of hand motion dropped (115),
+17 clutch presses (5). User: "J1 is easier, but it does not go where I want".
+
+**Decision (user):** `mapping.mode: cartesian` in both files (the code stays, `cylindrical` turns it on
+again). Next: make descents for pick and place easier, and try leader J2 (shoulder yaw) -> RB5 J1 with
+the RB5 J6 no longer following the leader J6.
 
 ## PENDING
 
