@@ -23,6 +23,8 @@ mapping:
   frame_yaw_deg: 0.0            # TBD with the operator position; 0 = leader x forward = RB5 +x
   speed_mm_s: 200.0             # Real max (user, 2026-10-16, option B); was 100, 50. Hand faster than 100 in 63 %
                                 # of the clutch time, than 200 in 22 % (10-14 Real runs; decisions 2026-10-16)
+  speed_tangential_mm_s: 300.0  # sideways about the base z axis (turning J1), Real max (user 2026-10-16): J1 was
+                                # speed-limited 46-59 % of its turning time at 200 (about 25 deg/s at r 450)
   lead_per_step: 2.0
   max_lag_mm: 20.0              # C: catch up to 20 mm after the hand stops (0.1 s at 200 mm/s); was 0 (B). Yaw stays B
                                 # because yaw.max_lag_deg is 0
@@ -36,10 +38,12 @@ mapping:
   min_pivot_radius_mm: 150.0    # angle = sideways motion / max(hand radius, 150): bounded gain near the axis
   vertical_button: true         # left handle button held: x, y fixed, only z follows (straight descents for pick
                                 # and place: the hand drifts back 0.5-0.9 x the descent, mostly from the elbow)
-  vertical_z_scale: 2.0         # z x 2 in the vertical mode (user trial 2026-10-16): fewer re-grips on long descents
-                                # (032657: 57 clutch presses, half shorter than 1 s)
+  vertical_z_scale: 1.5         # z x 1.5 in the vertical mode (user 2026-10-16: 2.0 was a bit fast; 033917: z speed
+                                # median 122 mm/s, 40 % at the 200 mm/s cap). Fewer re-grips than 1.0
 
 yaw:
+  mode: follow_base             # user 2026-10-16: RB5 J6 stays still; the tool turns with J1 (leader J6 not used).
+                                # "leader_j6" = twist the handle to turn the tool (the settings below)
   enabled: true
   speed_deg_s: 30.0             # was 15. Real max 30
   range_deg: 45.0               # conservative

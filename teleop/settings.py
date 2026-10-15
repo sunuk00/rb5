@@ -65,6 +65,7 @@ SCHEMA = {
         "scale": _num(0.1, 2.0),
         "frame_yaw_deg": _num(-180.0, 180.0),
         "speed_mm_s": _num(1.0, 400.0),               # Real is capped lower (REAL_MAX)
+        "speed_tangential_mm_s": _num(1.0, 400.0),    # sideways about the base z axis (turning J1)
         "lead_per_step": _num(1.0, 5.0),
         "max_lag_mm": _num(0.0, 50.0),
         "leader_deadband_mm": _num(0.0, 5.0),         # leader wrist center changes smaller than this are ignored
@@ -76,6 +77,7 @@ SCHEMA = {
         "vertical_z_scale": _num(0.5, 3.0),           # z gain on top of scale in the vertical mode
     },
     "yaw": {
+        "mode": _str(("leader_j6", "follow_base")),   # follow_base: the tool turns with J1, RB5 J6 stays still
         "enabled": _bool(),
         "speed_deg_s": _num(1.0, 90.0),
         "range_deg": _num(0.0, 180.0),
@@ -144,6 +146,7 @@ REQUIRED_FOR_REAL = ("range.z_min_abs_mm", "tcp.expected_offset_mm", "ready_pose
 # Upper limits for Real on top of SCHEMA (conservative until the RB5 values are confirmed).
 REAL_MAX = {
     "mapping.speed_mm_s": 200.0,               # user, 2026-10-16 option B (was 100, 50); decisions 2026-10-16
+    "mapping.speed_tangential_mm_s": 300.0,    # user, 2026-10-16: faster J1 only (sideways)
     "mapping.scale": 1.0,
     "yaw.speed_deg_s": 30.0,
     "ready_pose.move_speed_deg_s": 50.0,      # x speed bar 0.1 = 5 deg/s (user, 2026-10-12; was 10, then 30)

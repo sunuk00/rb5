@@ -90,6 +90,7 @@ class TeleopLoop:
         period = s.servo.period_s
         tcp0, _, _ = self.reader.latest()
         rpy0 = tcp0[3:].copy()
+        base_az0 = (float(np.degrees(np.arctan2(tcp0[1], tcp0[0]))) if s.yaw.mode == "follow_base" else None)
         self.rpy = rpy0.copy()
         mapper = Mapper(s, tcp0[:3])
         self.target = mapper.target
@@ -185,7 +186,8 @@ class TeleopLoop:
             if clutch.engaged and q_l is not None and not late_early and not stale:
                 desired, yaw_desired = mapper.desired(used_p, used_j6)
                 plan = plan_step(mapper.target, desired, tcp[:3], q, self.model, cyl,
-                                 {"target": mapper.yaw, "desired": yaw_desired, "tcp": yaw_tcp}, self.lim, self.watch)
+                                 {"target": mapper.yaw, "desired": yaw_desired, "tcp": yaw_tcp, "base_az0": base_az0},
+                                 self.lim, self.watch)
                 dropped, flags = plan.dropped, plan.flags
                 j5_pred, sh_pred, el_pred, jl_pred = plan.margins
                 max_dq, lag, yaw_lag = plan.max_dq, plan.lag, plan.lag_yaw

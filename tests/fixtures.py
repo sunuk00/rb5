@@ -21,6 +21,8 @@ def test_raw():
     d["mapping"]["mode"] = "cartesian"            # and mapped in cartesian
     d["mapping"]["vertical_button"] = False       # without the vertical mode
     d["mapping"]["vertical_z_scale"] = 1.0
+    d["mapping"]["speed_tangential_mm_s"] = d["mapping"]["speed_mm_s"]   # one speed limit in all directions
+    d["yaw"]["mode"] = "leader_j6"
     d["yaw"]["leader_deadband_deg"] = 0.0
     d["range"].update(r_min_mm=450.0, r_max_mm=550.0, z_below_mm=150.0, z_above_mm=150.0, azimuth_half_deg=90.0,
                       z_min_abs_mm=None, r_max_by_z=None)

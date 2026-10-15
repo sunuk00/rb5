@@ -203,6 +203,33 @@ class TestLoop(unittest.TestCase):
         self.assertAlmostEqual(z[-1] - z[on[-1]], -10.0, delta=0.6)               # normal again: 20 x 0.5
         self.assertLess(np.ptp(col("target_x")[on]), 1e-3)
 
+    def test_yaw_follows_base(self):
+        s = settings(yaw__mode="follow_base", mapping__max_lag_mm=0.0)
+        steps = ARM + [(1, [0, 2.0 * i, 0], 1.0 * i) for i in range(1, 41)]   # sideways, and a 40 deg twist
+        steps += [(1, [0, 80.0, 0], 40.0)] * 20
+        _, p0, _, col, _ = run(steps, s)
+        az = np.degrees(np.arctan2(col("target_y"), col("target_x")))
+        np.testing.assert_allclose(col("yaw_target_deg"), az - az[0], atol=2e-3)   # yaw = azimuth change
+        self.assertGreater(abs(az[-1] - az[0]), 3.0)                                # J1 turned
+        j1, j6 = col("jnt_ref_0"), col("jnt_ref_5")
+        self.assertGreater(abs(j1[-1] - j1[0]), 3.0)
+        self.assertLess(abs(j6[-1] - j6[0]), 0.1 * abs(j1[-1] - j1[0]))          # J6 nearly still (twist ignored)
+        # before: tool held in the world orientation, so J6 turns back by as much as J1 turns
+        _, _, _, col0, _ = run(steps, settings(yaw__enabled=False, mapping__max_lag_mm=0.0))
+        k1, k6 = col0("jnt_ref_0"), col0("jnt_ref_5")
+        self.assertAlmostEqual(k6[-1] - k6[0], -(k1[-1] - k1[0]), delta=0.1)
+
+    def test_tangential_speed(self):
+        s = settings(mapping__speed_mm_s=200.0, mapping__speed_tangential_mm_s=300.0, mapping__max_lag_mm=0.0)
+        p0 = RB5Model(OFFSET).tcp(D)[0]
+        u_r = np.r_[p0[:2] / np.hypot(*p0[:2]), 0]
+        u_t = np.array([-u_r[1], u_r[0], 0.0])
+        for u, cap in ((u_t, 6.0), (u_r, 4.0)):                                    # 300 / 200 mm/s x 0.02 s
+            steps = ARM + [(1, list(14.0 * i * u), 0) for i in range(1, 8)]      # 7 mm per step at scale 0.5
+            _, _, _, col, _ = run(steps, s)
+            p = np.c_[col("target_x"), col("target_y"), col("target_z")]
+            self.assertAlmostEqual(np.linalg.norm(np.diff(p, axis=0), axis=1).max(), cap, delta=0.02)
+
     def test_vertical_mode_read_failures(self):
         s = settings(mapping__vertical_button=True)
         steps = ARM + [(1, [0, 0, 0], 0, 1000, True, 0)] * 3 + [(1, [0, 0, 0], 0, 1000, True, 1)] * 5

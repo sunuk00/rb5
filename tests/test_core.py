@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 from teleop.kinematics import CylinderRange, RB5Model, rot_zyx, tcp_offset_from, wrap_deg, zyx_from_rot  # noqa: E402
 from teleop.leader import Clutch, GripSignal, LeaderFilter, LeaderModel  # noqa: E402
-from teleop.mapping import Limits, Mapper, plan_step  # noqa: E402
+from teleop.mapping import Limits, Mapper, clip_step, plan_step  # noqa: E402
 from teleop.safety import Watch, joint_limit_margin, ramp_scale, singular_distance  # noqa: E402
 from teleop.settings import load_settings  # noqa: E402
 
@@ -258,6 +258,19 @@ def follow(mp, points, dropped=None):
 def arc(radius, deg_from, deg_to, n, z=0.0, center=(0.0, 0.0)):
     a = np.radians(np.linspace(deg_from, deg_to, n + 1)[1:])
     return [[center[0] + radius * np.cos(t), center[1] + radius * np.sin(t), z] for t in a]
+
+
+class TestClipStep(unittest.TestCase):
+    def test_sideways_faster_than_radial_and_vertical(self):
+        at = np.array([500.0, 0.0, 100.0])                   # sideways = +/- y here
+        np.testing.assert_allclose(clip_step(np.array([0, 6.0, 0]), at, 4.0, 6.0), [0, 6, 0])
+        np.testing.assert_allclose(clip_step(np.array([0, 9.0, 0]), at, 4.0, 6.0), [0, 6, 0])
+        np.testing.assert_allclose(clip_step(np.array([6.0, 0, 0]), at, 4.0, 6.0), [4, 0, 0])
+        np.testing.assert_allclose(clip_step(np.array([0, 0, -6.0]), at, 4.0, 6.0), [0, 0, -4])
+        d = clip_step(np.array([4.0, 6.0, 0]), at, 4.0, 6.0)   # on the ellipse edge after scaling
+        self.assertAlmostEqual(np.hypot(d[1] / 6.0, d[0] / 4.0), 1.0)
+        np.testing.assert_allclose(d / np.linalg.norm(d), np.array([4.0, 6.0, 0]) / np.hypot(4, 6))   # same direction
+        np.testing.assert_allclose(clip_step(np.array([1.0, 1.0, 1.0]), at, 4.0, 6.0), [1, 1, 1])   # small: unchanged
 
 
 class TestCylindricalMapper(unittest.TestCase):

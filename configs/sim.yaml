@@ -18,6 +18,7 @@ leader:
 mapping:
   scale: 2.0                    # RB5 motion / leader motion; 1.5 so the RB5 reaches farther (user, 2026-10-12) <-- 여기를 바꾸면 RB5의 움직임이 leader의 움직임에 비례하여 더 커지거나 작아짐
   frame_yaw_deg: 0.0            # leader frame rotated about z before mapping
+  speed_tangential_mm_s: 400.0  # sideways about the base z axis (turning J1); Real 300 (radial / vertical 200)
   speed_mm_s: 400.0             # TCP speed limit; 200 dropped 1.8-4.0 m of hand motion per run at scale 1.5-2 (130330, 130757)
   lead_per_step: 2.0            # target may lead tcp_ref by this x one step
   max_lag_mm: 50.0              # C: lag kept for catch-up; 0 = B (was 30; 50 is the settings maximum)
@@ -31,10 +32,11 @@ mapping:
   min_pivot_radius_mm: 150.0    # angle = sideways motion / max(hand radius, 150): bounded gain near the axis
   vertical_button: true         # left handle button held: x, y fixed, only z follows (straight descents for pick
                                 # and place: the hand drifts back 0.5-0.9 x the descent, mostly from the elbow)
-  vertical_z_scale: 2.0         # z x 2 in the vertical mode (user trial 2026-10-16): fewer re-grips on long descents
-                                # (032657: 57 clutch presses, half shorter than 1 s)
+  vertical_z_scale: 1.5         # z x 1.5 in the vertical mode (user 2026-10-16: 2.0 was a bit fast; 033917: z speed
+                                # median 122 mm/s, 40 % at the 200 mm/s cap). Fewer re-grips than 1.0
 
-yaw:                            # RB5 yaw change = leader J6 change (method B)
+yaw:                            # RB5 yaw change = leader J6 change (method B) in mode leader_j6
+  mode: follow_base             # same as Real (2026-10-16): the tool turns with J1, RB5 J6 stays still
   enabled: true
   speed_deg_s: 90.0
   range_deg: 90.0               # around the TCP rz at start

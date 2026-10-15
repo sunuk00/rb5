@@ -75,6 +75,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — Vertical mode on the left handle button (x, y fixed, only z)](#2026-10-16--vertical-mode-on-the-left-handle-button-x-y-fixed-only-z)
 - [2026-10-16 — Vertical mode z x 2 (vertical_z_scale)](#2026-10-16--vertical-mode-z-x-2-vertical_z_scale)
 - [2026-10-16 — TCP floor 30 -> -50 mm (nothing mounted on the flange)](#2026-10-16--tcp-floor-30----50-mm-nothing-mounted-on-the-flange)
+- [2026-10-16 — Faster J1 (sideways 300 mm/s), RB5 J6 still (tool follows the base), vertical z x 1.5](#2026-10-16--faster-j1-sideways-300-mms-rb5-j6-still-tool-follows-the-base-vertical-z-x-15)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1284,6 +1285,25 @@ threshold there, so the teleop slows down in that corner (stop at 10).
 
 **Must be raised again when a tool is mounted** (tool tip height + margin); also in
 `docs/real_first_run_checklist.md`.
+
+## 2026-10-16 — Faster J1 (sideways 300 mm/s), RB5 J6 still (tool follows the base), vertical z x 1.5
+
+**Run 033917 (vertical z x 2, floor -50, Real):** while J1 turned (> 5 deg/s) its speed was 16 deg/s
+median, 28 p90, 42 max, and the TCP speed cap was active 46 % of that time (032657: 59 %); sideways
+target speed p90 197 mm/s against the 200 cap (about 25 deg/s of J1 at r 450); joint speed limit only
+5 %. Vertical mode z speed median 122 mm/s, 40 % at the cap. Measured RB5 J6 range 140 deg: leader-J6
+yaw (to the +/-45 end) plus J6 turning back whenever J1 turned (the tool kept its world orientation).
+TCP reached z -52. User: J1 should turn faster, RB5 J6 should stay still, vertical a bit slower.
+
+**Decisions (user):**
+- `mapping.speed_tangential_mm_s` 300 in Real (400 in Sim, same as its speed): the per-cycle step is
+  scaled so that (t / 300)^2 + (o / 200)^2 <= 1, t = sideways about the base z axis, o = radial and
+  vertical; direction kept. New Real max 300 (`REAL_MAX`). Lead limit uses the larger step.
+- `yaw.mode: follow_base` (Sim and Real): the tool yaw equals the azimuth change of the target, so the
+  gripper turns with the arm; the leader J6 is not used and the yaw speed / range limits do not apply.
+  Fake robot (straight sideways hand motion, 40 deg twist): J1 +4.6 deg, J6 -0.28 deg; with the old
+  world-held tool J6 turned back by as much as J1 (-4.29 for 4.29). `leader_j6` keeps the old mapping.
+- `mapping.vertical_z_scale` 2.0 -> 1.5.
 
 ## PENDING
 
