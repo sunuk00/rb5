@@ -441,8 +441,8 @@ class TestLoop(unittest.TestCase):
         jinv = np.linalg.inv(model.jacobian(q))
         d = -jinv[4, :3] / np.linalg.norm(jinv[4, :3])                  # position direction that lowers J5
         steps = ARM + [(1, list(1.0 * i * d), 0) for i in range(1, 400)]
-        wide = settings(range__r_min_mm=150.0, range__r_max_mm=900.0, range__z_below_mm=300.0, range__z_above_mm=300.0,
-                        range__azimuth_half_deg=180.0, safety__joint_limit_deg=[360.0] * 6,
+        wide = settings(range__r_min_mm=150.0, range__r_max_mm=900.0, range__z_min_mm=-200.0, range__z_max_mm=900.0,
+                        range__azimuth_min_deg=-180.0, range__azimuth_max_deg=180.0, safety__joint_limit_deg=[360.0] * 6,
                         safety__elbow_slow_deg=5.0, safety__elbow_stop_deg=1.0)
         _, _, _, col, stop = run(steps, wide, q0=q)
         self.assertIn("J5", stop)

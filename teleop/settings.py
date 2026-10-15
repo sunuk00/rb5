@@ -92,12 +92,13 @@ SCHEMA = {
     "range": {
         "r_min_mm": _num(150.0, 900.0),
         "r_max_mm": _num(150.0, 900.0),
-        "z_below_mm": _num(0.0, 300.0),               # start z - this
-        "z_above_mm": _num(0.0, 500.0),               # start z + this
-        # [start z + dz, r_max] points: r_max falls with height (linear between points, the last value above)
-        "r_max_by_z": _pairs(lo=(0.0, 150.0), hi=(500.0, 900.0), nullable=True),
-        "z_min_abs_mm": _num(-200.0, 800.0, nullable=True),
-        "azimuth_half_deg": _num(0.0, 180.0),
+        # All absolute in the RB5 base frame (2026-10-16; before: relative to the start pose)
+        "z_min_mm": _num(-200.0, 800.0),              # floor for the TCP
+        "z_max_mm": _num(-200.0, 900.0),
+        # [z, r_max] points: r_max falls with height (linear between points, the last value above)
+        "r_max_by_z": _pairs(lo=(-200.0, 150.0), hi=(900.0, 900.0), nullable=True),
+        "azimuth_min_deg": _num(-360.0, 360.0),       # TCP azimuth about the base z axis
+        "azimuth_max_deg": _num(-360.0, 360.0),
     },
     "safety": {
         "joint_speed_deg_per_cycle": _vec(6, 0.01, 5.0),
@@ -146,7 +147,7 @@ SCHEMA = {
 ROBOT_FILE = Path(__file__).resolve().parent.parent / "configs" / "robot.yaml"
 
 # Null is allowed in Simulation (meaning "not used / not checked") but not in Real.
-REQUIRED_FOR_REAL = ("range.z_min_abs_mm", "tcp.expected_offset_mm", "ready_pose.joints_deg")
+REQUIRED_FOR_REAL = ("tcp.expected_offset_mm", "ready_pose.joints_deg")
 
 # Upper limits for Real on top of SCHEMA (conservative until the RB5 values are confirmed).
 REAL_MAX = {
@@ -245,13 +246,17 @@ def _check_relations(d, problems):
     r = d["range"]
     if r["r_min_mm"] >= r["r_max_mm"]:
         problems.append(f"range: r_min_mm ({r['r_min_mm']}) must be below r_max_mm ({r['r_max_mm']})")
+    if r["z_min_mm"] >= r["z_max_mm"]:
+        problems.append(f"range: z_min_mm ({r['z_min_mm']}) must be below z_max_mm ({r['z_max_mm']})")
+    if not 0.0 < r["azimuth_max_deg"] - r["azimuth_min_deg"] <= 360.0:
+        problems.append(f"range: azimuth_max_deg - azimuth_min_deg must be in (0, 360]")
     table = r.get("r_max_by_z")
     if isinstance(table, list) and table and all(isinstance(p, list) and len(p) == 2 for p in table):
         dz = [p[0] for p in table]
         if any(b <= a for a, b in zip(dz, dz[1:])):
             problems.append(f"range.r_max_by_z: heights must increase, got {dz}")
-        if dz[-1] > r["z_above_mm"]:
-            problems.append(f"range.r_max_by_z: height {dz[-1]} is above z_above_mm ({r['z_above_mm']})")
+        if dz[-1] > r["z_max_mm"]:
+            problems.append(f"range.r_max_by_z: height {dz[-1]} is above z_max_mm ({r['z_max_mm']})")
         for a, b in table:
             if not r["r_min_mm"] < b <= r["r_max_mm"]:
                 problems.append(f"range.r_max_by_z: r {b} at height {a} must be above r_min_mm and at most r_max_mm")

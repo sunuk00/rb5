@@ -4,6 +4,9 @@ import copy
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
+
+from teleop.kinematics import RB5Model
 from teleop.settings import load_settings
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -28,8 +31,10 @@ def test_raw():
     d["mapping"]["speed_tangential_mm_s"] = d["mapping"]["speed_mm_s"]   # one speed limit in all directions
     d["yaw"]["mode"] = "leader_j6"
     d["yaw"]["leader_deadband_deg"] = 0.0
-    d["range"].update(r_min_mm=450.0, r_max_mm=550.0, z_below_mm=150.0, z_above_mm=150.0, azimuth_half_deg=90.0,
-                      z_min_abs_mm=None, r_max_by_z=None)
+    p0 = RB5Model([0.0, -187.0, -40.0]).tcp(POSE_D)[0]   # 21: +/-150 mm and +/-90 deg around pose D
+    az0 = float(np.degrees(np.arctan2(p0[1], p0[0])))
+    d["range"].update(r_min_mm=450.0, r_max_mm=550.0, z_min_mm=float(p0[2]) - 150.0, z_max_mm=float(p0[2]) + 150.0,
+                      azimuth_min_deg=az0 - 90.0, azimuth_max_deg=az0 + 90.0, r_max_by_z=None)
     d["safety"]["joint_limit_deg"] = [360.0, 360.0, 150.0, 360.0, 360.0, 360.0]
     d["ready_pose"]["joints_deg"] = list(POSE_D)
     return d

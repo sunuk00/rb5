@@ -82,13 +82,18 @@ def check_start_pose(tcp0, q0, model: RB5Model, watch, s):
     if fk_error > s.safety.max_fk_error_mm:
         problems.append(f"DH model differs from tcp_ref by {fk_error:.2f} mm (> {s.safety.max_fk_error_mm})")
     r0 = float(np.hypot(tcp0[0], tcp0[1]))
-    if not s.range.r_min_mm <= r0 <= s.range.r_max_mm:
-        problems.append(f"TCP radius {r0:.1f} mm is outside {s.range.r_min_mm:.0f}..{s.range.r_max_mm:.0f} mm")
-    if s.range.z_min_abs_mm is not None and tcp0[2] < s.range.z_min_abs_mm:
-        problems.append(f"TCP z {tcp0[2]:.1f} mm is below the floor {s.range.z_min_abs_mm} mm")
+    cyl = range_for(s)
+    if not cyl.r_min <= r0 <= cyl.r_max_at(tcp0[2]):
+        problems.append(f"TCP radius {r0:.1f} mm is outside {cyl.r_min:.0f}..{cyl.r_max_at(tcp0[2]):.0f} mm")
+    if not cyl.z_lo <= tcp0[2] <= cyl.z_hi:
+        problems.append(f"TCP z {tcp0[2]:.1f} mm is outside {cyl.z_lo:.0f}..{cyl.z_hi:.0f} mm")
+    az = float(np.degrees(np.arctan2(tcp0[1], tcp0[0])))
+    if abs((az - cyl.az0 + 180.0) % 360.0 - 180.0) > cyl.az_half:
+        problems.append(f"TCP azimuth {az:.1f} deg is outside {s.range.azimuth_min_deg:.0f}.."
+                        f"{s.range.azimuth_max_deg:.0f} deg")
     problems += watch.start_problems(q0, model)
     return problems, fk_error
 
 
-def range_for(tcp0, s):
-    return CylinderRange.from_settings(tcp0, s.range)
+def range_for(s):
+    return CylinderRange.from_settings(s.range)

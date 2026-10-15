@@ -42,17 +42,16 @@ class TestSettings(unittest.TestCase):
 
     def test_real_refused_while_tbd_values_are_null(self):
         d = raw(REAL)
-        for sec, key in (("range", "z_min_abs_mm"), ("tcp", "expected_offset_mm"), ("ready_pose", "joints_deg")):
+        for sec, key in (("tcp", "expected_offset_mm"), ("ready_pose", "joints_deg")):
             d[sec][key] = None
         with self.assertRaises(SettingsError) as cm:
             load_settings(write_tmp(d), real=True)
         problems = "\n".join(cm.exception.problems)
-        for key in ("range.z_min_abs_mm", "tcp.expected_offset_mm", "ready_pose.joints_deg"):
+        for key in ("tcp.expected_offset_mm", "ready_pose.joints_deg"):
             self.assertIn(key, problems)
         load_settings(REAL, real=True)   # the file itself has provisional values now
         # With the TBD values filled in, the conservative file passes the Real limits
         d = raw(REAL)
-        d["range"]["z_min_abs_mm"] = 30.0
         d["tcp"]["expected_offset_mm"] = [0.0, -187.0, -40.0]
         d["ready_pose"]["joints_deg"] = [182.0, -11.0, -110.1, 31.1, -90.0, -2.0]
         s, _ = load_settings(write_tmp(d), real=True)
@@ -113,7 +112,6 @@ class TestSettings(unittest.TestCase):
 
     def test_real_limits(self):
         d = raw(REAL)
-        d["range"]["z_min_abs_mm"] = 30.0
         d["tcp"]["expected_offset_mm"] = [0.0, -187.0, -40.0]
         d["ready_pose"]["joints_deg"] = [182.0, -11.0, -110.1, 31.1, -90.0, -2.0]
         for (sec, key), value in ((("mapping", "speed_mm_s"), 250.0), (("yaw", "speed_deg_s"), 60.0),

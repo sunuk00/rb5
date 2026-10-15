@@ -80,6 +80,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — Azimuth lock: J1 turns only in the rotate mode](#2026-10-16--azimuth-lock-j1-turns-only-in-the-rotate-mode)
 - [2026-10-16 — Target acceleration limit 2.5 m/s^2 against the shake when the limits switch](#2026-10-16--target-acceleration-limit-25-ms2-against-the-shake-when-the-limits-switch)
 - [2026-10-16 — Rotate mode: 15 deg catch-up, target kept on the circle, re-anchor at the stop point](#2026-10-16--rotate-mode-15-deg-catch-up-target-kept-on-the-circle-re-anchor-at-the-stop-point)
+- [2026-10-16 — Range in absolute base-frame values; ready pose = the user's pose at r 450](#2026-10-16--range-in-absolute-base-frame-values-ready-pose--the-users-pose-at-r-450)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1402,6 +1403,30 @@ asked); in the normal mode 1.24 deg of J1 motion within 0.3 s after the 9 releas
 stop point, no return) and 0.12 deg later (same in both); one release turned back by 0.05 deg (about
 0.4 mm). Not changed: the 250 mm/s radial / vertical cap (the hand exceeded 200 mm/s only 8 % of the
 normal time); the asymmetric azimuth range is still open.
+
+## 2026-10-16 — Range in absolute base-frame values; ready pose = the user's pose at r 450
+
+**Run 042300 (rotate catch-up, Real):** dropped while rotating 1477 -> 212 mm, radius drift in the rotate
+mode 0.00 mm, J1 in the normal mode 0.076 deg, joint acceleration p99 (sample times) 409 -> 331 deg/s^2,
+no range limit, no late cycle (slow hand motion this run: normal-mode radial speed p90 57 mm/s).
+
+**Question (user):** use the pose the user set on the real RB5 as the ready pose (it looks better)?
+Read from the data channel (read only): (171.53, 14.59, -127.82, 29.54, -87.31, 55.63), DH TCP r 383,
+z 152, azimuth 5.3, same tool tilt. It passes the start checks, but (1) it is only 33 mm from r_min
+(like the r 367 pose before) and (2) the range was relative to the start pose, so its z top would drop
+465 -> 417, the r_max_by_z heights by 48 mm and the azimuth range by 8 deg.
+
+**Decisions (user):**
+- The range is absolute in the base frame: `z_min_mm`, `z_max_mm`, `r_max_by_z` [z, r_max] and
+  `azimuth_min_deg` / `azimuth_max_deg` replace z_below / z_above / z_min_abs / dz pairs / azimuth_half.
+  Values = the space in effect: z -50 .. 465, r_max 800 / 775 / 725 / 700 / 650 at z 265 / 315 / 365 /
+  415 / 465, azimuth -107 .. 133 (was 13.4 +/- 120). The start check now also requires the ready pose
+  inside the z and azimuth range. Changing the ready pose no longer moves the range.
+- Ready pose (173.650, 4.300, -119.566, 31.666, -87.544, 53.521) in Real and Sim: the user's pose with
+  the same azimuth, height and tool orientation (0.001 deg), moved out to r 450 (IK marched from it):
+  DH TCP (448.1, 41.4, 152.3), 100 mm to r_min; margins J5 87.5, shoulder 336 mm, elbow 60.4, J3 45.4
+  deg; vertical line z -50 .. 465 at r 450: J5 87.5, shoulder 336, elbow 47.2, J3 32.2. Largest joint
+  change from the user's pose 10.3 deg (J2), from the previous ready pose 11.8 deg (J3).
 
 ## PENDING
 

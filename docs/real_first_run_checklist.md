@@ -9,7 +9,7 @@ its own step, with the lab, not as part of a Simulation session.
       `python -m teleop --real` while it is Off. Required since the Real speed limits were raised to
       TCP 200 mm/s and joints 60 deg/s (decisions 2026-10-16). The teleop does not check this itself.
 - [ ] Emergency stop within reach of the operator; a second person watches the robot.
-- [ ] Workspace clear (range below; azimuth +/-120 deg around the ready pose since 2026-10-16, so the sides
+- [ ] Workspace clear (range below; TCP azimuth -107 .. 133 deg about the base z axis since 2026-10-16, so the sides
       and the back of the RB5 too), tablet connected, speed bar 0.1.
 
 ## Controller and robot (ask before changing any controller setting, CLAUDE.md)
@@ -24,13 +24,12 @@ its own step, with the lab, not as part of a Simulation session.
 ## Workspace
 - [ ] **Base +x direction**: confirm with `scripts/22_base_axis_check.py` and a tape (manual
       Appendix F: +Y toward the cable connector, so +X is 90 deg clockwise from it seen from above).
-- [x] **Ready pose for Real**: the pose set by the user on the real RB5 (2026-10-12), margins checked.
-- [ ] **z lower bound** (`range.z_min_abs_mm`): -50 mm since 2026-10-16 because **nothing is mounted** on
+- [x] **Ready pose for Real**: 2026-10-16, the user's pose moved out to r 450 (decisions), margins checked.
+- [ ] **z lower bound** (`range.z_min_mm`): -50 mm since 2026-10-16 because **nothing is mounted** on
       the flange (the TCP is 187 mm below the flange center; flange center about 140 mm above the table
       at the floor). **Raise it before mounting any tool**: tool tip height + margin (z 0 = base bottom).
-- [x] Range (`range.*`): same as Simulation on user request (2026-10-12): r 350-800, z -100 / +400
-      (floor 30; outer radius 800 -> 650 between +200 and +400), azimuth +/-90. Keep that space clear,
-      also above the robot (up to about 463 mm).
+- [x] Range (`range.*`, absolute in the base frame since 2026-10-16): r 350-800, z -50 .. 465 (outer radius
+      800 -> 650 between z 265 and 465), azimuth -107 .. 133 deg. Keep that space clear, also above the robot.
 - [ ] Nothing in the reach of the robot along the ready-pose move (large wrist turns are warned).
 
 ## Speeds (conservative in real.yaml; RB5 specification still to be found)

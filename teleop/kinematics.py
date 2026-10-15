@@ -106,21 +106,19 @@ def tcp_offset_from(tcp, tfc):
 
 
 class CylinderRange:
-    """Cylinder piece about the base z axis, fixed at start: r_min..r_max, z0 - z_below .. z0 + z_above
-    (and above an optional absolute floor z_min_abs), azimuth az0 +/- az_half. Optional r_max_by_z:
-    [dz, r_max] points (dz above the start z) where the outer radius falls with height (linear between
-    points, the first value below the first point, the last above the last), so the top outer corner
-    the arm cannot reach is cut off. Clamped in z first, then r (at the clamped z), and azimuth."""
+    """Cylinder piece about the base z axis in absolute base-frame values (independent of the start
+    pose): r_min..r_max, z_min..z_max, azimuth az_min..az_max [deg]. Optional r_max_by_z: [z, r_max]
+    points where the outer radius falls with height (linear between points, the first value below the
+    first point, the last above the last), so the top outer corner the arm cannot reach is cut off.
+    Clamped in z first, then r (at the clamped z), and azimuth."""
 
-    def __init__(self, tcp0, r_min, r_max, z_below, z_above, az_half, z_min_abs=None, r_max_by_z=None):
-        self.z0 = tcp0[2]
-        self.az0 = np.degrees(np.arctan2(tcp0[1], tcp0[0]))
-        self.r_min, self.r_max, self.az_half = r_min, r_max, az_half
-        self.z_lo = self.z0 - z_below if z_min_abs is None else max(self.z0 - z_below, z_min_abs)
-        self.z_hi = self.z0 + z_above
+    def __init__(self, r_min, r_max, z_min, z_max, az_min, az_max, r_max_by_z=None):
+        self.r_min, self.r_max = r_min, r_max
+        self.z_lo, self.z_hi = z_min, z_max
+        self.az0, self.az_half = 0.5 * (az_min + az_max), 0.5 * (az_max - az_min)   # center and half width
         if r_max_by_z:
             table = np.asarray(r_max_by_z, dtype=float)
-            self.table_z, self.table_r = self.z0 + table[:, 0], table[:, 1]
+            self.table_z, self.table_r = table[:, 0], table[:, 1]
         else:
             self.table_z = self.table_r = None
 
@@ -131,9 +129,9 @@ class CylinderRange:
         return min(self.r_max, float(np.interp(z, self.table_z, self.table_r)))
 
     @classmethod
-    def from_settings(cls, tcp0, rng):
-        return cls(tcp0, rng.r_min_mm, rng.r_max_mm, rng.z_below_mm, rng.z_above_mm, rng.azimuth_half_deg,
-                   rng.z_min_abs_mm, rng.r_max_by_z)
+    def from_settings(cls, rng):
+        return cls(rng.r_min_mm, rng.r_max_mm, rng.z_min_mm, rng.z_max_mm, rng.azimuth_min_deg,
+                   rng.azimuth_max_deg, rng.r_max_by_z)
 
     def clamp(self, p):
         """Return the point clamped into the range (r, z and azimuth separately)."""

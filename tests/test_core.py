@@ -45,7 +45,7 @@ class TestKinematics(unittest.TestCase):
 
     def test_cylinder(self):
         p0 = RB5Model(OFFSET).tcp(POSE_D)[0]
-        cyl = CylinderRange.from_settings(p0, SIM.range)
+        cyl = CylinderRange.from_settings(SIM.range)   # the fixture: +/-150 mm, +/-90 deg around pose D
         az0 = np.degrees(np.arctan2(p0[1], p0[0]))
 
         def at(r, daz, dz):
@@ -58,12 +58,14 @@ class TestKinematics(unittest.TestCase):
         for given, expect in (((700, 0, 0), (550, 0, 0)), ((300, 0, 0), (450, 0, 0)), ((500, 120, 0), (500, 90, 0)),
                               ((500, 0, -200), (500, 0, -150)), ((500, 30, 50), (500, 30, 50))):
             np.testing.assert_allclose(polar(cyl.clamp(at(*given))), expect, atol=1e-6)
-        floor = CylinderRange(p0, 450, 550, 150, 150, 90, z_min_abs=30.0)
+        floor = CylinderRange(450, 550, 30.0, p0[2] + 150, az0 - 90, az0 + 90)
         self.assertAlmostEqual(floor.clamp(at(500, 0, -150))[2], 30.0)
+        across = CylinderRange(100, 900, -100, 100, 150, 210)     # an azimuth range across +/-180
+        self.assertTrue(across.contains(np.array([-500.0, 0.0, 0.0])))
+        np.testing.assert_allclose(np.degrees(np.arctan2(*across.clamp(np.array([0.0, 500.0, 0.0]))[1::-1])), 150.0)
 
     def test_cylinder_outer_radius_falls_with_height(self):
-        p0 = np.array([400.0, 0.0, 100.0])
-        cyl = CylinderRange(p0, 350, 800, 100, 400, 90, r_max_by_z=[[200, 800], [300, 700], [400, 650]])
+        cyl = CylinderRange(350, 800, 0.0, 500.0, -90, 90, r_max_by_z=[[300, 800], [400, 700], [500, 650]])
         self.assertEqual(cyl.r_max_at(100.0 + 100), 800.0)          # below the first point
         self.assertAlmostEqual(cyl.r_max_at(100.0 + 250), 750.0)    # halfway between 200 and 300
         self.assertEqual(cyl.r_max_at(100.0 + 400), 650.0)
@@ -198,7 +200,7 @@ class TestSameAs21(unittest.TestCase):
                 desired = target + rng.normal(0, 40, 3)
                 yaw = {"target": rng.normal(0, 20), "desired": rng.normal(0, 60), "tcp": rng.normal(0, 20)}
                 yaw["tcp"] = yaw["target"] + rng.normal(0, 1)
-                a = plan_step(target, desired, tcp, q, model, CylinderRange.from_settings(p0, SIM.range), yaw, lim, watch)
+                a = plan_step(target, desired, tcp, q, model, CylinderRange.from_settings(SIM.range), yaw, lim, watch)
                 b = m.plan_step(target, desired, tcp, q, m.RB5Model(OFFSET), m.CylinderRange(p0), dict(yaw))
                 np.testing.assert_allclose(a.target, b.target, atol=1e-9)
                 self.assertAlmostEqual(a.yaw, b.yaw, places=9)
