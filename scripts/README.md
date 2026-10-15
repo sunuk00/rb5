@@ -44,6 +44,7 @@ default, Real with `--real` and typed confirmation; **leader** = writes torque t
 | 20 | `20_leader_fk_live.py` | Live leader arm FK (env `rby1`) | - | tool |
 | 21 | `21_leader_rb5_position.py` | Leader wrist center -> RB5 TCP with move_servo_l | RB5 (Sim) | replaced |
 | 22 | `22_base_axis_check.py` | Where the RB5 base +x / +y point on the real robot | - | tool (Real checklist) |
+| 23 | `23_trial_summary.py` | Summary of Real teleop trials from the logs (real-1) | - (log files only) | tool |
 
 ## Usage per script
 
@@ -281,3 +282,20 @@ python scripts/22_base_axis_check.py                              # use jnt_ang
 | `--joints J1 .. J6` | real arm joint angles from the tablet [deg] |
 
 Prints the flange center (x, y) to measure with a tape from the base center.
+
+### 23 trial summary (real-1)
+```
+python scripts/23_trial_summary.py data/teleop/teleop_real_20261016_*.csv
+python scripts/23_trial_summary.py data/teleop/teleop_real_20261016_*.csv --trials data/teleop/trials.csv \
+    --p 480 -120 --q 470 180 --z-max 120 --radius 30
+```
+| Option | Default | Meaning |
+|---|---|---|
+| `logs` | required | teleop logs, one per trial (`_settings.yaml` files are skipped) |
+| `--trials` | - | manual results: `run,practice,success,failure_type,note` |
+| `--p X Y` / `--q X Y` | - | pick / place point in the RB5 base frame [mm] |
+| `--z-max` | 100 | measured TCP z at or below this counts as "down" [mm] |
+| `--radius` | 30 | horizontal distance to P / Q that counts [mm] |
+
+Prints one line per trial (time, clutch presses, follow %, dropped mm, which limits were active) and a
+summary per setting without the practice trials. Protocol: `docs/real_trial_protocol.md`.

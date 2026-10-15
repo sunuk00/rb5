@@ -65,6 +65,9 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-12 — Real run 135230 (100 mm/s) and ready move 5 deg/s](#2026-10-12--real-run-135230-100-mms-and-ready-move-5-degs)
 - [2026-10-12 — Real joint speed limit 0.8 deg/cycle (40 deg/s)](#2026-10-12--real-joint-speed-limit-08-degcycle-40-degs)
 
+**Real teleop speed (real-1)**
+- [2026-10-16 — real-1: trial protocol for faster Real teleop](#2026-10-16--real-1-trial-protocol-for-faster-real-teleop)
+
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
 - [2026-10-14 — environment.yml for the rb5 env](#2026-10-14--environmentyml-for-the-rb5-env)
@@ -1074,6 +1077,26 @@ Changes the earlier "scripts keep their refs/ paths" (user request): all code no
 
 `udev/99-rby1-leader-arm.rules` -> `assets/udev/` (user request: no single-file folder at the root).
 Still not installed; the install commands in `docs/teleop_guide.md` use the new path.
+
+## 2026-10-16 — real-1: trial protocol for faster Real teleop
+
+**Problem (user):** Real teleop is too slow for demonstration collection; the operator drags the robot
+with many clutch presses.
+
+**Decision (user):** measure first, then change one setting at a time (`docs/real_trial_protocol.md`):
+a fixed reach task P -> Q (gripper not connected), **3 practice trials before every setting (baseline
+included) then 5 measured trials**, manual results in `data/teleop/trials.csv`, measures from the logs
+with `scripts/23_trial_summary.py`. Baseline = the current real.yaml (scale 1.0, 100 mm/s, C 20 mm),
+which already contains the scale 0.5 -> 1.0 change of the original request. Pick and place are found
+from the measured TCP near P / Q, not from the trigger, because the trigger read 0 for whole runs
+(20261014_035701).
+
+**Evidence for the plan (5 Real runs 2026-10-14, free motion):** TCP speed limit active in 72-91 % of
+engaged cycles, follow 30-79 %, joint speed limit 0-10 %, yaw limit 0 %. Plan: TCP 150, then joints 1.2
+deg/cycle if needed, then 200, then C 40 mm; every raise of a Real limit is approved separately.
+
+**Rejected:** comparing against scale 0.5 / B again (extra Real runs; the user chose the current
+settings as the baseline); trigger as the pick / place marker (unreliable).
 
 ## PENDING
 
