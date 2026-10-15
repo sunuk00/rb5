@@ -73,6 +73,7 @@ SCHEMA = {
         "pivot_xy_mm": _vec(2, -1000.0, 1000.0),       # cylindrical: vertical pivot axis in the leader frame
         "min_pivot_radius_mm": _num(50.0, 1000.0),    # cylindrical: angle gain bound near the pivot axis
         "vertical_button": _bool(),                   # left handle button held: x, y fixed, only z follows
+        "vertical_z_scale": _num(0.5, 3.0),           # z gain on top of scale in the vertical mode
     },
     "yaw": {
         "enabled": _bool(),

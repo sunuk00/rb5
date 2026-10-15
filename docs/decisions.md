@@ -73,6 +73,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — Cylindrical mapping trial (Sim and Real): a hand swing about the leader base center turns J1](#2026-10-16--cylindrical-mapping-trial-sim-and-real-a-hand-swing-about-the-leader-base-center-turns-j1)
 - [2026-10-16 — Cylindrical mapping reverted to cartesian after one Real run](#2026-10-16--cylindrical-mapping-reverted-to-cartesian-after-one-real-run)
 - [2026-10-16 — Vertical mode on the left handle button (x, y fixed, only z)](#2026-10-16--vertical-mode-on-the-left-handle-button-x-y-fixed-only-z)
+- [2026-10-16 — Vertical mode z x 2 (vertical_z_scale)](#2026-10-16--vertical-mode-z-x-2-vertical_z_scale)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1251,6 +1252,19 @@ ms p99 before. CSV: `left_button_raw`, `vertical_mode`.
 
 **Rejected:** "elbow motion -> z only" (reaching forward also extends the elbow, so forward motion
 would break); slow x, y instead of fixed (user chose fixed: simpler to predict).
+
+## 2026-10-16 — Vertical mode z x 2 (vertical_z_scale)
+
+**Run 032657 (vertical mode, Real):** in the vertical mode x and y stayed fixed (0.000 mm change) and
+the 17 switches caused no jump (0.0 mm); left button read failures 1 of 11869; leader read p50 / p99
+4.9 / 5.5 -> 5.9 / 8.5 ms, work p99 10.4 ms, no late cycle; target jitter median 0.29 m/s^2. The user
+found descending easier. 57 clutch presses (half shorter than 1 s), 31 of them with the vertical mode;
+some vertical segments show the hand going up overall while the robot went down (re-gripping to go
+further). The user said the many presses were mostly for turning J1, which was fine when moving slowly.
+
+**Decision (user):** `mapping.vertical_z_scale` 2.0 (Sim and Real): in the vertical mode z follows the
+hand x scale x 2, so a 170 mm descent needs 85 mm of hand motion. The B / C reference shift uses the
+same gain. Normal mode unchanged.
 
 ## PENDING
 

@@ -184,11 +184,24 @@ class TestLoop(unittest.TestCase):
         self.assertGreater(len(on), 50)
         self.assertLess(np.ptp(x[on]), 1e-3)                                      # x, y fixed while held
         self.assertLess(np.ptp(y[on]), 1e-3)
-        self.assertAlmostEqual(z[on[-1]] - z[on[0] - 1], -30.0, delta=2.5)        # z follows (scale 0.5)
+        self.assertAlmostEqual(z[on[-1]] - z[on[0] - 1], -30.0, delta=2.5)        # z follows (scale 0.5, z x 1)
         off = on[-1] + 1
         self.assertLess(abs(x[off] - x[on[-1]]), 1e-3)                            # no jump when released
         self.assertAlmostEqual(x[-1] - x[on[-1]], 10.0, delta=1e-2)               # then 20 x 0.5 forward
         self.assertAlmostEqual(z[-1], z[on[-1]], delta=1e-2)
+
+    def test_vertical_z_scale(self):
+        s = settings(mapping__vertical_button=True, mapping__vertical_z_scale=2.0, mapping__max_lag_mm=0.0)
+        steps = ARM + [(1, [0, 0, 0], 0, 1000, True, 0)] * 3
+        steps += [(1, [-0.5 * i, 0, -1.0 * i], 0, 1000, True, 1) for i in range(1, 41)]   # down 40 (and back 20)
+        steps += [(1, [-20.0, 0, -40.0], 0, 1000, True, 1)] * 10
+        steps += [(1, [-20.0, 0, -40.0 - 1.0 * i], 0, 1000, True, 0) for i in range(1, 21)]  # left released: down 20
+        _, p0, _, col, _ = run(steps, s)
+        z, v = col("target_z"), col("vertical_mode")
+        on = np.where(v == 1)[0]
+        self.assertAlmostEqual(z[on[-1]] - z[on[0] - 1], -38.0, delta=0.6)        # (40 - 2 debounce) x 0.5 x 2
+        self.assertAlmostEqual(z[-1] - z[on[-1]], -10.0, delta=0.6)               # normal again: 20 x 0.5
+        self.assertLess(np.ptp(col("target_x")[on]), 1e-3)
 
     def test_vertical_mode_read_failures(self):
         s = settings(mapping__vertical_button=True)

@@ -36,6 +36,8 @@ mapping:
   min_pivot_radius_mm: 150.0    # angle = sideways motion / max(hand radius, 150): bounded gain near the axis
   vertical_button: true         # left handle button held: x, y fixed, only z follows (straight descents for pick
                                 # and place: the hand drifts back 0.5-0.9 x the descent, mostly from the elbow)
+  vertical_z_scale: 2.0         # z x 2 in the vertical mode (user trial 2026-10-16): fewer re-grips on long descents
+                                # (032657: 57 clutch presses, half shorter than 1 s)
 
 yaw:
   enabled: true
