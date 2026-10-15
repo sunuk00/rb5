@@ -74,9 +74,10 @@ range:                          # absolute in the RB5 base frame (2026-10-16; be
   r_max_by_z: [[265.0, 800.0], [315.0, 775.0], [365.0, 725.0], [415.0, 700.0], [465.0, 650.0]]
                                 # [z, r_max]: largest r without any slowdown at that height (DH grid with the ready
                                 # pose orientation, azimuth +/-90; user chose this shape 2026-10-12)
-  azimuth_min_deg: -107.0       # TCP azimuth about the base z axis: -107 .. 133 = the ready pose of 2026-10-16
-  azimuth_max_deg: 133.0        # (13.4 deg) +/-120 (034808: 9 s at -90 before it was widened). The tool turns
-                                # with J1, so the other joints are the same over the whole range (DH check)
+  azimuth_min_deg: -160.0       # 2026-10-16: was -107; 044024 hit -107 (the hand asked 49 deg more), the + side was
+                                # used only to +14. The tool turns with J1, so the other joints keep their margins;
+                                # J1 spans about 8 .. 301 deg (limit +/-360). Keep that side and the back clear (Real: user)
+  azimuth_max_deg: 133.0        # unchanged (was the ready pose of 13.4 deg + 120)
 
 safety:
   joint_speed_deg_per_cycle: [1.2, 1.2, 1.2, 1.2, 1.2, 1.2]   # 60 deg/s = Real max (user, 2026-10-16, option B; was

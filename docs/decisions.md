@@ -82,6 +82,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — Rotate mode: 15 deg catch-up, target kept on the circle, re-anchor at the stop point](#2026-10-16--rotate-mode-15-deg-catch-up-target-kept-on-the-circle-re-anchor-at-the-stop-point)
 - [2026-10-16 — Range in absolute base-frame values; ready pose = the user's pose at r 450](#2026-10-16--range-in-absolute-base-frame-values-ready-pose--the-users-pose-at-r-450)
 - [2026-10-16 — Joint-limit slow threshold 20 -> 15 deg](#2026-10-16--joint-limit-slow-threshold-20---15-deg)
+- [2026-10-16 — Azimuth range widened on the minus side: -160 .. 133 deg](#2026-10-16--azimuth-range-widened-on-the-minus-side--160--133-deg)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1445,6 +1446,22 @@ only slowed the corner. Replay of 043303 (TeleopLoop, Real settings, fake robot)
 smallest margin 17.4 deg either way. The test fixture keeps 20 (script 21's value).
 
 **Rejected:** a higher r_min near the floor (would block reaching that corner); leaving it.
+
+## 2026-10-16 — Azimuth range widened on the minus side: -160 .. 133 deg
+
+**Run 044024 (J3 slow threshold 15, Real):** joint-limit slowdown 0 % (was 19.9), J3 margin >= 16.6 deg;
+dropped 293 mm in total (the lowest of the active runs; normal 199, rotate 93 while turning J1 716 deg);
+J1 lock 0.070 deg, rotate radius drift 0.00, joint acceleration p99 (sample times) 417 deg/s^2, work
+p99 10.6 ms, no late cycle. The azimuth used was -107.0 .. 14.4 deg: 1.7 s at the -107 limit with the
+hand asking up to 49 deg more; the + side beyond 14 was not used.
+
+**Decision (user):** widen only the minus side (moving the hand to the right in the rotate mode turns
+clockwise seen from above): `range.azimuth_min_deg` -107 -> -160 in Real and Sim, max stays 133 (width
+293 deg). From the ready pose (azimuth 5.3) that is 165 deg clockwise (nearly behind the robot) and
+128 deg counterclockwise. The tool turns with J1, so the other joints keep their margins; J1 spans about
+8 .. 301 deg (limit +/-360). That side and the back of the RB5 must be clear (checklist).
+
+**Rejected:** shifting the whole range to -160 .. 80 (user keeps the + side).
 
 ## PENDING
 
