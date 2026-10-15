@@ -79,6 +79,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — Left button = J1 rotate mode; azimuth range +/-120](#2026-10-16--left-button--j1-rotate-mode-azimuth-range--120)
 - [2026-10-16 — Azimuth lock: J1 turns only in the rotate mode](#2026-10-16--azimuth-lock-j1-turns-only-in-the-rotate-mode)
 - [2026-10-16 — Target acceleration limit 2.5 m/s^2 against the shake when the limits switch](#2026-10-16--target-acceleration-limit-25-ms2-against-the-shake-when-the-limits-switch)
+- [2026-10-16 — Rotate mode: 15 deg catch-up, target kept on the circle, re-anchor at the stop point](#2026-10-16--rotate-mode-15-deg-catch-up-target-kept-on-the-circle-re-anchor-at-the-stop-point)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1373,6 +1374,34 @@ a missing event label for the new flag that would have stopped the teleop at the
 **Remaining list:** rotate-mode catch-up in degrees (1457 mm dropped while rotating), radial / vertical
 cap 250 mm/s, asymmetric azimuth range (-120 reached, +120 unused), radius kept exactly on the circle in
 the rotate mode (1.2 mm chord drift).
+
+## 2026-10-16 — Rotate mode: 15 deg catch-up, target kept on the circle, re-anchor at the stop point
+
+**Run 041233 (acceleration limit 2.5 m/s^2, Real).** Correction first: the "measured joint acceleration
+p99" in the earlier entries (823-1295 deg/s^2) assumed RB5 samples 20 ms apart; they are 13-22 ms apart
+(the state arrives every ~10 ms and the loop takes the latest), which inflated J1 in fast turns. With
+the logged sample times: 040257 -> 041233 joint acceleration p99 533 -> 409 deg/s^2 (J1 493 -> 318), the
+commanded azimuth acceleration p99 757 -> 310, target jitter p99 5.7 -> 2.5 m/s^2. Also: clutch presses
+longer (median 0.9 -> 1.7 s, none < 0.5 s), normal-mode speed cap 40 -> 14 %, dropped 845 -> 386 mm; but
+1477 mm dropped while rotating (25 % at the cap), and J1 moved 1.23 deg in the normal mode: after the
+left button was released the target still had its turning speed, passed the anchor and came back.
+
+**Decisions (user, items 1 + 2, and 4 with them):**
+- `mapping.rotate_max_lag_deg` 15 (Sim and Real; the fixture uses 0): in the rotate mode the C lag is
+  r x 15 deg (about 118 mm at r 450) instead of max_lag_mm, so a fast swing is finished after the hand
+  stops; only the part beyond 15 deg is dropped. B stays B.
+- In the rotate mode the applied target is put back on the circle (anchor radius and z) every cycle:
+  the steps are straight chords (radius drift was up to 1.2 mm; now 0.001 mm in the replay).
+- Every re-anchor (mode switch, clutch press) uses the point where the target stops from its last step
+  at the acceleration limit, v (v - a) / (2 a) further along it, matching the discrete stopping rule.
+  A clutch release still freezes at once (its step is reset to zero).
+
+**Replay of 041233 through TeleopLoop (Real settings, fake robot):** rotate lag 0 / 15 deg: dropped while
+rotating 3720 / 507 mm (-86 %), J1 turned in the rotate mode 460 / 798 deg (more of what the hand
+asked); in the normal mode 1.24 deg of J1 motion within 0.3 s after the 9 releases (slowing down to the
+stop point, no return) and 0.12 deg later (same in both); one release turned back by 0.05 deg (about
+0.4 mm). Not changed: the 250 mm/s radial / vertical cap (the hand exceeded 200 mm/s only 8 % of the
+normal time); the asymmetric azimuth range is still open.
 
 ## PENDING
 

@@ -23,6 +23,7 @@ def test_raw():
     d["mapping"]["rotate_deg_per_mm"] = 0.3
     d["mapping"]["lock_azimuth"] = False
     d["mapping"]["accel_mm_s2"] = 0.0
+    d["mapping"]["rotate_max_lag_deg"] = 0.0
     d["mapping"]["vertical_z_scale"] = 1.0
     d["mapping"]["speed_tangential_mm_s"] = d["mapping"]["speed_mm_s"]   # one speed limit in all directions
     d["yaw"]["mode"] = "leader_j6"

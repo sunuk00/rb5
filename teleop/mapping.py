@@ -15,6 +15,10 @@ Left handle button held (mapping.left_button), every switch re-anchors the refer
             switched on; only z follows, x scale x mapping.vertical_z_scale.
   rotate:   radius and z stay; only the azimuth about the base z axis changes, by
             mapping.rotate_deg_per_mm x the leader's sideways (leader y) motion: J1 turns, nothing else.
+            The lag kept for catch-up is mapping.rotate_max_lag_deg (as an arc at the current radius), and
+            the target is put back on the circle every cycle (the steps are straight).
+A switch re-anchors at the point where the target would stop from its current step at the acceleration
+limit (not at the target itself), so it slows down there instead of passing it and coming back.
 Azimuth lock (mapping.lock_azimuth, without the left button): the azimuth stays; the leader's forward /
 back motion (leader x) moves the target along the arm's current direction (radius) and up / down moves
 z, both x scale; sideways motion is not used. So J1 turns only in the rotate mode.
@@ -74,12 +78,13 @@ def azimuth_from(p, az0_deg):
     return wrap_deg(np.degrees(np.arctan2(p[1], p[0])) - az0_deg)
 
 
-def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch, prev_step=None):
+def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch, prev_step=None, max_lag_mm=None):
     """One cycle of the limits for the position and the yaw.
 
     yaw: dict with "target", "desired", "tcp" = yaw about base z relative to the start rz [deg], and
     "base_az0" = the start azimuth [deg] when the yaw follows the base (follow_base), else None.
     prev_step: the position step of the previous cycle [mm] (zero after a release or a frozen cycle).
+    max_lag_mm: the C lag for this cycle instead of lim.max_lag_mm (rotate mode); B stays B.
     Returns a SimpleNamespace: target (new position), yaw (new yaw), dropped (position vector),
     dropped_yaw, flags, margins (J5, shoulder, elbow, joint limit), max_dq, lag, lag_yaw, stop.
     """
@@ -147,15 +152,14 @@ def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch, prev_ste
             flags["ylead"] = True
 
     # Dropped part (the leader start is shifted by it)
+    lag_limit = lim.max_lag_mm if max_lag_mm is None or lim.max_lag_mm <= 0.0 else max_lag_mm
     if follow:   # the yaw is not mapped from the leader: nothing to drop
-        dropped = (asked - limited if lim.max_lag_mm <= 0.0 else _lag_drop(desired_in - clamped, lim.max_lag_mm))
+        dropped = (asked - limited if lim.max_lag_mm <= 0.0 else _lag_drop(desired_in - clamped, lag_limit))
         ydropped = 0.0
     elif lim.max_lag_mm <= 0.0:
         dropped, ydropped = asked - limited, ystep - ylimited
     else:
-        lag = desired_in - clamped
-        n = np.linalg.norm(lag)
-        dropped = lag * (1.0 - lim.max_lag_mm / n) if n > lim.max_lag_mm else np.zeros(3)
+        dropped = _lag_drop(desired_in - clamped, lag_limit)
         ylag = ydes_in - ynew
         ydropped = (float(np.sign(ylag) * (abs(ylag) - lim.max_yaw_lag_deg))
                     if abs(ylag) > lim.max_yaw_lag_deg else 0.0)
@@ -202,6 +206,8 @@ class Mapper:
         self.vertical_xy = self.rotate_anchor = self.last_desired = None
         self.vertical_z_scale = s.mapping.vertical_z_scale  # extra z gain in the vertical mode
         self.rotate_deg_per_mm = s.mapping.rotate_deg_per_mm
+        self.rotate_max_lag_deg = s.mapping.rotate_max_lag_deg
+        self.max_dstep = s.mapping.accel_mm_s2 * s.servo.period_s ** 2   # acceleration limit per cycle^2
         self.prev_step = np.zeros(3)   # position step applied in the last cycle (acceleration limit)
         self.lock_azimuth = s.mapping.lock_azimuth
         self.yaw_enabled = s.yaw.enabled
@@ -210,13 +216,28 @@ class Mapper:
         self.rb5_start = self.leader_start = None
         self.yaw_rb5_start = self.yaw_leader_start = None
 
+    def stop_point(self):
+        """Where the target stops from its last step at the acceleration limit: v (v - a) / (2 a) further
+        along the step (the target itself without a limit or when not moving)."""
+        v = float(np.linalg.norm(self.prev_step))
+        a = self.max_dstep
+        if a <= 0.0 or v <= a:
+            return self.target.copy()
+        return self.target + self.prev_step / v * (v * (v - a) / (2.0 * a))
+
+    def rotate_lag_mm(self):
+        """The C lag in the rotate mode as an arc at the current radius [mm]."""
+        return np.hypot(self.target[0], self.target[1]) * np.radians(self.rotate_max_lag_deg)
+
     def engage(self, leader_p_mm, leader_j6_deg):
-        self.rb5_start, self.leader_start = self.target.copy(), np.array(leader_p_mm, dtype=float)
+        stop = self.stop_point()
+        self.rb5_start, self.leader_start = stop.copy(), np.array(leader_p_mm, dtype=float)
         self.yaw_rb5_start, self.yaw_leader_start = self.yaw, leader_j6_deg
-        self.des, self.leader_prev, self.pending = self.target.copy(), self.leader_start.copy(), None
-        self.vertical_xy = self.target[:2].copy()
-        a, r, z = to_cyl(self.target)
-        self.rotate_anchor = (np.degrees(a), r, z)
+        self.des, self.leader_prev, self.pending = stop.copy(), self.leader_start.copy(), None
+        self.vertical_xy = stop[:2].copy()
+        a = np.arctan2(stop[1], stop[0])
+        _, r, z = to_cyl(self.target)
+        self.rotate_anchor = (np.degrees(a), r, z)   # the radius and z of the target, the azimuth where it stops
 
     @property
     def vertical(self):
@@ -289,7 +310,11 @@ class Mapper:
             shift = self.frame.T @ plan.dropped / self.scale
             shift[2] *= self.scale / self._z_scale()
             self.leader_start = self.leader_start + shift
-        self.prev_step = np.array(plan.target, dtype=float) - self.target
-        self.target = np.array(plan.target, dtype=float)
+        new = np.array(plan.target, dtype=float)
+        if self.rotating:   # straight steps cut inside the circle: put the target back on it
+            _, r, z = self.rotate_anchor
+            new = from_cyl(np.arctan2(new[1], new[0]), r, z)
+        self.prev_step = new - self.target
+        self.target = new
         self.yaw_leader_start += plan.dropped_yaw
         self.yaw = plan.yaw

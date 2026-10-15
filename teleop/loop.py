@@ -193,7 +193,8 @@ class TeleopLoop:
                 desired, yaw_desired = mapper.desired(used_p, used_j6)
                 plan = plan_step(mapper.target, desired, tcp[:3], q, self.model, cyl,
                                  {"target": mapper.yaw, "desired": yaw_desired, "tcp": yaw_tcp, "base_az0": base_az0},
-                                 self.lim, self.watch, mapper.prev_step)
+                                 self.lim, self.watch, mapper.prev_step,
+                                 mapper.rotate_lag_mm() if mapper.rotating else None)
                 dropped, flags = plan.dropped, plan.flags
                 j5_pred, sh_pred, el_pred, jl_pred = plan.margins
                 max_dq, lag, yaw_lag = plan.max_dq, plan.lag, plan.lag_yaw

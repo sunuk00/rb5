@@ -77,6 +77,7 @@ SCHEMA = {
         "left_button": _str(("off", "vertical", "rotate")),   # left handle button held: x, y fixed (vertical)
                                                       # or only J1 turns (rotate)
         "rotate_deg_per_mm": _num(0.05, 2.0),         # rotate: J1 deg per mm of sideways hand motion
+        "rotate_max_lag_deg": _num(0.0, 45.0),        # rotate: lag kept for catch-up [deg of J1]
         "lock_azimuth": _bool(),                      # without the left button: azimuth fixed, hand x -> radius
         "vertical_z_scale": _num(0.5, 3.0),           # z gain on top of scale in the vertical mode
     },

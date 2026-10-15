@@ -38,6 +38,8 @@ mapping:
                                 # "off" = button not read
   rotate_deg_per_mm: 0.3        # rotate: 100 mm of sideways hand motion = 30 deg of J1 (cartesian needed about
                                 # 236 mm at r 450)
+  rotate_max_lag_deg: 15.0      # rotate: J1 may lag the hand by up to 15 deg and catches up after the hand stops
+                                # (041233: 1477 mm dropped while rotating, 4x the normal mode)
   lock_azimuth: true            # without the left button J1 stays (user 2026-10-16; 035549: J1 turned 150 deg in
                                 # the normal mode by accident): hand forward / back = along the arm, up / down = z,
                                 # sideways not used

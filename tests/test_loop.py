@@ -311,6 +311,32 @@ class TestLoop(unittest.TestCase):
         x = col("target_x")
         self.assertAlmostEqual(x[len(ARM) + 20], x[-1], places=9)
 
+    def test_rotate_catch_up(self):
+        s = settings(mapping__left_button="rotate", mapping__rotate_deg_per_mm=0.3, mapping__rotate_max_lag_deg=15.0)
+        held = [(1, [0, 0, 0], 0, 1000, True, 0)] * 3 + [(1, [0, 0, 0], 0, 1000, True, 1)] * 3
+        fast = [(1, [0, 10.0 * i, 0], 0, 1000, True, 1) for i in range(1, 11)]    # 3 deg per cycle, 30 deg
+        steps = ARM + held + fast + [(1, [0, 100.0, 0], 0, 1000, True, 1)] * 80
+        _, p0, _, col, _ = run(steps, s)
+        x, y = col("target_x"), col("target_y")
+        az, r = np.degrees(np.arctan2(y, x)), np.hypot(x, y)
+        k = len(ARM) + 6 + 10 - 1                                                    # last row with the hand moving
+        self.assertAlmostEqual(az[-1] - az[k], 15.0, delta=0.2)                     # catches up the 15 deg it kept
+        self.assertLess(az[k] - az[len(ARM) + 5], 30.0 - 15.0)                       # the rest was dropped (speed cap)
+        self.assertLess(np.ptp(r[len(ARM) + 6:]), 0.01)                              # stays on the circle
+
+    def test_release_rotate_stops_without_coming_back(self):
+        s = settings(mapping__left_button="rotate", mapping__rotate_deg_per_mm=0.3, mapping__lock_azimuth=True,
+                     mapping__accel_mm_s2=2500.0, mapping__rotate_max_lag_deg=15.0, yaw__mode="follow_base")
+        held = [(1, [0, 0, 0], 0, 1000, True, 0)] * 3 + [(1, [0, 0, 0], 0, 1000, True, 1)] * 3
+        turn = [(1, [0, 2.0 * i, 0], 0, 1000, True, 1) for i in range(1, 41)]       # steady turn, left held
+        out = [(1, [0, 80.0, 0], 0, 1000, True, 0)] * 40                             # left released while turning
+        _, p0, _, col, _ = run(ARM + held + turn + out, s)
+        az = np.degrees(np.arctan2(col("target_y"), col("target_x")))
+        k = len(ARM) + 6 + 40
+        self.assertGreater(az[k - 1] - az[k - 2], 0.1)                               # still turning at the release
+        self.assertGreaterEqual(np.diff(az[k - 1:]).min(), -1e-3)                    # slows down, never turns back
+        self.assertAlmostEqual(az[-1], az[-10], delta=1e-3)                          # and stops
+
     def test_vertical_mode_read_failures(self):
         s = settings(mapping__left_button="vertical")
         steps = ARM + [(1, [0, 0, 0], 0, 1000, True, 0)] * 3 + [(1, [0, 0, 0], 0, 1000, True, 1)] * 5
