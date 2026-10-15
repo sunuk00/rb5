@@ -64,7 +64,7 @@ SCHEMA = {
     "mapping": {
         "scale": _num(0.1, 2.0),
         "frame_yaw_deg": _num(-180.0, 180.0),
-        "speed_mm_s": _num(1.0, 400.0),               # Real is capped at 50 (REAL_MAX)
+        "speed_mm_s": _num(1.0, 400.0),               # Real is capped lower (REAL_MAX)
         "lead_per_step": _num(1.0, 5.0),
         "max_lag_mm": _num(0.0, 50.0),
         "leader_deadband_mm": _num(0.0, 5.0),         # leader wrist center changes smaller than this are ignored
@@ -137,12 +137,12 @@ REQUIRED_FOR_REAL = ("range.z_min_abs_mm", "tcp.expected_offset_mm", "ready_pose
 
 # Upper limits for Real on top of SCHEMA (conservative until the RB5 values are confirmed).
 REAL_MAX = {
-    "mapping.speed_mm_s": 100.0,               # user, 2026-10-12 (was 50)
+    "mapping.speed_mm_s": 200.0,               # user, 2026-10-16 option B (was 100, 50); decisions 2026-10-16
     "mapping.scale": 1.0,
     "yaw.speed_deg_s": 30.0,
     "ready_pose.move_speed_deg_s": 50.0,      # x speed bar 0.1 = 5 deg/s (user, 2026-10-12; was 10, then 30)
 }
-REAL_MAX_JOINT_SPEED_DEG_PER_CYCLE = 0.8   # 40 deg/s (user, 2026-10-12; was 0.5)
+REAL_MAX_JOINT_SPEED_DEG_PER_CYCLE = 1.2   # 60 deg/s (user, 2026-10-16 option B; was 0.8, 0.5)
 
 
 def _check(spec, value, key, problems):

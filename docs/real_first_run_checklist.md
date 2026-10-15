@@ -4,9 +4,16 @@ The teleop refuses `--real` until `configs/real.yaml` has no TBD (null) values a
 Real limits in `teleop/settings.py`. This list is the work to do before the first Real run. Do it as
 its own step, with the lab, not as part of a Simulation session.
 
+## Before EVERY Real run (required, from 2026-10-16)
+- [ ] **Collision detection is ON** on the controller (check on the tablet). Do not start
+      `python -m teleop --real` while it is Off. Required since the Real speed limits were raised to
+      TCP 200 mm/s and joints 60 deg/s (decisions 2026-10-16). The teleop does not check this itself.
+- [ ] Emergency stop within reach of the operator; a second person watches the robot.
+- [ ] Workspace clear (range below), tablet connected, speed bar 0.1.
+
 ## Controller and robot (ask before changing any controller setting, CLAUDE.md)
-- [ ] **Collision detection**: currently Off. Decide with the lab whether to turn it on and at what
-      sensitivity before Real teleop.
+- [ ] **Collision detection**: was Off. The user turns it on with the lab before the next Real run
+      (2026-10-16); sensitivity to be decided with the lab. Then "ON" is checked before every run (above).
 - [ ] **Tool mass**: currently 0 kg. Set it for the real tool (gripper / Allegro Hand) if the lab agrees.
 - [ ] **TCP offset**: the controller has (0, -187, -40) mm, orientation 0 (17). PROVISIONAL: real.yaml
       expects exactly this (refuses if it changes). Replace with the lab's confirmed value.
@@ -25,8 +32,10 @@ its own step, with the lab, not as part of a Simulation session.
 - [ ] Nothing in the reach of the robot along the ready-pose move (large wrist turns are warned).
 
 ## Speeds (conservative in real.yaml; RB5 specification still to be found)
-- [ ] Now (2026-10-12): TCP 100 mm/s, yaw 30 deg/s, joints 0.8 deg/cycle (40 deg/s), C 20 mm, ready move 5 deg/s.
-- [ ] B mode (`max_lag_mm: 0`): the robot stops as soon as the hand stops.
+- [ ] Now (2026-10-16, option B): TCP 200 mm/s, joints 1.2 deg/cycle (60 deg/s), yaw 30 deg/s, C 20 mm,
+      ready move 5 deg/s. Option A (300 mm/s, 80 deg/s, yaw 45) only after B has been checked.
+- [ ] First run at the new speeds: slow, small motions near the ready pose first; check for controller
+      errors and late cycles before moving fast.
 - [ ] Per-joint speed limits from the RB5 specification (manual lists only "joint max 180 deg/s, tool
       1 m/s" for the E series).
 

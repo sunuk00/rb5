@@ -67,6 +67,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 
 **Real teleop speed (real-1)**
 - [2026-10-16 — real-1: trial protocol for faster Real teleop](#2026-10-16--real-1-trial-protocol-for-faster-real-teleop)
+- [2026-10-16 — Real speed limits to option B: TCP 200 mm/s, joints 1.2 deg/cycle (60 deg/s)](#2026-10-16--real-speed-limits-to-option-b-tcp-200-mms-joints-12-degcycle-60-degs)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1097,6 +1098,41 @@ deg/cycle if needed, then 200, then C 40 mm; every raise of a Real limit is appr
 
 **Rejected:** comparing against scale 0.5 / B again (extra Real runs; the user chose the current
 settings as the baseline); trigger as the pick / place marker (unreliable).
+
+## 2026-10-16 — Real speed limits to option B: TCP 200 mm/s, joints 1.2 deg/cycle (60 deg/s)
+
+**Request (user):** the robot should keep up with the hand instead of being dragged with the clutch,
+without the coordinate-based trial protocol first.
+
+**Hand speed (5 Real runs 2026-10-14, about 160 s with the clutch engaged, scale 1.0;
+`leader_used_*` x scale per cycle):**
+
+| | median | p90 | p95 | p99 | max |
+|---|---|---|---|---|---|
+| hand speed x scale [mm/s] | 121 | 278 | 360 | 515 | 689 |
+| joint speed needed to follow [deg/s] (estimate) | 30 | 78 | 103 | 185 | 511 |
+| leader J6 [deg/s] | 0 | 18 | 26 | 44 | 89 |
+
+Share of the clutch time with the hand faster than 100 / 150 / 200 / 300 mm/s: 63 / 36 / 22 / 8 %.
+Joint estimate = predicted joint motion per mm of each step (`max_dq_pred_deg` / target step, steps
+> 0.3 mm) x hand speed; share above 40 / 60 / 90 deg/s: 35 / 18 / 7 %.
+
+**Options shown:** A 300 mm/s, 80 deg/s, yaw 45 deg/s (about 92 % of the hand time); B 200 mm/s,
+60 deg/s, yaw 30 (about 78 %); C 500 mm/s, 180 deg/s, yaw 90 (about 99 %, at the manual's joint
+maximum).
+
+**Decision (user): B.** `REAL_MAX` mapping.speed_mm_s 100 -> 200, `REAL_MAX_JOINT_SPEED_DEG_PER_CYCLE`
+0.8 -> 1.2, and the same values in real.yaml. Yaw 30 deg/s, scale 1.0, C 20 mm, range and watches
+unchanged. A only after B has been checked on the real robot.
+
+**Reasons for B over A:** collision detection is Off and the tool mass is 0 kg on the controller, so
+nothing stops the arm on contact; the kinetic energy of the moving arm grows with the square of the
+speed: 200 mm/s is 4x the energy at 100 mm/s, 300 mm/s would be 9x. B removes most of the dragging
+(hand faster than the cap 22 % of the time instead of 63 %) with the smaller step.
+
+**Condition:** collision detection ON before every Real run (user turns it on with the lab; required
+item at the top of `docs/real_first_run_checklist.md`). First run at the new speeds: slow, small
+motions near the ready pose first.
 
 ## PENDING
 

@@ -21,9 +21,10 @@ leader:
 mapping:
   scale: 1.0                    # was 0.5; user found the real RB5 too slow (2026-10-12). Real max 1.0
   frame_yaw_deg: 0.0            # TBD with the operator position; 0 = leader x forward = RB5 +x
-  speed_mm_s: 100.0             # Real max (user, 2026-10-12); was 50 (134902: speed limited 94 %, 31 % of the hand path)
+  speed_mm_s: 200.0             # Real max (user, 2026-10-16, option B); was 100, 50. Hand faster than 100 in 63 %
+                                # of the clutch time, than 200 in 22 % (10-14 Real runs; decisions 2026-10-16)
   lead_per_step: 2.0
-  max_lag_mm: 20.0              # C: catch up to 20 mm after the hand stops (0.4 s at 50 mm/s); was 0 (B). Yaw stays B
+  max_lag_mm: 20.0              # C: catch up to 20 mm after the hand stops (0.1 s at 200 mm/s); was 0 (B). Yaw stays B
                                 # because yaw.max_lag_deg is 0
   leader_deadband_mm: 0.3       # ignore leader wrist center changes < 0.3 mm (encoder flicker, run 141108)
 
@@ -48,9 +49,9 @@ range:
   azimuth_half_deg: 90.0        # same as Simulation; was 30
 
 safety:
-  joint_speed_deg_per_cycle: [0.8, 0.8, 0.8, 0.8, 0.8, 0.8]   # 40 deg/s = Real max (was 0.5: joint speed limited 32 %
-                                # in 135230); 100 mm/s x 0.393 deg/mm = 39.3 deg/s
-                                # TBD from the RB5 specification
+  joint_speed_deg_per_cycle: [1.2, 1.2, 1.2, 1.2, 1.2, 1.2]   # 60 deg/s = Real max (user, 2026-10-16, option B; was
+                                # 0.8, 0.5). Following the hand needed > 40 deg/s in 35 % and > 60 in 18 % of the
+                                # clutch time (estimate, 10-14 runs). TBD from the RB5 specification
   joint_limit_deg: [360.0, 360.0, 165.0, 360.0, 360.0, 360.0] # J3 +/-165 (user checked on the pendant, 2026-10-12)
   joint_limit_slow_deg: 20.0
   joint_limit_stop_deg: 10.0

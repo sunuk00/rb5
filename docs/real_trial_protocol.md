@@ -48,6 +48,10 @@ python scripts/23_trial_summary.py data/teleop/teleop_real_2026101*.csv --trials
 ```
 
 ## Plan (one change per step, each measured as above)
+**2026-10-16:** the user applied option B (TCP 200 mm/s, joints 60 deg/s) directly from the measured
+hand speed, without the baseline trials (decisions 2026-10-16). The protocol stays available to
+compare settings, e.g. before going to option A.
+
 Evidence before the protocol (5 Real runs on 2026-10-14, free motion, not the standard task; scale
 1.0, 100 mm/s, C 20 mm): TCP speed limit active in **72-91 %** of engaged cycles, follow **30-79 %**,
 dropped hand motion 0.3-3.9 m per run, 4-33 clutch presses, joint speed limit 0-10 %, yaw limit 0 %.
