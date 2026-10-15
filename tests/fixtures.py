@@ -37,6 +37,10 @@ def test_raw():
                       azimuth_min_deg=az0 - 90.0, azimuth_max_deg=az0 + 90.0, r_max_by_z=None)
     d["safety"]["joint_limit_deg"] = [360.0, 360.0, 150.0, 360.0, 360.0, 360.0]
     d["safety"]["joint_limit_slow_deg"] = 20.0    # 21's value (the settings use 15 since 2026-10-16)
+    # sim.yaml values of the 2026-10-12 tests (sim.yaml = real.yaml since 2026-10-16)
+    d["safety"]["joint_speed_deg_per_cycle"] = [1.0, 1.0, 1.0, 2.0, 2.0, 2.0]
+    d["yaw"].update(speed_deg_s=90.0, range_deg=90.0, max_lag_deg=15.0)
+    d["ready_pose"]["move_speed_deg_s"] = 30.0
     d["ready_pose"]["joints_deg"] = list(POSE_D)
     return d
 

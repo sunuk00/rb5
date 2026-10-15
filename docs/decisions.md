@@ -86,6 +86,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — J1 a bit faster (sideways 360 mm/s, J1 75 deg/s); acceleration limit moved to the last stage](#2026-10-16--j1-a-bit-faster-sideways-360-mms-j1-75-degs-acceleration-limit-moved-to-the-last-stage)
 - [2026-10-16 — Radial / vertical speed cap 200 -> 250 mm/s](#2026-10-16--radial--vertical-speed-cap-200---250-mms)
 - [2026-10-16 — Joint speed limit on the step only (the robot's lag is no longer added)](#2026-10-16--joint-speed-limit-on-the-step-only-the-robots-lag-is-no-longer-added)
+- [2026-10-16 — real-1 final settings frozen; Simulation = Real](#2026-10-16--real-1-final-settings-frozen-simulation--real)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1534,6 +1535,31 @@ previous / new rule: joint limit active 63 / 2 %; dropped in the normal mode 138
 60), never above a cap; target jitter p99 2.5 / 2.5 m/s^2. Real lag + a full step stays below the 14.4 mm
 lead limit in 0 % of the fast cycles of 050415, so the lead limit should not start acting. (A harsher model
 with a random 1-2 cycle delay triggers the lead limit; the real data does not show that delay.)
+
+## 2026-10-16 — real-1 final settings frozen; Simulation = Real
+
+**Run 051339 (joint speed limit on the step only, Real):** joint speed limit 34 -> 0 %; measured joint
+speeds within the caps (max J1 64 / J2 54 / J3 47 / J4 63 deg/s against 75 / 60; no sample more than 5 %
+above); lead limit 0 %; target jitter p99 2.5 m/s^2; descent drift 0.05 x the descent. One late cycle (a
+single 12.7 ms planning step, send gap 30.2 ms against the 30 ms limit; that cycle froze the target as
+designed). The hand was faster again (above 200 mm/s 54 % of the normal time, rotate asks p50 54 deg/s),
+so the speed caps are what is left: normal-mode cap 72 %, rotate 83 %.
+
+**Decision (user):** no further speed increase; wrap up real-1. Step 1: the Real settings are frozen as
+"real-1 final" (header in real.yaml: change a value only with a decisions entry), and configs/sim.yaml
+is generated from real.yaml so Simulation practice feels like the real robot (before: scale 2.0, 400 mm/s,
+lag 50 mm, other joint caps and yaw values). Only `mode` and `tcp.expected_offset_mm` (not checked in
+Simulation) differ; tests/test_settings.py fails if anything else drifts. The test fixture pins the
+older Simulation values its tests were written for.
+
+**Final operation and values (Real and Sim):** clutch = right button; normal mode: J1 locked, leader
+forward / back -> along the arm (radius), up / down -> z, scale 1.0, sideways unused; left button held:
+rotate mode, radius and z fixed, 0.3 deg of J1 per mm of sideways hand motion, 15 deg catch-up; the tool
+turns with J1 (RB5 J6 still). Speeds: radial / vertical 250 mm/s, sideways 360 mm/s, joints J1 75 / J2-J6
+60 deg/s (on the step), acceleration 2.5 m/s^2 (last stage), C lag 20 mm. Leader: deadband 0.3 mm / 0.15
+deg, low-pass 30 ms. Range (absolute): r 350-800, z -50..465 (outer radius 800 -> 650 between z 265 and
+465), azimuth -160..133 deg. Ready pose (173.650, 4.300, -119.566, 31.666, -87.544, 53.521). Watches:
+J5 / shoulder / elbow slow 20 deg / 50 mm / 20 deg, joint limit slow 15 (stop 10 / 20 / 10 / 10).
 
 ## PENDING
 

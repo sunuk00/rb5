@@ -36,9 +36,24 @@ class TestSettings(unittest.TestCase):
     def test_sim_loads(self):
         s, _ = load_settings(SIM)
         self.assertEqual(s.mode, "sim")
-        self.assertEqual(s.safety.joint_speed_deg_per_cycle, (1.0, 1.0, 1.0, 2.0, 2.0, 2.0))
+        self.assertEqual(s.safety.joint_speed_deg_per_cycle, (1.5, 1.2, 1.2, 1.2, 1.2, 1.2))   # = real.yaml
         self.assertEqual(len(s.ready_pose.joints_deg), 6)
         self.assertEqual(s.runtime.cpu_cores, (0, 11))
+
+    def test_sim_matches_real(self):
+        """real-1 final: Simulation uses the Real values, so practice feels the same."""
+        sim, real = raw(SIM), raw(REAL)
+        allowed = {"mode", "tcp.expected_offset_mm"}
+        diffs = []
+
+        def walk(a, b, path=""):
+            if isinstance(a, dict):
+                for k in set(a) | set(b):
+                    walk(a.get(k), b.get(k), f"{path}.{k}" if path else k)
+            elif a != b and path not in allowed:
+                diffs.append(f"{path}: sim {a!r} / real {b!r}")
+        walk(sim, real)
+        self.assertEqual(diffs, [], "configs/sim.yaml must match configs/real.yaml (edit real.yaml first)")
 
     def test_real_refused_while_tbd_values_are_null(self):
         d = raw(REAL)

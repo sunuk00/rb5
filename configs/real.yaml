@@ -1,8 +1,9 @@
-# Teleop settings for the REAL robot. Conservative starting values; nothing here has been run on the
-# real robot yet. Each value says where it comes from, or TBD. Keys set to null are TBD and the
-# teleop refuses to start in Real until they are filled in (see docs/real_first_run_checklist.md).
-# 2026-10-12: provisional values for a first Real test (user request): z floor and TCP offset are
-# placeholders marked PROVISIONAL, to be replaced by table height + gripper length and the lab's TCP.
+# Teleop settings for the REAL robot: real-1 FINAL (2026-10-16). Frozen for demonstration collection:
+# change a value only together with a docs/decisions.md entry, and keep configs/sim.yaml the same
+# (tests/test_settings.py checks that only `mode` and `tcp.expected_offset_mm` differ).
+# Operation: clutch (right button) + leader motion; J1 is locked in the normal mode (forward / back =
+# along the arm, up / down = height); the left button turns J1 (rotate mode); the tool turns with J1
+# (RB5 J6 still). Each value says where it comes from; decisions in docs/decisions.md (2026-10-12..16).
 mode: real
 
 # robot (ip, speed_bar): configs/robot.yaml, shared with the scripts

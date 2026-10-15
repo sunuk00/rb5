@@ -1,30 +1,36 @@
-# Teleop settings for Simulation (the default). Values are the ones tested with
-# scripts/21_leader_rb5_position.py on 2026-10-12 (see docs/decisions.md for each decision).
+# Teleop settings for Simulation: the same values as configs/real.yaml (real-1 final, 2026-10-16), so
+# practice in Simulation feels like the real robot. Generated from real.yaml; only `mode` and
+# `tcp.expected_offset_mm` differ (checked by tests/test_settings.py). Edit real.yaml first.
 mode: sim
 
 # robot (ip, speed_bar): configs/robot.yaml, shared with the scripts
 
-servo:                          # move_servo_l arguments (rb_cobot_docs UI Script 7.35)
-  period_s: 0.02                # 50 Hz send loop
-  t1_s: 0.02                    # equal to the send period (06 / 10)
+servo:                          # same as Simulation (06, 10, 13 Real)
+  period_s: 0.02
+  t1_s: 0.02
   t2_s: 0.1
   gain: 1.0
   alpha: 1.0
 
 leader:
-  port: /dev/ttyUSB0            # /dev/rby1_leader_arm after the udev rule is installed
-  required_latency_timer_ms: 1  # FTDI latency_timer must be 1 ms (11)
+  port: /dev/ttyUSB0            # /dev/rby1_leader_arm once the udev rule is installed (not yet)
+  required_latency_timer_ms: 1
 
 mapping:
-  scale: 2.0                    # RB5 motion / leader motion; 1.5 so the RB5 reaches farther (user, 2026-10-12) <-- 여기를 바꾸면 RB5의 움직임이 leader의 움직임에 비례하여 더 커지거나 작아짐
-  frame_yaw_deg: 0.0            # leader frame rotated about z before mapping
-  speed_tangential_mm_s: 400.0  # sideways about the base z axis (turning J1); Real 300 (radial / vertical 200)
-  speed_mm_s: 400.0             # TCP speed limit; 200 dropped 1.8-4.0 m of hand motion per run at scale 1.5-2 (130330, 130757)
-  lead_per_step: 2.0            # target may lead tcp_ref by this x one step
+  scale: 1.0                    # was 0.5; user found the real RB5 too slow (2026-10-12). Real max 1.0
+  frame_yaw_deg: 0.0            # TBD with the operator position; 0 = leader x forward = RB5 +x
+  speed_mm_s: 250.0             # radial / vertical, Real max. 2026-10-16: 200 -> 250 (045859: speed cap 73 % of the
+                                # normal mode, 1167 mm dropped there). Before: option B 200 (was 100, 50). Hand faster than 100 in 63 %
+                                # of the clutch time, than 200 in 22 % (10-14 Real runs; decisions 2026-10-16)
+  speed_tangential_mm_s: 360.0  # sideways about the base z axis (turning J1), Real max. 2026-10-16: 300 -> 360 (J1 a bit
+                                # faster; 044916: robot J1 p90 42 deg/s while the hand asked 89). Before that: J1 was
+                                # speed-limited 46-59 % of its turning time at 200 (about 25 deg/s at r 450)
+  lead_per_step: 2.0
   accel_mm_s2: 2500.0           # target acceleration limit (2026-10-16): the largest joint accelerations came when the
                                 # speed / joint limits switched on and off (040257: 97 % / 82 % of the top 1 %); the
                                 # hand's own acceleration p99 is about 4 m/s^2. 0 = off
-  max_lag_mm: 50.0              # C: lag kept for catch-up; 0 = B (was 30; 50 is the settings maximum)
+  max_lag_mm: 20.0              # C: catch up to 20 mm after the hand stops (0.1 s at 200 mm/s); was 0 (B). Yaw stays B
+                                # because yaw.max_lag_deg is 0
   leader_deadband_mm: 0.3       # ignore leader wrist center changes < 0.3 mm (encoder flicker, run 141108)
   leader_filter_tau_s: 0.03     # low-pass on the wrist center against the encoder-step jitter that shook the RB5 at
                                 # 200 mm/s (20261016_021514); offline: jitter 1.73 -> about 0.6 m/s^2, +30 ms delay
@@ -46,44 +52,52 @@ mapping:
   vertical_z_scale: 1.5         # z x 1.5 in the vertical mode (user 2026-10-16: 2.0 was a bit fast; 033917: z speed
                                 # median 122 mm/s, 40 % at the 200 mm/s cap). Fewer re-grips than 1.0
 
-yaw:                            # RB5 yaw change = leader J6 change (method B) in mode leader_j6
-  mode: follow_base             # same as Real (2026-10-16): the tool turns with J1, RB5 J6 stays still
+yaw:
+  mode: follow_base             # user 2026-10-16: RB5 J6 stays still; the tool turns with J1 (leader J6 not used).
+                                # "leader_j6" = twist the handle to turn the tool (the settings below)
   enabled: true
-  speed_deg_s: 90.0
-  range_deg: 90.0               # around the TCP rz at start
-  max_lag_deg: 15.0             # C lag for yaw (forced to 0 when max_lag_mm is 0)
+  speed_deg_s: 30.0             # was 15. Real max 30
+  range_deg: 45.0               # conservative
+  max_lag_deg: 0.0              # B
   leader_deadband_deg: 0.15     # ignore leader J6 changes < 0.15 deg: one encoder tick (0.088) back and forth made
                                 # the RB5 J6 shake (run 141108); two ticks (0.176) pass
 
-range:                          # absolute in the RB5 base frame, same as Real (2026-10-16; before: relative to the
-                                # start pose, so every ready-pose change moved the range)
-  r_min_mm: 350.0               # J3 (+/-165) margin >= 10 deg over the range (DH grid, 2026-10-12)
-  r_max_mm: 800.0               # elbow >= 43 deg up to r 800 (DH grid)
-  z_min_mm: -50.0               # same floor as Real
-  z_max_mm: 465.0               # the outer radius falls with height above 265:
+range:                          # absolute in the RB5 base frame (2026-10-16; before: relative to the start pose,
+                                # so every ready-pose change moved the range). Same space as before.
+  r_min_mm: 350.0               # same as Simulation (user, 2026-10-12); was 340..420
+  r_max_mm: 800.0               # same as Simulation; elbow >= 43 deg up to r 800 (DH grid)
+  z_min_mm: -50.0               # TCP never below z -50 (2026-10-16, user: lower; nothing is mounted on the flange,
+                                # the TCP is 187 mm below the flange center, so the flange center is at about 140 mm
+                                # above the table). Was 30 (provisional). RAISE IT when a tool is mounted:
+                                # tool tip height + margin
+  z_max_mm: 465.0               # top; the outer radius falls with height above 265:
   r_max_by_z: [[265.0, 800.0], [315.0, 775.0], [365.0, 725.0], [415.0, 700.0], [465.0, 650.0]]
-                                # [z, r_max]: largest r without any slowdown at that height (DH grid)
+                                # [z, r_max]: largest r without any slowdown at that height (DH grid with the ready
+                                # pose orientation, azimuth +/-90; user chose this shape 2026-10-12)
   azimuth_min_deg: -160.0       # 2026-10-16: was -107; 044024 hit -107 (the hand asked 49 deg more), the + side was
                                 # used only to +14. The tool turns with J1, so the other joints keep their margins;
-                                # J1 spans about 8 .. 301 deg (limit +/-360). Keep that side and the back clear
-  azimuth_max_deg: 133.0
+                                # J1 spans about 8 .. 301 deg (limit +/-360). Keep that side and the back clear (Real: user)
+  azimuth_max_deg: 133.0        # unchanged (was the ready pose of 13.4 deg + 120)
 
 safety:
-  joint_speed_deg_per_cycle: [1.0, 1.0, 1.0, 2.0, 2.0, 2.0]   # predicted, J1..J6 (wrist 2)
+  joint_speed_deg_per_cycle: [1.5, 1.2, 1.2, 1.2, 1.2, 1.2]   # J1 1.5 = 75 deg/s since 2026-10-16 (J1 a bit
+                                # faster in the rotate mode); J2-J6 60 deg/s (user, 2026-10-16, option B; was 0.8,
+                                # 0.5). Following the hand needed > 40 deg/s in 35 % and > 60 in 18 % of the clutch
+                                # time (estimate, 10-14 runs). TBD from the RB5 specification
   joint_limit_deg: [360.0, 360.0, 165.0, 360.0, 360.0, 360.0] # J3 +/-165 (user checked on the pendant, 2026-10-12)
   joint_limit_slow_deg: 15.0    # was 20 (2026-10-16): the smallest J3 margin anywhere in the range is 16.7 deg (inner low
                                 # corner r 350, z -50), so the stop (10) cannot be reached inside the range; 20 slowed
                                 # the robot there 19.9 % of the clutch time (043303)
   joint_limit_stop_deg: 10.0
-  j5_slow_deg: 20.0             # wrist singularity (J5 from 0 / 180)
+  j5_slow_deg: 20.0
   j5_stop_deg: 10.0
-  shoulder_slow_mm: 50.0        # shoulder singularity (P05 radius - d4)
+  shoulder_slow_mm: 50.0
   shoulder_stop_mm: 20.0
-  elbow_slow_deg: 20.0          # elbow singularity (J3 from 0 / 180)
+  elbow_slow_deg: 20.0
   elbow_stop_deg: 10.0
-  min_speed_scale: 0.25         # speed scale at the stop thresholds
-  max_fk_error_mm: 5.0          # DH model vs tcp_ref at start (17: about 2 mm)
-  max_gap_s: 0.03               # send gap over this = late, target frozen (08)
+  min_speed_scale: 0.25
+  max_fk_error_mm: 5.0
+  max_gap_s: 0.03
   max_late_cycles: 3
   max_state_age_s: 0.1
   max_stale_cycles: 3
@@ -91,7 +105,7 @@ safety:
   hold_on_exit_s: 0.3
 
 tcp:
-  expected_offset_mm: null      # null = not checked in Simulation
+  expected_offset_mm: null      # not checked in Simulation
   offset_tolerance_mm: 1.0
 
 ready_pose:                     # 2026-10-16 (user): the pose the user set on the real RB5 (171.53, 14.59, -127.82, 29.54,
@@ -100,11 +114,11 @@ ready_pose:                     # 2026-10-16 (user): the pose the user set on th
                                 # orientation. DH TCP (448.1, 41.4, 152.3); margins J5 87.5, shoulder 336 mm, elbow
                                 # 60.4, J3 limit 45.4 deg. Before: (182.920, -0.156, -107.813, 24.418, -87.677, 52.334)
   joints_deg: [173.650, 4.300, -119.566, 31.666, -87.544, 53.521]
-  move_speed_deg_s: 30.0        # move_j argument; x speed bar 0.1 = 3 deg/s
-  tolerance_deg: 0.05           # closer than this on every joint: no move
-  wrist_warning_deg: 90.0       # warn when a wrist joint turns more than this
+  move_speed_deg_s: 50.0        # x speed bar 0.1 = 5 deg/s (was 30 = 3 deg/s; user 2026-10-12: a bit faster)
+  tolerance_deg: 0.05
+  wrist_warning_deg: 90.0
 
-gripper:                        # grip_close = 1 - trigger / trigger_full (trigger: pulled 0, released 1000)
+gripper:                        # same as Simulation: grip_close = 1 - trigger / trigger_full
   trigger_full: 1000.0
   close_above: 0.6
   open_below: 0.4
