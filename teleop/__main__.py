@@ -79,7 +79,7 @@ def main():
     # 2. Checks before moving
     latency = read_latency_timer(s.leader.port)
     leader = LeaderArm(s.leader.port)
-    open_problems = leader.open()
+    open_problems = leader.open(left_tool=s.mapping.vertical_button)
     problems = preflight.check_leader(latency, s.leader.required_latency_timer_ms, open_problems)
     if problems:
         if not open_problems:

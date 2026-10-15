@@ -72,7 +72,8 @@ class FakeReader:
 
 
 class ScriptLeader:
-    """Steps: (button, wrist [mm], J6 [deg], trigger or None = failed tool read, joints ok)."""
+    """Steps: (button, wrist [mm], J6 [deg], trigger or None = failed tool read, joints ok,
+    left button 0 / 1 or None = failed read)."""
 
     def __init__(self, steps, slow_at=None):
         self.steps, self.i, self.slow_at = steps, -1, slow_at
@@ -99,6 +100,11 @@ class ScriptLeader:
     def read_button_raw(self):
         b, _, _, trig, _ = self.step()
         return None if trig is None else (int(trig) << 16) | (0x100 if b else 0)
+
+    def read_left_button_raw(self):
+        rest = self.steps[self.i][3:]
+        left = rest[2] if len(rest) > 2 else 0
+        return None if left is None else (0x100 if left else 0)
 
 
 class ScriptModel:
@@ -162,6 +168,44 @@ class TestLoop(unittest.TestCase):
         self.assertAlmostEqual(az[-1] - az[0], 20.0, delta=0.05)                   # J1 turned with the hand
         self.assertAlmostEqual(r[-1], r[0], delta=0.05)
         self.assertAlmostEqual(col("target_z")[-1], col("target_z")[0], delta=1e-3)
+
+    def test_vertical_mode(self):
+        s = settings(mapping__vertical_button=True)
+        def st(p, left):
+            return (1, p, 0, 1000, True, left)
+        steps = ARM + [st([0, 0, 0], 0)] * 3                                      # left released once (armed)
+        steps += [st([-0.6 * i, 0.3 * i, -1.0 * i], 1) for i in range(1, 61)]    # left held: down 60, back 36
+        steps += [st([-36.0, 18.0, -60.0], 0)] * 5                                # left released
+        steps += [st([-36.0 + 1.0 * i, 18.0, -60.0], 0) for i in range(1, 21)]   # then forward 20
+        steps += [st([-16.0, 18.0, -60.0], 0)] * 30
+        _, p0, _, col, _ = run(steps, s)
+        x, y, z, v = col("target_x"), col("target_y"), col("target_z"), col("vertical_mode")
+        on = np.where(v == 1)[0]
+        self.assertGreater(len(on), 50)
+        self.assertLess(np.ptp(x[on]), 1e-3)                                      # x, y fixed while held
+        self.assertLess(np.ptp(y[on]), 1e-3)
+        self.assertAlmostEqual(z[on[-1]] - z[on[0] - 1], -30.0, delta=2.5)        # z follows (scale 0.5)
+        off = on[-1] + 1
+        self.assertLess(abs(x[off] - x[on[-1]]), 1e-3)                            # no jump when released
+        self.assertAlmostEqual(x[-1] - x[on[-1]], 10.0, delta=1e-2)               # then 20 x 0.5 forward
+        self.assertAlmostEqual(z[-1], z[on[-1]], delta=1e-2)
+
+    def test_vertical_mode_read_failures(self):
+        s = settings(mapping__vertical_button=True)
+        steps = ARM + [(1, [0, 0, 0], 0, 1000, True, 0)] * 3 + [(1, [0, 0, 0], 0, 1000, True, 1)] * 5
+        steps += [(1, [0, 0, 0], 0, 1000, True, None)] * 3 + [(1, [-1.0 * i, 0, 0], 0, 1000, True, 0) for i in range(1, 11)]
+        _, p0, _, col, _ = run(steps, s)
+        v = col("vertical_mode")
+        k = len(ARM) + 3 + 5
+        self.assertEqual(v[k - 1], 1)
+        self.assertEqual(v[k + 2], 0)                                              # 3 failed reads -> off
+        self.assertAlmostEqual(col("target_x")[-1] - col("target_x")[k + 2], -5.0, delta=1e-2)   # x follows again
+
+    def test_vertical_button_off_ignores_left_button(self):
+        steps = ARM + [(1, [-1.0 * i, 0, -1.0 * i], 0, 1000, True, 1) for i in range(1, 21)]
+        _, p0, _, col, _ = run(steps)                                              # fixture: vertical_button False
+        self.assertEqual(np.nanmax(col("vertical_mode")), 0)
+        self.assertAlmostEqual(col("target_x")[-1] - p0[0], -10.0, delta=1e-2)
 
     def test_release_freezes(self):
         steps = ARM + [(1, [2.0 * i, 0, 0], 0) for i in range(1, 11)] + [(0, [2.0 * i, 0, 0], 0) for i in range(11, 40)]

@@ -2,7 +2,8 @@
 
 Moved from scripts/21_leader_rb5_position.py (run_loop) without changes in behavior. Devices are
 passed in, so the tests can use fakes:
-  leader:  read_joints_rad() -> 7 angles [rad] or None, read_button_raw() -> int or None
+  leader:  read_joints_rad() -> 7 angles [rad] or None, read_button_raw() -> int or None,
+           read_left_button_raw() -> int or None (only with mapping.vertical_button)
   leader_model: wrist_center_mm(q_rad)
   rb5:     check_errors(), send_servo(xyz, rpy)
   reader:  latest() -> (tcp pose, joints [deg], age [s]); optional measured() -> encoder joints [deg]
@@ -34,7 +35,8 @@ CSV_HEADER = (["t_s", "cycle_interval_ms", "button_raw", "clutch_engaged"]
                  "yaw_lead_limited", "yaw_lag_deg", "yaw_dropped_deg"]
               + ["trigger_raw", "grip_close", "grip_state_closed", "tool_read_failed"]
               + [f"jnt_ang_{i}" for i in range(6)] + [f"meas_tcp_{a}" for a in "xyz"] + ["target_minus_meas_mm"]
-              + [f"leader_used_{a}_mm" for a in "xyz"] + ["leader_j6_used_deg"])
+              + [f"leader_used_{a}_mm" for a in "xyz"] + ["leader_j6_used_deg"]
+              + ["left_button_raw", "vertical_mode"])
 
 
 class StopRequest(Exception):
@@ -94,6 +96,7 @@ class TeleopLoop:
         cyl = CylinderRange.from_settings(tcp0[:3], s.range)
         labels = self.labels()
         clutch, grip = self.clutch, self.grip
+        vertical = Clutch()   # left button, same debounce as the clutch (a held button must be released once)
         leader_q = leader_p = None
         lf = LeaderFilter(s.mapping.leader_deadband_mm, s.yaw.leader_deadband_deg,
                           s.mapping.leader_filter_tau_s, s.servo.period_s)
@@ -125,6 +128,7 @@ class TeleopLoop:
                 leader_q, leader_p = q_l, self.leader_model.wrist_center_mm(q_l)
                 used_p, used_j6 = lf.update(leader_p, np.degrees(leader_q[6]))
             button_raw = self.leader.read_button_raw()
+            left_raw = self.leader.read_left_button_raw() if s.mapping.vertical_button else None
             t_leader = time.monotonic() - t_leader0
             grip_event = grip.update(button_raw)   # independent of the clutch
             if grip_event:
@@ -142,6 +146,18 @@ class TeleopLoop:
                                     f"leader start {np.round(mapper.leader_start, 1)} mm")
             if clutch_event:
                 self.event(f"[{time.monotonic() - t_start:7.2f} s] clutch {clutch_event}")
+
+            # 2b. Vertical mode (left button held): x, y fixed; re-anchor on every switch so nothing jumps
+            if s.mapping.vertical_button:
+                _, vertical_event = vertical.update(left_raw)
+                if vertical.engaged != mapper.vertical:
+                    mapper.vertical = vertical.engaged
+                    if clutch.engaged and used_p is not None:
+                        mapper.engage(used_p, used_j6)
+                    vertical_event = "ON: x, y fixed, only z follows" if mapper.vertical else (
+                        "off" + (f" ({vertical_event})" if vertical_event and vertical_event != "released" else ""))
+                if vertical_event:
+                    self.event(f"[{time.monotonic() - t_start:7.2f} s] vertical mode {vertical_event}")
 
             # 3. RB5 state and the 08 safety checks
             self.rb5.check_errors()
@@ -232,14 +248,16 @@ class TeleopLoop:
                 + ["" if grip.trigger is None else grip.trigger, "" if grip.close is None else f"{grip.close:.3f}",
                    "" if grip.closed is None else int(grip.closed), int(button_raw is None)]
                 + self._measured_columns(q_meas, mapper.target)
-                + ([f"{v:.3f}" for v in used_p] + [f"{used_j6:.3f}"] if used_p is not None else [""] * 4))
+                + ([f"{v:.3f}" for v in used_p] + [f"{used_j6:.3f}"] if used_p is not None else [""] * 4)
+                + ["" if left_raw is None else left_raw, int(mapper.vertical)])
 
             # 7. Status line
             if self.status and cycle % STATUS_EVERY == 0:
                 tool_rate = 100.0 * clutch.failures / max(clutch.reads, 1)
                 leader_rate = 100.0 * leader_fail_total / max(leader_reads, 1)
                 sys.stdout.write(
-                    f"{CLEAR_LINE}clutch {'ENGAGED ' if clutch.engaged else 'released'}  "
+                    f"{CLEAR_LINE}clutch {'ENGAGED ' if clutch.engaged else 'released'}"
+                    f"{' VERTICAL' if mapper.vertical else ''}  "
                     f"target-start {np.round(mapper.target - tcp0[:3], 1)} mm  yaw {mapper.yaw:6.1f}  "
                     f"J5 {singular_distance(q[4]):5.1f}  shoulder {self.model.shoulder_margin(q):5.0f} mm  "
                     f"grip {'-' if grip.close is None else f'{grip.close:.2f}'}"

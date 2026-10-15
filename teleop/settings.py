@@ -72,6 +72,7 @@ SCHEMA = {
         "mode": _str(("cartesian", "cylindrical")),    # position mapping (teleop/mapping.py)
         "pivot_xy_mm": _vec(2, -1000.0, 1000.0),       # cylindrical: vertical pivot axis in the leader frame
         "min_pivot_radius_mm": _num(50.0, 1000.0),    # cylindrical: angle gain bound near the pivot axis
+        "vertical_button": _bool(),                   # left handle button held: x, y fixed, only z follows
     },
     "yaw": {
         "enabled": _bool(),

@@ -10,6 +10,9 @@ Position (mapping.mode):
                axis: angle 1:1 (so a swing of the hand turns J1), radius and height x scale. The angle is
                the sideways motion / max(hand radius, min_pivot_radius_mm), so the gain stays bounded
                near the axis. Integrated per cycle; frame_yaw is not used.
+Vertical mode (left handle button held, mapping.vertical_button): x and y of the desired position stay
+at the target's x and y when the mode or the clutch was switched on; only z follows. Every switch
+re-anchors the references, so the RB5 does not jump.
 Yaw:      desired = RB5 yaw at press + (leader J6 now - at press) [deg], about base z, TCP fixed.
 Per cycle (plan_step): range first (the excess outside the range is kept), then the speed limits
 scaled by the singularity / joint limit watches, then the per-joint speed limit, then the lead limit.
@@ -127,6 +130,7 @@ class Mapper:
         self.pivot = np.asarray(s.mapping.pivot_xy_mm, dtype=float)
         self.min_pivot_radius = s.mapping.min_pivot_radius_mm
         self.des = self.leader_prev = self.pending = None   # cylindrical: desired position and last leader used
+        self.vertical, self.vertical_xy = False, None       # vertical mode: x, y held at vertical_xy
         self.yaw_enabled = s.yaw.enabled
         self.target = np.array(target0, dtype=float)   # RB5 TCP position target [mm]
         self.yaw = 0.0                                  # RB5 yaw relative to the start rz [deg]
@@ -137,6 +141,7 @@ class Mapper:
         self.rb5_start, self.leader_start = self.target.copy(), np.array(leader_p_mm, dtype=float)
         self.yaw_rb5_start, self.yaw_leader_start = self.yaw, leader_j6_deg
         self.des, self.leader_prev, self.pending = self.target.copy(), self.leader_start.copy(), None
+        self.vertical_xy = self.target[:2].copy()
 
     def _cylindrical_step(self, leader_p_mm):
         """Desired position after the leader moved from the last used reading to leader_p_mm."""
@@ -153,9 +158,12 @@ class Mapper:
         """(desired position, desired yaw) for the current leader reading."""
         if self.cylindrical:
             pos = self._cylindrical_step(leader_p_mm)
-            self.pending = (pos.copy(), np.array(leader_p_mm, dtype=float))   # taken by apply()
         else:
             pos = self.rb5_start + self.scale * (self.frame @ (np.asarray(leader_p_mm) - self.leader_start))
+        if self.vertical:
+            pos[:2] = self.vertical_xy
+        if self.cylindrical:
+            self.pending = (pos.copy(), np.array(leader_p_mm, dtype=float))   # taken by apply()
         yaw = (self.yaw_rb5_start + wrap_deg(leader_j6_deg - self.yaw_leader_start)) if self.yaw_enabled else 0.0
         return pos, yaw
 

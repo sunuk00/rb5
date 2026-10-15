@@ -22,6 +22,7 @@ JOINT_IDS = list(range(7))
 JOINT_NAMES = ["J0_Shoulder_Pitch_R", "J1_Shoulder_Roll_R", "J2_Shoulder_Yaw_R", "J3_Elbow_R",
                "J4_Wrist_Yaw1_R", "J5_Wrist_Pitch_R", "J6_Wrist_Yaw2_R"]
 TOOL_ID = 0x80             # right tool (handle)
+TOOL_ID_LEFT = 0x81        # left tool: its button switches the vertical mode (mapping.vertical_button)
 TOOL_READ_PAUSE_S = 100e-6 # rby1-sdk ReadButtonStatus sleeps 100 us after the read
 TICKS_PER_REV = 4096
 BUTTON_PRESSED = 1         # raw 0x00000100 when held (13)
@@ -50,8 +51,9 @@ class LeaderArm:
         self.ph = PacketHandler(PROTOCOL_VERSION)
         self.sync = None
 
-    def open(self):
-        """Open the port and ping every joint and the tool. Returns a list of problems (empty = OK)."""
+    def open(self, left_tool=False):
+        """Open the port and ping every joint and the right tool (and the left tool if left_tool).
+        Returns a list of problems (empty = OK)."""
         from dynamixel_sdk import COMM_SUCCESS, GroupSyncRead
         if not os.path.exists(self.port.getPortName()):
             return [f"port {self.port.getPortName()} does not exist (USB cable? udev link? see leader.port in the settings)"]
@@ -63,7 +65,8 @@ class LeaderArm:
             return [f"failed to open {self.port.getPortName()}"]
         if not self.port.setBaudRate(BAUDRATE):
             return [f"failed to set baud rate {BAUDRATE}"]
-        missing = [i for i in JOINT_IDS + [TOOL_ID] if self.ph.ping(self.port, i)[1] != COMM_SUCCESS]
+        ids = JOINT_IDS + [TOOL_ID] + ([TOOL_ID_LEFT] if left_tool else [])
+        missing = [i for i in ids if self.ph.ping(self.port, i)[1] != COMM_SUCCESS]
         if missing:
             return [f"leader arm IDs {missing} did not answer the ping"]
         self.sync = GroupSyncRead(self.port, self.ph, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION)
@@ -84,6 +87,13 @@ class LeaderArm:
         """Return the tool's raw 32-bit value, or None if the read failed."""
         from dynamixel_sdk import COMM_SUCCESS
         value, result, _ = self.ph.read4ByteTxRx(self.port, TOOL_ID, ADDR_PRESENT_POSITION)
+        time.sleep(TOOL_READ_PAUSE_S)
+        return value if result == COMM_SUCCESS else None
+
+    def read_left_button_raw(self):
+        """Return the left tool's raw 32-bit value (button = bits 8-15), or None if the read failed."""
+        from dynamixel_sdk import COMM_SUCCESS
+        value, result, _ = self.ph.read4ByteTxRx(self.port, TOOL_ID_LEFT, ADDR_PRESENT_POSITION)
         time.sleep(TOOL_READ_PAUSE_S)
         return value if result == COMM_SUCCESS else None
 

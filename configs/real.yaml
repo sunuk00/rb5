@@ -34,6 +34,8 @@ mapping:
   pivot_xy_mm: [0.0, 0.0]       # leader base center: hand 205 mm or more from it in 95 % of the clutch time (right
                                 # shoulder (0, -150): 87 mm), sideways gain about 1.6x median (shoulder 2.3x)
   min_pivot_radius_mm: 150.0    # angle = sideways motion / max(hand radius, 150): bounded gain near the axis
+  vertical_button: true         # left handle button held: x, y fixed, only z follows (straight descents for pick
+                                # and place: the hand drifts back 0.5-0.9 x the descent, mostly from the elbow)
 
 yaw:
   enabled: true
