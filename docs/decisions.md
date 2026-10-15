@@ -81,6 +81,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — Target acceleration limit 2.5 m/s^2 against the shake when the limits switch](#2026-10-16--target-acceleration-limit-25-ms2-against-the-shake-when-the-limits-switch)
 - [2026-10-16 — Rotate mode: 15 deg catch-up, target kept on the circle, re-anchor at the stop point](#2026-10-16--rotate-mode-15-deg-catch-up-target-kept-on-the-circle-re-anchor-at-the-stop-point)
 - [2026-10-16 — Range in absolute base-frame values; ready pose = the user's pose at r 450](#2026-10-16--range-in-absolute-base-frame-values-ready-pose--the-users-pose-at-r-450)
+- [2026-10-16 — Joint-limit slow threshold 20 -> 15 deg](#2026-10-16--joint-limit-slow-threshold-20---15-deg)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1427,6 +1428,23 @@ z 152, azimuth 5.3, same tool tilt. It passes the start checks, but (1) it is on
   DH TCP (448.1, 41.4, 152.3), 100 mm to r_min; margins J5 87.5, shoulder 336 mm, elbow 60.4, J3 45.4
   deg; vertical line z -50 .. 465 at r 450: J5 87.5, shoulder 336, elbow 47.2, J3 32.2. Largest joint
   change from the user's pose 10.3 deg (J2), from the previous ready pose 11.8 deg (J3).
+
+## 2026-10-16 — Joint-limit slow threshold 20 -> 15 deg
+
+**Run 043303 (new ready pose, absolute range, Real):** start TCP (447.8, 41.3, 154.3), r 449.8, as set.
+J1 lock 0.099 deg, rotate radius drift 0.00 mm, no late cycle. Faster and deeper than before (vertical
+speed asked p90 191 mm/s, floor -50 reached): normal-mode speed cap 24 %, 754 mm dropped. New: the
+joint-limit slowdown was active 19.9 % of the clutch time (13 s), all J3, all at r 350-372 and z -50 ..
+-5 (the inner low corner; going down from r 450 pulled the radius in by 0.26 x the descent). The J3
+margin there was 16.7 deg, the smallest anywhere in the range (DH grid with the tool following the base:
+16.7 at r 350, z -50).
+
+**Decision (user, option A):** `safety.joint_limit_slow_deg` 15 in Real and Sim (stop stays 10). Inside
+the range the J3 margin cannot go below 16.7, so the stop is unreachable there and the 20 deg slowdown
+only slowed the corner. Replay of 043303 (TeleopLoop, Real settings, fake robot): slowdown 13.0 s -> 0 s,
+smallest margin 17.4 deg either way. The test fixture keeps 20 (script 21's value).
+
+**Rejected:** a higher r_min near the floor (would block reaching that corner); leaving it.
 
 ## PENDING
 

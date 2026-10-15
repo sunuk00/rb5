@@ -69,7 +69,9 @@ range:                          # absolute in the RB5 base frame, same as Real (
 safety:
   joint_speed_deg_per_cycle: [1.0, 1.0, 1.0, 2.0, 2.0, 2.0]   # predicted, J1..J6 (wrist 2)
   joint_limit_deg: [360.0, 360.0, 165.0, 360.0, 360.0, 360.0] # J3 +/-165 (user checked on the pendant, 2026-10-12)
-  joint_limit_slow_deg: 20.0
+  joint_limit_slow_deg: 15.0    # was 20 (2026-10-16): the smallest J3 margin anywhere in the range is 16.7 deg (inner low
+                                # corner r 350, z -50), so the stop (10) cannot be reached inside the range; 20 slowed
+                                # the robot there 19.9 % of the clutch time (043303)
   joint_limit_stop_deg: 10.0
   j5_slow_deg: 20.0             # wrist singularity (J5 from 0 / 180)
   j5_stop_deg: 10.0

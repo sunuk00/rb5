@@ -36,6 +36,7 @@ def test_raw():
     d["range"].update(r_min_mm=450.0, r_max_mm=550.0, z_min_mm=float(p0[2]) - 150.0, z_max_mm=float(p0[2]) + 150.0,
                       azimuth_min_deg=az0 - 90.0, azimuth_max_deg=az0 + 90.0, r_max_by_z=None)
     d["safety"]["joint_limit_deg"] = [360.0, 360.0, 150.0, 360.0, 360.0, 360.0]
+    d["safety"]["joint_limit_slow_deg"] = 20.0    # 21's value (the settings use 15 since 2026-10-16)
     d["ready_pose"]["joints_deg"] = list(POSE_D)
     return d
 
