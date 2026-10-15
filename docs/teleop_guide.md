@@ -64,6 +64,7 @@ What happens:
 | input | effect |
 |---|---|
 | button held | clutch: the RB5 follows the hand's motion (relative to the moment of the press) |
+| (with `mapping.lock_azimuth: true`, now) | while only the clutch is held, J1 stays: hand forward / back = the arm extends / retracts along its current direction, up / down = height, left / right = nothing. J1 turns only with the left button (rotate) |
 | button released | the RB5 holds its pose; move the hand freely, press again to continue |
 | twist the handle (leader J6) | only with `yaw.mode: leader_j6`: RB5 tool yaw about the vertical axis (same angle). With `follow_base` (now) the twist is not used: the tool turns with J1 and RB5 J6 stays still |
 | trigger | gripper signal `grip_close` = 1 - trigger / 1000 (trigger reads 0 pulled, 1000 released: pulled = closed); logged only |

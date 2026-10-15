@@ -41,6 +41,9 @@ mapping:
                                 # "off" = button not read
   rotate_deg_per_mm: 0.3        # rotate: 100 mm of sideways hand motion = 30 deg of J1 (cartesian needed about
                                 # 236 mm at r 450)
+  lock_azimuth: true            # without the left button J1 stays (user 2026-10-16; 035549: J1 turned 150 deg in
+                                # the normal mode by accident): hand forward / back = along the arm, up / down = z,
+                                # sideways not used
   vertical_z_scale: 1.5         # z x 1.5 in the vertical mode (user 2026-10-16: 2.0 was a bit fast; 033917: z speed
                                 # median 122 mm/s, 40 % at the 200 mm/s cap). Fewer re-grips than 1.0
 

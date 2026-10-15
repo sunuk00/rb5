@@ -77,6 +77,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — TCP floor 30 -> -50 mm (nothing mounted on the flange)](#2026-10-16--tcp-floor-30----50-mm-nothing-mounted-on-the-flange)
 - [2026-10-16 — Faster J1 (sideways 300 mm/s), RB5 J6 still (tool follows the base), vertical z x 1.5](#2026-10-16--faster-j1-sideways-300-mms-rb5-j6-still-tool-follows-the-base-vertical-z-x-15)
 - [2026-10-16 — Left button = J1 rotate mode; azimuth range +/-120](#2026-10-16--left-button--j1-rotate-mode-azimuth-range--120)
+- [2026-10-16 — Azimuth lock: J1 turns only in the rotate mode](#2026-10-16--azimuth-lock-j1-turns-only-in-the-rotate-mode)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1324,6 +1325,21 @@ vertical mode stays available (`left_button: vertical`). CSV column `vertical_mo
 same as at +/-90 (DH grid r 350-800, z -50..400: J5 87.2, shoulder 236 mm, elbow 31.7, joint limit 16.7 deg,
 all at the inner low corner); J1 then spans about 63-303 deg (limit +/-360). The space at the sides and
 behind the RB5 must be clear.
+
+## 2026-10-16 — Azimuth lock: J1 turns only in the rotate mode
+
+**Run 035549 (rotate mode, Real):** 7 rotate segments turned J1 by 225 deg in 9 s (up to 60.6 deg in one),
+with z unchanged (0.000 mm) and the radius within 0.9 mm (a speed-limited step is a chord, slightly
+inside the circle); J1 speed 24 / 35 / 48 deg/s (p50 / p90 / max), speed cap active 41 % of that time.
+Range limit 1 s (was 15), J3 slowdown 1 % (13). But J1 also turned 150 deg in the normal mode, by
+accident. User: without the left button J1 should stay.
+
+**Decision (user):** `mapping.lock_azimuth: true` (Sim and Real). Without a left-button mode the
+azimuth stays at its value at the last re-anchor; leader forward / back (leader x) x scale moves the
+target along the arm's current direction (radius), up / down (z) x scale moves z, sideways is not used
+(user's choice "along the arm": after turning J1, forward still extends the arm). B / C: the radial and
+z parts of a dropped vector shift the leader x / z reference. With the tool following the base, the
+normal mode now moves J2-J5 in the arm's vertical plane only.
 
 ## PENDING
 

@@ -259,6 +259,29 @@ class TestLoop(unittest.TestCase):
         self.assertAlmostEqual(az[k + 19], az[k], places=6)                      # B: no catch-up after the hand stops
         self.assertAlmostEqual(az[-1] - az[k + 19], -3.0, delta=0.05)            # going back moves it back at once
 
+    def test_azimuth_lock(self):
+        s = settings(mapping__left_button="rotate", mapping__rotate_deg_per_mm=0.3, mapping__lock_azimuth=True,
+                     yaw__mode="follow_base", mapping__max_lag_mm=0.0)
+        idle = [(1, [0, 0, 0], 0, 1000, True, 0)] * 3
+        move = [(1, [0.5 * i, 1.0 * i, -0.25 * i], 0, 1000, True, 0) for i in range(1, 41)]   # fwd 20, side 40, down 10
+        _, p0, _, col, _ = run(ARM + idle + move + [move[-1]] * 10, s)
+        x, y, z = col("target_x"), col("target_y"), col("target_z")
+        az, r = np.degrees(np.arctan2(y, x)), np.hypot(x, y)
+        self.assertLess(np.ptp(az), 1e-3)                                         # J1 locked (CSV keeps 3 decimals of mm)
+        self.assertAlmostEqual(r[-1] - r[0], 10.0, delta=0.01)                     # forward 20 x 0.5 along the arm
+        self.assertAlmostEqual(z[-1] - z[0], -5.0, delta=0.01)
+        # turn 30 deg in the rotate mode, release the left button, then push forward: along the new direction
+        rot = [(1, [0, 1.0 * i, 0], 0, 1000, True, 1) for i in range(0, 103)]
+        hold = [(1, [0, 102.0, 0], 0, 1000, True, 0)] * 3
+        fwd = [(1, [1.0 * i, 102.0, 0], 0, 1000, True, 0) for i in range(1, 21)]
+        _, p0, _, col, _ = run(ARM + idle + rot + hold + fwd + [fwd[-1]] * 10, s)
+        x, y = col("target_x"), col("target_y")
+        az, r = np.degrees(np.arctan2(y, x)), np.hypot(x, y)
+        self.assertAlmostEqual(az[-1] - az[0], 30.3, delta=0.05)                  # (102 - 1: confirmed at y 1) x 0.3
+        k = len(ARM) + 3 + 103 + 3 - 1                                             # last row before the push
+        self.assertAlmostEqual(az[-1], az[k], delta=1e-3)                          # locked again after the release
+        self.assertAlmostEqual(r[-1] - r[k], 10.0, delta=0.01)                     # forward = along the turned arm
+
     def test_vertical_mode_read_failures(self):
         s = settings(mapping__left_button="vertical")
         steps = ARM + [(1, [0, 0, 0], 0, 1000, True, 0)] * 3 + [(1, [0, 0, 0], 0, 1000, True, 1)] * 5

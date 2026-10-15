@@ -15,6 +15,9 @@ Left handle button held (mapping.left_button), every switch re-anchors the refer
             switched on; only z follows, x scale x mapping.vertical_z_scale.
   rotate:   radius and z stay; only the azimuth about the base z axis changes, by
             mapping.rotate_deg_per_mm x the leader's sideways (leader y) motion: J1 turns, nothing else.
+Azimuth lock (mapping.lock_azimuth, without the left button): the azimuth stays; the leader's forward /
+back motion (leader x) moves the target along the arm's current direction (radius) and up / down moves
+z, both x scale; sideways motion is not used. So J1 turns only in the rotate mode.
 Yaw:      desired = RB5 yaw at press + (leader J6 now - at press) [deg], about base z, TCP fixed.
 Yaw mode follow_base (yaw.mode): the tool yaw follows the azimuth of the target about the base z axis,
 so the gripper turns with the arm and the RB5 wrist joints (J6) stay still when J1 turns; the leader J6
@@ -186,6 +189,7 @@ class Mapper:
         self.vertical_xy = self.rotate_anchor = self.last_desired = None
         self.vertical_z_scale = s.mapping.vertical_z_scale  # extra z gain in the vertical mode
         self.rotate_deg_per_mm = s.mapping.rotate_deg_per_mm
+        self.lock_azimuth = s.mapping.lock_azimuth
         self.yaw_enabled = s.yaw.enabled
         self.target = np.array(target0, dtype=float)   # RB5 TCP position target [mm]
         self.yaw = 0.0                                  # RB5 yaw relative to the start rz [deg]
@@ -207,6 +211,11 @@ class Mapper:
     @property
     def rotating(self):
         return self.left_active and self.left_mode == "rotate"
+
+    @property
+    def locked(self):
+        """Azimuth locked: lock_azimuth and no left-button mode active."""
+        return self.lock_azimuth and not self.left_active
 
     def _cylindrical_step(self, leader_p_mm):
         """Desired position after the leader moved from the last used reading to leader_p_mm."""
@@ -236,6 +245,10 @@ class Mapper:
             az, r, z = self.rotate_anchor
             az = az + self.rotate_deg_per_mm * (leader_p_mm[1] - self.leader_start[1])
             pos = from_cyl(np.radians(az), r, z)
+        elif self.locked:
+            az, r, z = self.rotate_anchor
+            d = np.asarray(leader_p_mm) - self.leader_start
+            pos = from_cyl(np.radians(az), max(r + self.scale * d[0], 1.0), z + self.scale * d[2])
         self.last_desired = pos.copy()
         if self.cylindrical:
             self.pending = (pos.copy(), np.array(leader_p_mm, dtype=float))   # taken by apply()
@@ -250,10 +263,15 @@ class Mapper:
             d_az = wrap_deg(np.degrees(np.arctan2(p[1], p[0]))
                             - np.degrees(np.arctan2(p[1] - plan.dropped[1], p[0] - plan.dropped[0])))
             self.leader_start = self.leader_start + np.array([0.0, d_az / self.rotate_deg_per_mm, 0.0])
+        elif self.locked:   # radial and z parts of the dropped vector back to leader x and z
+            a = np.arctan2(self.last_desired[1], self.last_desired[0])
+            self.leader_start = self.leader_start + np.array(
+                [(np.cos(a) * plan.dropped[0] + np.sin(a) * plan.dropped[1]) / self.scale, 0.0,
+                 plan.dropped[2] / self.scale])
         if self.cylindrical:
             pos, leader_p = self.pending
             self.des, self.leader_prev, self.pending = pos - plan.dropped, leader_p, None
-        elif not self.rotating:
+        elif not (self.rotating or self.locked):
             shift = self.frame.T @ plan.dropped / self.scale
             shift[2] *= self.scale / self._z_scale()
             self.leader_start = self.leader_start + shift
