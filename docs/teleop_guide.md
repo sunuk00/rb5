@@ -67,7 +67,7 @@ What happens:
 | button released | the RB5 holds its pose; move the hand freely, press again to continue |
 | twist the handle (leader J6) | only with `yaw.mode: leader_j6`: RB5 tool yaw about the vertical axis (same angle). With `follow_base` (now) the twist is not used: the tool turns with J1 and RB5 J6 stays still |
 | trigger | gripper signal `grip_close` = 1 - trigger / 1000 (trigger reads 0 pulled, 1000 released: pulled = closed); logged only |
-| **left** handle button held | vertical mode (`mapping.vertical_button`): x, y stay where they were, only z follows the hand; release to move freely again (no jump). For straight descents to pick / place |
+| **left** handle button held | `mapping.left_button`: `rotate` (now) = radius and height stay, moving the hand left / right turns the RB5 base (J1), 100 mm = 30 deg; `vertical` = x, y stay, only z follows (x 1.5). Release to move freely again (no jump) |
 
 Scale 1.5 in Simulation: the RB5 moves 1.5 times the hand motion. Lower the hand vertically: the
 leader's wrist center also moves toward the body when the hand comes down (decisions 2026-10-12).

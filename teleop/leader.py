@@ -22,7 +22,7 @@ JOINT_IDS = list(range(7))
 JOINT_NAMES = ["J0_Shoulder_Pitch_R", "J1_Shoulder_Roll_R", "J2_Shoulder_Yaw_R", "J3_Elbow_R",
                "J4_Wrist_Yaw1_R", "J5_Wrist_Pitch_R", "J6_Wrist_Yaw2_R"]
 TOOL_ID = 0x80             # right tool (handle)
-TOOL_ID_LEFT = 0x81        # left tool: its button switches the vertical mode (mapping.vertical_button)
+TOOL_ID_LEFT = 0x81        # left tool: its button switches the vertical / rotate mode (mapping.left_button)
 TOOL_READ_PAUSE_S = 100e-6 # rby1-sdk ReadButtonStatus sleeps 100 us after the read
 TICKS_PER_REV = 4096
 BUTTON_PRESSED = 1         # raw 0x00000100 when held (13)

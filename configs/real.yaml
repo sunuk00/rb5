@@ -36,8 +36,11 @@ mapping:
   pivot_xy_mm: [0.0, 0.0]       # leader base center: hand 205 mm or more from it in 95 % of the clutch time (right
                                 # shoulder (0, -150): 87 mm), sideways gain about 1.6x median (shoulder 2.3x)
   min_pivot_radius_mm: 150.0    # angle = sideways motion / max(hand radius, 150): bounded gain near the axis
-  vertical_button: true         # left handle button held: x, y fixed, only z follows (straight descents for pick
-                                # and place: the hand drifts back 0.5-0.9 x the descent, mostly from the elbow)
+  left_button: rotate           # left handle button held: "rotate" = radius and z fixed, sideways hand motion turns
+                                # J1 (user 2026-10-16); "vertical" = x, y fixed, only z follows (straight descents);
+                                # "off" = button not read
+  rotate_deg_per_mm: 0.3        # rotate: 100 mm of sideways hand motion = 30 deg of J1 (cartesian needed about
+                                # 236 mm at r 450)
   vertical_z_scale: 1.5         # z x 1.5 in the vertical mode (user 2026-10-16: 2.0 was a bit fast; 033917: z speed
                                 # median 122 mm/s, 40 % at the 200 mm/s cap). Fewer re-grips than 1.0
 
@@ -65,7 +68,8 @@ range:
                                 # the TCP is 187 mm below the flange center, so the flange center is at about 140 mm
                                 # above the table). Was 30 (provisional). RAISE IT when a tool is mounted:
                                 # tool tip height + margin
-  azimuth_half_deg: 90.0        # same as Simulation; was 30
+  azimuth_half_deg: 120.0       # was 90 (034808: 9 s at -90, the hand asked 20 deg more); the tool turns with J1,
+                                # so the other joints are the same as at +/-90 (DH check 2026-10-16)
 
 safety:
   joint_speed_deg_per_cycle: [1.2, 1.2, 1.2, 1.2, 1.2, 1.2]   # 60 deg/s = Real max (user, 2026-10-16, option B; was

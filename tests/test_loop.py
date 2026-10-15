@@ -170,7 +170,7 @@ class TestLoop(unittest.TestCase):
         self.assertAlmostEqual(col("target_z")[-1], col("target_z")[0], delta=1e-3)
 
     def test_vertical_mode(self):
-        s = settings(mapping__vertical_button=True)
+        s = settings(mapping__left_button="vertical")
         def st(p, left):
             return (1, p, 0, 1000, True, left)
         steps = ARM + [st([0, 0, 0], 0)] * 3                                      # left released once (armed)
@@ -179,7 +179,7 @@ class TestLoop(unittest.TestCase):
         steps += [st([-36.0 + 1.0 * i, 18.0, -60.0], 0) for i in range(1, 21)]   # then forward 20
         steps += [st([-16.0, 18.0, -60.0], 0)] * 30
         _, p0, _, col, _ = run(steps, s)
-        x, y, z, v = col("target_x"), col("target_y"), col("target_z"), col("vertical_mode")
+        x, y, z, v = col("target_x"), col("target_y"), col("target_z"), col("left_mode_active")
         on = np.where(v == 1)[0]
         self.assertGreater(len(on), 50)
         self.assertLess(np.ptp(x[on]), 1e-3)                                      # x, y fixed while held
@@ -191,13 +191,13 @@ class TestLoop(unittest.TestCase):
         self.assertAlmostEqual(z[-1], z[on[-1]], delta=1e-2)
 
     def test_vertical_z_scale(self):
-        s = settings(mapping__vertical_button=True, mapping__vertical_z_scale=2.0, mapping__max_lag_mm=0.0)
+        s = settings(mapping__left_button="vertical", mapping__vertical_z_scale=2.0, mapping__max_lag_mm=0.0)
         steps = ARM + [(1, [0, 0, 0], 0, 1000, True, 0)] * 3
         steps += [(1, [-0.5 * i, 0, -1.0 * i], 0, 1000, True, 1) for i in range(1, 41)]   # down 40 (and back 20)
         steps += [(1, [-20.0, 0, -40.0], 0, 1000, True, 1)] * 10
         steps += [(1, [-20.0, 0, -40.0 - 1.0 * i], 0, 1000, True, 0) for i in range(1, 21)]  # left released: down 20
         _, p0, _, col, _ = run(steps, s)
-        z, v = col("target_z"), col("vertical_mode")
+        z, v = col("target_z"), col("left_mode_active")
         on = np.where(v == 1)[0]
         self.assertAlmostEqual(z[on[-1]] - z[on[0] - 1], -38.0, delta=0.6)        # (40 - 2 debounce) x 0.5 x 2
         self.assertAlmostEqual(z[-1] - z[on[-1]], -10.0, delta=0.6)               # normal again: 20 x 0.5
@@ -230,21 +230,50 @@ class TestLoop(unittest.TestCase):
             p = np.c_[col("target_x"), col("target_y"), col("target_z")]
             self.assertAlmostEqual(np.linalg.norm(np.diff(p, axis=0), axis=1).max(), cap, delta=0.02)
 
+    def test_rotate_mode(self):
+        s = settings(mapping__left_button="rotate", mapping__rotate_deg_per_mm=0.3, yaw__mode="follow_base")
+        steps = ARM + [(1, [0, 0, 0], 0, 1000, True, 0)] * 3
+        steps += [(1, [-0.5 * i, 1.0 * i, -0.5 * i], 0, 1000, True, 1) for i in range(1, 51)]   # left held
+        steps += [(1, [-25.0, 50.0, -25.0], 0, 1000, True, 1)] * 20
+        _, p0, _, col, _ = run(steps, s)
+        x, y, z, a = col("target_x"), col("target_y"), col("target_z"), col("left_mode_active")
+        on = np.where(a == 1)[0]
+        r = np.hypot(x, y)
+        az = np.degrees(np.arctan2(y, x))
+        self.assertLess(np.ptp(r[on]), 0.01)                                      # radius kept
+        self.assertLess(np.ptp(z[on]), 0.01)                                      # z kept (hand went down 25)
+        self.assertAlmostEqual(az[on[-1]] - az[on[0] - 1], 0.3 * 48, delta=0.05)   # (50 - 2 debounce) mm x 0.3
+        j6 = col("jnt_ref_5")
+        self.assertLess(abs(j6[on[-1]] - j6[on[0]]), 0.1)                        # only J1 turns
+
+    def test_rotate_mode_drops_like_b(self):
+        s = settings(mapping__left_button="rotate", mapping__rotate_deg_per_mm=0.3, mapping__max_lag_mm=0.0)
+        steps = ARM + [(1, [0, 0, 0], 0, 1000, True, 0)] * 3 + [(1, [0, 0, 0], 0, 1000, True, 1)] * 3
+        steps += [(1, [0, 10.0 * i, 0], 0, 1000, True, 1) for i in range(1, 11)]   # 3 deg per cycle: too fast
+        steps += [(1, [0, 100.0, 0], 0, 1000, True, 1)] * 20
+        steps += [(1, [0, 100.0 - 1.0 * i, 0], 0, 1000, True, 1) for i in range(1, 11)]   # back 10 mm slowly
+        _, p0, _, col, _ = run(steps, s)
+        az = np.degrees(np.arctan2(col("target_y"), col("target_x")))
+        k = len(ARM) + 6 + 10
+        self.assertLess(az[k] - az[k - 10], 30.0 - 1.0)                         # capped by the speed limit
+        self.assertAlmostEqual(az[k + 19], az[k], places=6)                      # B: no catch-up after the hand stops
+        self.assertAlmostEqual(az[-1] - az[k + 19], -3.0, delta=0.05)            # going back moves it back at once
+
     def test_vertical_mode_read_failures(self):
-        s = settings(mapping__vertical_button=True)
+        s = settings(mapping__left_button="vertical")
         steps = ARM + [(1, [0, 0, 0], 0, 1000, True, 0)] * 3 + [(1, [0, 0, 0], 0, 1000, True, 1)] * 5
         steps += [(1, [0, 0, 0], 0, 1000, True, None)] * 3 + [(1, [-1.0 * i, 0, 0], 0, 1000, True, 0) for i in range(1, 11)]
         _, p0, _, col, _ = run(steps, s)
-        v = col("vertical_mode")
+        v = col("left_mode_active")
         k = len(ARM) + 3 + 5
         self.assertEqual(v[k - 1], 1)
         self.assertEqual(v[k + 2], 0)                                              # 3 failed reads -> off
         self.assertAlmostEqual(col("target_x")[-1] - col("target_x")[k + 2], -5.0, delta=1e-2)   # x follows again
 
-    def test_vertical_button_off_ignores_left_button(self):
+    def test_left_button_off_ignores_left_button(self):
         steps = ARM + [(1, [-1.0 * i, 0, -1.0 * i], 0, 1000, True, 1) for i in range(1, 21)]
-        _, p0, _, col, _ = run(steps)                                              # fixture: vertical_button False
-        self.assertEqual(np.nanmax(col("vertical_mode")), 0)
+        _, p0, _, col, _ = run(steps)                                              # fixture: left_button off
+        self.assertEqual(np.nanmax(col("left_mode_active")), 0)
         self.assertAlmostEqual(col("target_x")[-1] - p0[0], -10.0, delta=1e-2)
 
     def test_release_freezes(self):

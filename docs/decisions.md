@@ -76,6 +76,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — Vertical mode z x 2 (vertical_z_scale)](#2026-10-16--vertical-mode-z-x-2-vertical_z_scale)
 - [2026-10-16 — TCP floor 30 -> -50 mm (nothing mounted on the flange)](#2026-10-16--tcp-floor-30----50-mm-nothing-mounted-on-the-flange)
 - [2026-10-16 — Faster J1 (sideways 300 mm/s), RB5 J6 still (tool follows the base), vertical z x 1.5](#2026-10-16--faster-j1-sideways-300-mms-rb5-j6-still-tool-follows-the-base-vertical-z-x-15)
+- [2026-10-16 — Left button = J1 rotate mode; azimuth range +/-120](#2026-10-16--left-button--j1-rotate-mode-azimuth-range--120)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1304,6 +1305,25 @@ TCP reached z -52. User: J1 should turn faster, RB5 J6 should stay still, vertic
   Fake robot (straight sideways hand motion, 40 deg twist): J1 +4.6 deg, J6 -0.28 deg; with the old
   world-held tool J6 turned back by as much as J1 (-4.29 for 4.29). `leader_j6` keeps the old mapping.
 - `mapping.vertical_z_scale` 2.0 -> 1.5.
+
+## 2026-10-16 — Left button = J1 rotate mode; azimuth range +/-120
+
+**Run 034808 (sideways 300 mm/s, tool follows the base, Real):** RB5 J6 range 6 deg (was 140); J1
+speed-limited 21 % of its turning time (46 %), up to 50 deg/s; dropped 36 mm (1433). J1 turned from 90
+to 183 deg: 9 s at the azimuth limit -90 (the hand asked 20 deg more), 7 s at r_min (a sideways hand
+motion arcs toward the body), J3 joint-limit slowdown 13 % (margin >= 16.6 deg) in that inner corner.
+Vertical mode used 6 s. User: the left button would be more useful for turning J1 than for going down.
+
+**Decision (user):** `mapping.left_button` off / vertical / rotate (replaces `vertical_button`), now
+`rotate` in Sim and Real: while held, the radius and z of the target stay and only the azimuth changes,
+by `rotate_deg_per_mm` 0.3 x the leader's sideways (leader y) motion (100 mm = 30 deg; the cartesian
+mapping needed about 236 mm at r 450). The tool still follows the base, so only J1 turns. Same speed
+limits; a dropped arc piece shifts the leader y reference by its angle (B / C as elsewhere). The
+vertical mode stays available (`left_button: vertical`). CSV column `vertical_mode` -> `left_mode_active`.
+`range.azimuth_half_deg` 90 -> 120 (Sim and Real): with the tool turning with J1 the other joints are the
+same as at +/-90 (DH grid r 350-800, z -50..400: J5 87.2, shoulder 236 mm, elbow 31.7, joint limit 16.7 deg,
+all at the inner low corner); J1 then spans about 63-303 deg (limit +/-360). The space at the sides and
+behind the RB5 must be clear.
 
 ## PENDING
 

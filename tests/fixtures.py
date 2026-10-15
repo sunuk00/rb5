@@ -19,7 +19,8 @@ def test_raw():
     d["mapping"]["leader_deadband_mm"] = 0.0      # 21 had no deadband
     d["mapping"]["leader_filter_tau_s"] = 0.0     # nor a low-pass
     d["mapping"]["mode"] = "cartesian"            # and mapped in cartesian
-    d["mapping"]["vertical_button"] = False       # without the vertical mode
+    d["mapping"]["left_button"] = "off"           # without the left button modes
+    d["mapping"]["rotate_deg_per_mm"] = 0.3
     d["mapping"]["vertical_z_scale"] = 1.0
     d["mapping"]["speed_tangential_mm_s"] = d["mapping"]["speed_mm_s"]   # one speed limit in all directions
     d["yaw"]["mode"] = "leader_j6"

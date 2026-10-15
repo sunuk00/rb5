@@ -10,9 +10,11 @@ Position (mapping.mode):
                axis: angle 1:1 (so a swing of the hand turns J1), radius and height x scale. The angle is
                the sideways motion / max(hand radius, min_pivot_radius_mm), so the gain stays bounded
                near the axis. Integrated per cycle; frame_yaw is not used.
-Vertical mode (left handle button held, mapping.vertical_button): x and y of the desired position stay
-at the target's x and y when the mode or the clutch was switched on; only z follows, x scale x
-mapping.vertical_z_scale. Every switch re-anchors the references, so the RB5 does not jump.
+Left handle button held (mapping.left_button), every switch re-anchors the references (no jump):
+  vertical: x and y of the desired position stay at the target's x and y when the mode or the clutch was
+            switched on; only z follows, x scale x mapping.vertical_z_scale.
+  rotate:   radius and z stay; only the azimuth about the base z axis changes, by
+            mapping.rotate_deg_per_mm x the leader's sideways (leader y) motion: J1 turns, nothing else.
 Yaw:      desired = RB5 yaw at press + (leader J6 now - at press) [deg], about base z, TCP fixed.
 Yaw mode follow_base (yaw.mode): the tool yaw follows the azimuth of the target about the base z axis,
 so the gripper turns with the arm and the RB5 wrist joints (J6) stay still when J1 turns; the leader J6
@@ -179,8 +181,11 @@ class Mapper:
         self.pivot = np.asarray(s.mapping.pivot_xy_mm, dtype=float)
         self.min_pivot_radius = s.mapping.min_pivot_radius_mm
         self.des = self.leader_prev = self.pending = None   # cylindrical: desired position and last leader used
-        self.vertical, self.vertical_xy = False, None       # vertical mode: x, y held at vertical_xy
+        self.left_mode = s.mapping.left_button              # off / vertical / rotate
+        self.left_active = False                            # left button held
+        self.vertical_xy = self.rotate_anchor = self.last_desired = None
         self.vertical_z_scale = s.mapping.vertical_z_scale  # extra z gain in the vertical mode
+        self.rotate_deg_per_mm = s.mapping.rotate_deg_per_mm
         self.yaw_enabled = s.yaw.enabled
         self.target = np.array(target0, dtype=float)   # RB5 TCP position target [mm]
         self.yaw = 0.0                                  # RB5 yaw relative to the start rz [deg]
@@ -192,6 +197,16 @@ class Mapper:
         self.yaw_rb5_start, self.yaw_leader_start = self.yaw, leader_j6_deg
         self.des, self.leader_prev, self.pending = self.target.copy(), self.leader_start.copy(), None
         self.vertical_xy = self.target[:2].copy()
+        a, r, z = to_cyl(self.target)
+        self.rotate_anchor = (np.degrees(a), r, z)
+
+    @property
+    def vertical(self):
+        return self.left_active and self.left_mode == "vertical"
+
+    @property
+    def rotating(self):
+        return self.left_active and self.left_mode == "rotate"
 
     def _cylindrical_step(self, leader_p_mm):
         """Desired position after the leader moved from the last used reading to leader_p_mm."""
@@ -217,6 +232,11 @@ class Mapper:
             pos[:2] = self.vertical_xy
             if not self.cylindrical:   # frame is a rotation about z, so z is not mixed with x, y
                 pos[2] = self.rb5_start[2] + self._z_scale() * (leader_p_mm[2] - self.leader_start[2])
+        elif self.rotating:
+            az, r, z = self.rotate_anchor
+            az = az + self.rotate_deg_per_mm * (leader_p_mm[1] - self.leader_start[1])
+            pos = from_cyl(np.radians(az), r, z)
+        self.last_desired = pos.copy()
         if self.cylindrical:
             self.pending = (pos.copy(), np.array(leader_p_mm, dtype=float))   # taken by apply()
         yaw = (self.yaw_rb5_start + wrap_deg(leader_j6_deg - self.yaw_leader_start)) if self.yaw_enabled else 0.0
@@ -225,10 +245,15 @@ class Mapper:
     def apply(self, plan):
         """Take the planned target and shift the leader references by the dropped parts. A cycle that is
         not applied (late) leaves the cylindrical state as it was, so its motion is taken next cycle."""
+        if self.rotating:   # the dropped part is an arc piece: shift the leader y by its angle
+            p = self.last_desired
+            d_az = wrap_deg(np.degrees(np.arctan2(p[1], p[0]))
+                            - np.degrees(np.arctan2(p[1] - plan.dropped[1], p[0] - plan.dropped[0])))
+            self.leader_start = self.leader_start + np.array([0.0, d_az / self.rotate_deg_per_mm, 0.0])
         if self.cylindrical:
             pos, leader_p = self.pending
             self.des, self.leader_prev, self.pending = pos - plan.dropped, leader_p, None
-        else:
+        elif not self.rotating:
             shift = self.frame.T @ plan.dropped / self.scale
             shift[2] *= self.scale / self._z_scale()
             self.leader_start = self.leader_start + shift

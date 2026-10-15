@@ -9,7 +9,8 @@ its own step, with the lab, not as part of a Simulation session.
       `python -m teleop --real` while it is Off. Required since the Real speed limits were raised to
       TCP 200 mm/s and joints 60 deg/s (decisions 2026-10-16). The teleop does not check this itself.
 - [ ] Emergency stop within reach of the operator; a second person watches the robot.
-- [ ] Workspace clear (range below), tablet connected, speed bar 0.1.
+- [ ] Workspace clear (range below; azimuth +/-120 deg around the ready pose since 2026-10-16, so the sides
+      and the back of the RB5 too), tablet connected, speed bar 0.1.
 
 ## Controller and robot (ask before changing any controller setting, CLAUDE.md)
 - [ ] **Collision detection**: was Off. The user turns it on with the lab before the next Real run
