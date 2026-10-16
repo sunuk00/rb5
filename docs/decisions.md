@@ -95,6 +95,10 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 **Cameras**
 - [2026-10-17 — cam-1: RealSense D435 + D405 RGB test (pyrealsense2 2.58.4)](#2026-10-17--cam-1-realsense-d435--d405-rgb-test-pyrealsense2-2584)
 
+**Demonstration recording**
+- [2026-10-17 — What jnt_ref is: the controller's joint reference, 60 ms behind the sent target](#2026-10-17--what-jnt_ref-is-the-controllers-joint-reference-60-ms-behind-the-sent-target)
+- [2026-10-17 — Open (step 3): demonstration recording rate 50 Hz vs 30 Hz](#2026-10-17--open-step-3-demonstration-recording-rate-50-hz-vs-30-hz)
+
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
 - [2026-10-14 — environment.yml for the rb5 env](#2026-10-14--environmentyml-for-the-rb5-env)
@@ -1680,6 +1684,63 @@ frame the frame number, camera timestamp and domain, metadata timestamps and the
 images; lowest load) or 640x480 @ 60 (closer to the 50 Hz teleop; ALOHA records at 50 Hz). Both work with
 little CPU; 1280x720 also works at 30 fps but costs storage. To decide with the recording format.
 
+## 2026-10-17 — What jnt_ref is: the controller's joint reference, 60 ms behind the sent target
+
+**Question (user):** is `jnt_ref` (data channel) the target or the measurement, how late is it, and can it
+be the joint action for ACT? Logs only: Real runs 051339 and 045859 (real-1 final settings), no motion.
+
+**Method (`scripts/26_jnt_ref_check.py`):** every sent TCP target (position + start rpy with rz + yaw) is
+solved with our DH model (IK error < 1e-5 mm); targets are placed at their send time, RB5 states at their
+receive time (t_s + leader_read_ms - state_age_ms); the delay is the shift with the smallest RMS while
+moving (65 % of the samples). A model-free check compares the Cartesian sent target with `tcp_ref` and with
+the FK of both joint signals.
+
+**Results (051339; 045859 the same within 2 ms):**
+
+| compared | delay | RMS while moving |
+|---|---|---|
+| tcp_ref vs sent target | +24 ms | 0.20 mm |
+| FK(jnt_ref) vs sent target | +60 ms | 2.1 mm (= the DH model error) |
+| jnt_ref vs IK(sent target) | +60 ms | 0.20 deg (J1-J6 0.06 / 0.26 / 0.18 / 0.37 / 0.00 / 0.02) |
+| jnt_ang vs IK(sent target) | +64 ms | 0.20 deg |
+| jnt_ang vs jnt_ref | +6 ms | 0.03 deg (max 0.18) |
+
+- Our DH model differs from the controller by about 2 mm when the robot is still (FK(jnt_ref) vs tcp_ref,
+  max 4.9 mm); this is the floor of any comparison through our IK (0.37 deg median at rest).
+- Within one packet, `tcp_ref` is about 40 ms ahead of `jnt_ref`: tcp_ref is the Cartesian command (our
+  target about one cycle later; at rest equal to it, 0.0000 mm in 045859), jnt_ref is the joint reference
+  after the controller's servo interpolation (t1 / t2) and IK.
+- The encoders follow jnt_ref within 6 ms and 0.03 deg RMS; at rest 0.002 deg median.
+
+**Conclusion:** jnt_ref is on the command side, not a measurement: the controller's smoothed joint
+trajectory, equal to the IK of what we sent about 60 ms later (within our DH model error). It can be a
+joint action for ACT: action(t) = jnt_ref(t + 60 ms) is the joint form of the command at t; the measured
+joints are almost the same (6 ms, 0.03 deg), so action and observation differ mainly by that shift. But:
+(1) running a joint-action policy needs `move_servo_j` and joint-space safety checks (our limits, range
+and watches work on the Cartesian target); (2) the exact command is the sent target itself (no model, no
+delay to estimate), and it is what our safety pipeline takes. Proposal for the recording format (step 3):
+record all of them (sent target + yaw, tcp_ref, jnt_ref, jnt_ang, timestamps); main action = the sent TCP
+target (x, y, z, yaw) + gripper, with jnt_ref(t + 60 ms) as the alternative joint action; observation
+state = jnt_ang (or jnt_ref).
+
+## 2026-10-17 — Open (step 3): demonstration recording rate 50 Hz vs 30 Hz
+
+Candidates for the recording format step (not decided):
+
+| | 50 Hz | 30 Hz |
+|---|---|---|
+| robot data | native (the teleop loop is 50 Hz) | resampled from 50 Hz (nearest or interpolated) |
+| cameras | 30 fps: each frame used 1.7 times (duplicates); 60 fps: nearest frame per 20 ms tick, 8.4 ms max error, D435 delivers 59.53 fps (cam-1) | 30 fps: each frame once, natural for both cameras |
+| LeRobot | video stored at the dataset fps: 50 fps video from 30 / 60 fps cameras means resampling | the most common setting in LeRobot datasets (640x480 @ 30) |
+| ACT | ALOHA recorded and ran at 50 Hz | fewer steps per second: the same chunk covers more time |
+| policy at run time | outputs at 50 Hz, same as the teleop | outputs at 30 Hz; the 50 Hz servo loop holds or interpolates between them |
+| size | 1.7x frames | smaller |
+| timing | jnt_ref / command delays (24 / 60 ms) are 1.2 / 3 ticks | 0.7 / 1.8 ticks |
+
+Things to measure before deciding: CPU and disk with two cameras + the teleop together; how smooth a 30
+Hz action stream is after interpolation to the 50 Hz servo loop. Cameras are not synchronized, so frame
+choice by timestamp (half a frame period max) holds for both.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -1706,3 +1767,4 @@ little CPU; 1280x720 also works at 30 fps but costs storage. To decide with the 
     - Python 3.11+ for the sleep resolution
   - **Optional, when the operator wants more speed:** sideways 400 mm/s, radial / vertical 300 mm/s.
     Each raise is a Real limit change and needs its own decision.
+  - **Recording rate 50 Hz vs 30 Hz** and the action definition: see the 2026-10-17 entries.

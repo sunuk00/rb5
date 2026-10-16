@@ -47,6 +47,7 @@ default, Real with `--real` and typed confirmation; **leader** = writes torque t
 | 23 | `23_trial_summary.py` | Summary of Real teleop trials from the logs (real-1) | - (log files only) | tool |
 | 24 | `24_run_report.py` | Full report on teleop runs: speeds, limits per mode, drops, smoothness with the real sample times, lag, timing | - (log files only) | tool |
 | 25 | `25_camera_rgb_test.py` | RGB from all RealSense cameras at once: fps, frame intervals, missed frames, camera vs PC time (cam-1) | - (cameras only) | tool |
+| 26 | `26_jnt_ref_check.py` | What jnt_ref is: IK of the sent target vs jnt_ref vs jnt_ang, delays, model-free Cartesian check | - (log files only) | tool |
 
 ## Usage per script
 
@@ -332,3 +333,10 @@ python scripts/25_camera_rgb_test.py --ae-priority on                       # D4
 
 Needs `pyrealsense2` (environment.yml). Output: `data/cameras/cam_<time>_<res>_<fps>.csv` (one row per frame:
 frame number, camera timestamp and domain, metadata timestamps, PC receive time) and a sample PNG per camera.
+
+### 26 jnt_ref check
+```
+python scripts/26_jnt_ref_check.py data/teleop/teleop_real_20261016_051339.csv
+```
+One log at a time. Prints the DH model error (FK(jnt_ref) vs tcp_ref), the best delays of jnt_ref / jnt_ang
+behind the IK of the sent target and of tcp_ref behind the sent target, and the differences at rest.
