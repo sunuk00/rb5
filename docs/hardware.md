@@ -59,7 +59,13 @@ Decisions and measurements behind them are in `docs/decisions.md`.
 - 3D-printed parallel gripper (built by a team member, in progress), one Dynamixel MX-106T (TTL, 3-pin).
   The Allegro Hand V4 is not used (user, 2026-10-17).
 - Own bus: U2D2 (USB) -> U2D2 Power Hub Board -> MX-106T. The U2D2 does not power the motor (e-Manual).
-  U2D2 serial and USB ids: **TBD** (not connected yet); expected FTDI, then the udev rule needs its serial.
+  U2D2: FTDI FT232H (0403:6014, the same ids as the leader arm adapter), serial FT62AJAX; port
+  `/dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FT62AJAX-if00-port0` (`scripts/config.py` GRIPPER_PORT),
+  `/dev/gripper_u2d2` with the udev rule.
+- The motor (script 27 and DYNAMIXEL Wizard, 2026-10-17): **MX-106(2.0)**, model 321, firmware v45,
+  **ID 2, 1,000,000 bps**, Protocol 2.0, operating mode 3 (position), position limits 2388-3853 (about
+  129 deg, set before we got it), current limit 2047 (6.88 A), voltage limits 9.5-16.0 V, return delay
+  250 (500 us).
 - MX-106 (e-Manual): 10.0-14.8 V, **12 V recommended**; standby 100 mA; stall 8.4 N.m at 12 V, **5.2 A**
   (11.1 V 4.8 A, 14.8 V 6.3 A); 45 rev/min no load at 12 V; factory ID 1, 57,600 bps.
   Power: 12 V, at least 5 A (the stall current), separate from the leader arm supply. Power Hub: 3.5-24 V,
@@ -67,8 +73,7 @@ Decisions and measurements behind them are in `docs/decisions.md`.
 - Firmware decides the protocol: model number 320 = Protocol 1.0 firmware (below v39; modes wheel /
   joint / multi-turn, torque control without position), 321 = MX-106(2.0) (v39 or above; operating
   modes 0 current, 1 velocity, 3 position, 4 extended position, **5 current-based position** (Goal Current
-  limits the current, "ideal for grippers"), 16 PWM). Which one this motor has: **TBD** (script 27).
-  Updating 1.0 -> 2.0 (DYNAMIXEL Wizard 2.0): only after the user checks the motor's other uses in the lab.
+  limits the current, "ideal for grippers"), 16 PWM). This motor has the 2.0 firmware: no update needed.
 
 ## Notes
 - M808 warning on the controller: the PC firewall is not the cause (ufw inactive).

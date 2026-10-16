@@ -1769,6 +1769,14 @@ Dynamixel MX-106T (TTL, 3-pin). The Allegro Hand V4 is not used.
 - **Power** (e-Manual): 12 V recommended (10.0-14.8 V), stall 5.2 A at 12 V -> a 12 V supply of at least
   5 A, separate from the leader arm's supply; a current-limited bench supply for the first tests.
 
+**Scan result (script 27, read-only, 2026-10-17):** U2D2 = FT232H serial FT62AJAX (`/dev/ttyUSB1` this time).
+One motor: MX-106(2.0) (model 321), firmware v45, ID 2, 1,000,000 bps (not the factory ID 1 / 57,600: set
+before), operating mode 3 (position), position limits 2388-3853, current limit 2047 (6.88 A), return
+delay 500 us. No firmware update needed (the user also checked with DYNAMIXEL Wizard). At the scan:
+torque enable 1 (not written by us), position 2388 (= the min limit), hardware error status 1 = input
+voltage (9.2 V < min 9.5 V; supply to be changed to 12 V). Reading 10 bytes (current, velocity,
+position) took 16.0 ms p50 because the U2D2 latency_timer was still 16 ms.
+
 **Plan after grip-1:** grip-2 the gripper alone (mode 5, low Goal Current, open / closed positions,
 trigger direction); grip-3 a gripper thread in the teleop (latest goal / latest state shared, the loop
 never waits for the gripper bus), compared in Simulation by `work_ms` and late cycles.
@@ -1803,5 +1811,6 @@ firmware right away (other lab users).
   - **Optional, when the operator wants more speed:** sideways 400 mm/s, radial / vertical 300 mm/s.
     Each raise is a Real limit change and needs its own decision.
   - **Recording rate 50 Hz vs 30 Hz** and the action definition: see the 2026-10-17 entries.
-  - **Gripper (grip-1):** U2D2 serial -> udev lines and `GRIPPER_PORT`; run script 27; firmware 320 / 321
-    (1.0: the user decides on the update after checking other lab uses).
+  - **Gripper (grip-1):** 12 V supply, then check that the input voltage error clears (it may need a
+    reboot instruction: a write, ask first); latency_timer 1 on the U2D2 (udev rule) and re-time the read;
+    return delay 500 us -> 0 is a motor setting change (ask first, grip-2).

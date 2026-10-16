@@ -8,8 +8,6 @@
 SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", ATTRS{serial}=="FT62AJW7", SYMLINK+="rby1_leader_arm"
 ACTION=="add", SUBSYSTEM=="usb-serial", DRIVER=="ftdi_sio", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", ATTRS{serial}=="FT62AJW7", ATTR{latency_timer}="1"
 
-# Gripper U2D2 (MX-106T) -> /dev/gripper_u2d2. TODO grip-1: the U2D2 serial is not known yet (not
-# connected); replace U2D2_SERIAL (udevadm info -a -n /dev/ttyUSB1 | grep serial), check the vendor /
-# product ids with lsusb, then remove the leading "# ".
-# SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", ATTRS{serial}=="U2D2_SERIAL", SYMLINK+="gripper_u2d2"
-# ACTION=="add", SUBSYSTEM=="usb-serial", DRIVER=="ftdi_sio", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", ATTRS{serial}=="U2D2_SERIAL", ATTR{latency_timer}="1"
+# Gripper U2D2 (serial FT62AJAX, MX-106T) -> /dev/gripper_u2d2
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", ATTRS{serial}=="FT62AJAX", SYMLINK+="gripper_u2d2"
+ACTION=="add", SUBSYSTEM=="usb-serial", DRIVER=="ftdi_sio", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", ATTRS{serial}=="FT62AJAX", ATTR{latency_timer}="1"
