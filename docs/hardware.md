@@ -44,6 +44,16 @@ Decisions and measurements behind them are in `docs/decisions.md`.
 - The teleop (`python -m teleop`) only reads the leader arm (no torque). Scripts 14, 15 and 16 write
   torque (the arm moves or holds by itself).
 
+## Cameras (Intel RealSense)
+- D435 (fixed camera), serial 943222070221, firmware 5.17.3.10; D405 (wrist camera), serial 130322273474,
+  firmware 5.17.0.10. Both must be on USB 3 (`lsusb -t` 5000M): the D435 first came up as USB 2.1 (only
+  640x480 @ 30 and 1280x720 @ 15 for color) until it was reconnected (2026-10-17).
+- SDK: system librealsense 2.58.4 (Intel apt repository, tools and udev rules); Python `pyrealsense2`
+  2.58.4 in `rb5`. The DKMS kernel module (1.3.33) is not built for kernel 7.0, but frame metadata
+  (sensor timestamp, time of arrival) works.
+- The D405 has no separate RGB sensor: color comes from its stereo module (no auto_exposure_priority).
+- Measured (cam-1): see docs/decisions.md 2026-10-17.
+
 ## Allegro Hand
 - Allegro Hand V4: 4 fingers, 16 DoF, CAN bus. Left / right: **TBD**. Not integrated yet.
 

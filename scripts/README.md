@@ -46,6 +46,7 @@ default, Real with `--real` and typed confirmation; **leader** = writes torque t
 | 22 | `22_base_axis_check.py` | Where the RB5 base +x / +y point on the real robot | - | tool (Real checklist) |
 | 23 | `23_trial_summary.py` | Summary of Real teleop trials from the logs (real-1) | - (log files only) | tool |
 | 24 | `24_run_report.py` | Full report on teleop runs: speeds, limits per mode, drops, smoothness with the real sample times, lag, timing | - (log files only) | tool |
+| 25 | `25_camera_rgb_test.py` | RGB from all RealSense cameras at once: fps, frame intervals, missed frames, camera vs PC time (cam-1) | - (cameras only) | tool |
 
 ## Usage per script
 
@@ -313,3 +314,21 @@ python scripts/24_run_report.py data/teleop/teleop_real_20261016_*.csv --compare
 
 Joint speeds and accelerations are computed from the RB5 reference with the real sample times
 (`t_s - state_age_ms`; the state arrives 13-22 ms apart). Runs without clutch time are reported as such.
+
+### 25 camera RGB test (cam-1)
+```
+python scripts/25_camera_rgb_test.py                                        # 640x480 @ 30 for 60 s
+python scripts/25_camera_rgb_test.py --res 640x480 --fps 60 --duration 60
+python scripts/25_camera_rgb_test.py --ae-priority on                       # D435 color sensor option
+```
+| Option | Default | Meaning |
+|---|---|---|
+| `--res WxH` | 640x480 | color resolution (both cameras) |
+| `--fps` | 30 | frame rate |
+| `--duration` | 60 | seconds |
+| `--warmup` | 2 | seconds left out of the statistics (auto exposure settling) |
+| `--ae-priority on/off/keep` | keep | color sensor auto_exposure_priority while running (D405: not available) |
+| `--allow-usb2` | off | run even if a camera is on USB 2 |
+
+Needs `pyrealsense2` (environment.yml). Output: `data/cameras/cam_<time>_<res>_<fps>.csv` (one row per frame:
+frame number, camera timestamp and domain, metadata timestamps, PC receive time) and a sample PNG per camera.

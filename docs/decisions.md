@@ -92,6 +92,9 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-16 — Gripper signal moved to teleop/gripper.py](#2026-10-16--gripper-signal-moved-to-teleopgripperpy)
 - [2026-10-16 — Loop: CSV row and status line out of run()](#2026-10-16--loop-csv-row-and-status-line-out-of-run)
 
+**Cameras**
+- [2026-10-17 — cam-1: RealSense D435 + D405 RGB test (pyrealsense2 2.58.4)](#2026-10-17--cam-1-realsense-d435--d405-rgb-test-pyrealsense2-2584)
+
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
 - [2026-10-14 — environment.yml for the rb5 env](#2026-10-14--environmentyml-for-the-rb5-env)
@@ -1642,6 +1645,40 @@ trigger direction is not confirmed on the hardware (PENDING). 58 tests pass.
 rotate + azimuth lock + acceleration limit, vertical, read failures and gripper) give byte-identical rows
 and stop messages before and after (the wall-clock timing columns excluded; the baseline itself was
 checked to be repeatable). The status line was run once with the status enabled. 58 tests pass.
+
+## 2026-10-17 — cam-1: RealSense D435 + D405 RGB test (pyrealsense2 2.58.4)
+
+**Setup:** `pyrealsense2==2.58.4.10922` in `rb5` (same version as the system librealsense 2.58.4: the
+tools, udev rules and Python behave the same; 2.59.1 is newer but not mixed in); no OpenCV yet (the test
+needs numpy only, PNG via matplotlib). The D435 first enumerated as USB 2.1 (480 Mbps; color only up to
+640x480 @ 30 / 1280x720 @ 15); after it was reconnected both cameras are at 5000 Mbps (same hub, its USB 3
+side). `scripts/25_camera_rgb_test.py`: one pipeline per camera (color RGB8 only), one thread each; per
+frame the frame number, camera timestamp and domain, metadata timestamps and the PC receive time.
+
+**Results (60 s each, 2 s warm-up left out, both cameras at once, no robot):**
+
+| setting | D435 fps | D405 fps | missed frames | PC interval p95 / max | CPU (one core) |
+|---|---|---|---|---|---|
+| 640x480 @ 30 | 29.98 | 29.98 | D405 1 | 33.7-33.8 / 36.9 (66.6 at the miss) ms | 10 % |
+| 640x480 @ 60 | 59.53 | 59.89 | 0 | 17.1-17.2 / 17.9 ms | 17 % |
+| 1280x720 @ 30 | 29.98 | 30.00 | 0 | 33.9-34.1 / 35.1 ms | 18 % |
+| 640x480 @ 30, D435 ae priority on | 29.76 | 29.99 | 0 | 34.0 / 34.6 ms | 9 % |
+
+- Timestamps are in the `global_time` domain (the camera clock mapped to the PC clock by librealsense):
+  drift within +/-6 ppm, residual 0.2-0.4 ms std. Metadata (sensor timestamp, time of arrival) available
+  for every frame without the DKMS module.
+- PC read time - camera time: D435 33.6 ms at 30 fps, 17.2 at 60, 35.1 at 1280x720; D405 9.5 / 9.4 / 17.4.
+  The D435's is about one frame period, so its timestamp is likely taken earlier in the frame than the
+  D405's (not confirmed in a document).
+- The D435's "60 fps" is 59.53 fps (16.80 ms): records must use the timestamps, not frame counts.
+- The cameras are not synchronized: the nearest frames differ by up to half a frame period (p50 4-8 ms,
+  max 8.6 ms at 60 fps, 16.8 ms at 30 fps).
+- auto_exposure_priority: the D435 default is off (keeps 30 fps); on gave 29.76 fps in this room light.
+  The D405 color sensor does not have the option.
+
+**Candidates for demonstrations:** 640x480 @ 30 (the common LeRobot setting, ACT / ALOHA used 480x640
+images; lowest load) or 640x480 @ 60 (closer to the 50 Hz teleop; ALOHA records at 50 Hz). Both work with
+little CPU; 1280x720 also works at 30 fps but costs storage. To decide with the recording format.
 
 ## PENDING
 
