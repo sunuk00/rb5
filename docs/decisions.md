@@ -99,6 +99,9 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-17 — What jnt_ref is: the controller's joint reference, 60 ms behind the sent target](#2026-10-17--what-jnt_ref-is-the-controllers-joint-reference-60-ms-behind-the-sent-target)
 - [2026-10-17 — Open (step 3): demonstration recording rate 50 Hz vs 30 Hz](#2026-10-17--open-step-3-demonstration-recording-rate-50-hz-vs-30-hz)
 
+**Gripper**
+- [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
+
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
 - [2026-10-14 — environment.yml for the rb5 env](#2026-10-14--environmentyml-for-the-rb5-env)
@@ -1741,6 +1744,38 @@ Things to measure before deciding: CPU and disk with two cameras + the teleop to
 Hz action stream is after interpolation to the 50 Hz servo loop. Cameras are not synchronized, so frame
 choice by timestamp (half a frame period max) holds for both.
 
+## 2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)
+
+**Hardware (user):** the end effector is a 3D-printed parallel gripper (built by a team member) with one
+Dynamixel MX-106T (TTL, 3-pin). The Allegro Hand V4 is not used.
+
+**Decisions:**
+- **Own bus:** U2D2 + U2D2 Power Hub Board, not on the leader arm's bus. The leader arm bus is read
+  every cycle at 2 Mbps (Protocol 2.0); a second device there would share its time and its IDs (the
+  MX-106 factory ID 1 is a leader joint ID).
+- **Ports by adapter serial number** (`/dev/serial/by-id/...`): both adapters are expected to be FTDI
+  FT232H (0403:6014), so `/dev/ttyUSB0` / `1` depend on the plug order. With the old `/dev/ttyUSB0`,
+  scripts 14 / 16 (which write torque settings to the leader IDs 0-13) could have written to the
+  gripper motor. Leader: `configs/*.yaml` `leader.port` and `scripts/config.py` `LEADER_PORT` (scripts
+  11-14, 16, 20, 21). The by-id link exists without any rule; the udev rule is still needed for the
+  latency timer (it reset to 16 ms after a replug, 2026-10-17).
+- **udev rule** renamed `assets/udev/99-rb-cobot-usb-serial.rules` (leader arm + gripper). The gripper
+  lines are written but commented: the U2D2 was not connected yet, so its serial is unknown.
+- **Read-only scan first** (`scripts/27_gripper_scan.py`): ping / read only, Protocol 2.0 and 1.0, refuses
+  the leader arm's port. What decides the plan is the firmware: model number 320 = Protocol 1.0 firmware
+  (no current-based position mode), 321 = MX-106(2.0) (operating mode 5, current-based position:
+  Goal Current limits the current, "ideal for grippers", e-Manual).
+- **Firmware 1.0 -> 2.0 update** only after the user checks the motor's other uses in the lab.
+- **Power** (e-Manual): 12 V recommended (10.0-14.8 V), stall 5.2 A at 12 V -> a 12 V supply of at least
+  5 A, separate from the leader arm's supply; a current-limited bench supply for the first tests.
+
+**Plan after grip-1:** grip-2 the gripper alone (mode 5, low Goal Current, open / closed positions,
+trigger direction); grip-3 a gripper thread in the teleop (latest goal / latest state shared, the loop
+never waits for the gripper bus), compared in Simulation by `work_ms` and late cycles.
+
+**Rejected:** the leader arm bus (shared time and IDs); `/dev/ttyUSBn` names (plug order); updating the
+firmware right away (other lab users).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -1768,3 +1803,5 @@ choice by timestamp (half a frame period max) holds for both.
   - **Optional, when the operator wants more speed:** sideways 400 mm/s, radial / vertical 300 mm/s.
     Each raise is a Real limit change and needs its own decision.
   - **Recording rate 50 Hz vs 30 Hz** and the action definition: see the 2026-10-17 entries.
+  - **Gripper (grip-1):** U2D2 serial -> udev lines and `GRIPPER_PORT`; run script 27; firmware 320 / 321
+    (1.0: the user decides on the update after checking other lab uses).

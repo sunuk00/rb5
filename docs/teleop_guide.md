@@ -23,7 +23,7 @@ the Ethernet adapter connected to the control box.
 The leader arm's FTDI adapter needs `latency_timer = 1` (the default 16 ms makes each read about 16 ms,
 script 11); the teleop checks it and refuses otherwise. The rule also creates `/dev/rby1_leader_arm`.
 ```
-sudo cp assets/udev/99-rby1-leader-arm.rules /etc/udev/rules.d/
+sudo cp assets/udev/99-rb-cobot-usb-serial.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
@@ -34,8 +34,11 @@ cat /sys/bus/usb-serial/devices/$(basename $(readlink -f /dev/rby1_leader_arm))/
 ```
 The rule matches this adapter's serial number (`FT62AJW7`); another adapter needs its own line (find
 the serial with `udevadm info -a -n /dev/ttyUSB0 | grep serial`). Without the rule, set it by hand
-after every reboot or replug: `echo 1 | sudo tee /sys/bus/usb-serial/devices/ttyUSB0/latency_timer`.
-The settings use `leader.port: /dev/ttyUSB0`.
+after every reboot or replug: `echo 1 | sudo tee /sys/bus/usb-serial/devices/ttyUSBn/latency_timer`, with
+`ttyUSBn` from `ls -l /dev/serial/by-id/` (FT62AJW7 = leader arm).
+The settings use the adapter's serial number, `leader.port:
+/dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FT62AJW7-if00-port0`, which needs no rule: with the
+gripper's U2D2 also connected, `/dev/ttyUSB0` may be the gripper.
 
 ### Another PC
 `runtime.cpu_cores: [0, 11]` pins the teleop to this laptop's performance cores (i7-13700H). On another

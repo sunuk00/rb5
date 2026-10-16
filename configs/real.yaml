@@ -16,7 +16,7 @@ servo:                          # same as Simulation (06, 10, 13 Real)
   alpha: 1.0
 
 leader:
-  port: /dev/ttyUSB0            # /dev/rby1_leader_arm once the udev rule is installed (not yet)
+  port: /dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FT62AJW7-if00-port0   # by adapter serial (grip-1: two FTDI adapters); same as scripts/config.py
   required_latency_timer_ms: 1
 
 mapping:

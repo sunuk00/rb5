@@ -1,0 +1,15 @@
+# USB-serial adapters of this setup (see docs/teleop_guide.md). Both are FTDI FT232H (0403:6014), so
+# they are told apart only by their serial number; /dev/ttyUSB0 / 1 depend on the plug order.
+# Each adapter: 1) a stable device name, 2) FTDI latency_timer 1 ms (default 16 ms). The latency_timer
+# attribute is on the usb-serial device (ttyUSB*); vendor, product and serial are matched on its parent
+# USB device (ATTRS).
+
+# RB-Y1 leader arm (serial FT62AJW7) -> /dev/rby1_leader_arm
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", ATTRS{serial}=="FT62AJW7", SYMLINK+="rby1_leader_arm"
+ACTION=="add", SUBSYSTEM=="usb-serial", DRIVER=="ftdi_sio", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", ATTRS{serial}=="FT62AJW7", ATTR{latency_timer}="1"
+
+# Gripper U2D2 (MX-106T) -> /dev/gripper_u2d2. TODO grip-1: the U2D2 serial is not known yet (not
+# connected); replace U2D2_SERIAL (udevadm info -a -n /dev/ttyUSB1 | grep serial), check the vendor /
+# product ids with lsusb, then remove the leading "# ".
+# SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", ATTRS{serial}=="U2D2_SERIAL", SYMLINK+="gripper_u2d2"
+# ACTION=="add", SUBSYSTEM=="usb-serial", DRIVER=="ftdi_sio", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", ATTRS{serial}=="U2D2_SERIAL", ATTR{latency_timer}="1"

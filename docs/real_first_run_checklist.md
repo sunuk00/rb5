@@ -16,7 +16,7 @@ on 2026-10-16). The first section is for every run; the rest are the open items 
 
 ## Controller and robot (ask before changing any controller setting, CLAUDE.md)
 - [ ] **Collision detection sensitivity**: decide with the lab (it is required ON, above).
-- [ ] **Tool mass**: 0 kg on the controller. Set it for the real tool (gripper / Allegro Hand) when mounted.
+- [ ] **Tool mass**: 0 kg on the controller. Set it for the real tool (gripper) when mounted.
 - [ ] **TCP offset**: the controller has (0, -187, -40) mm, orientation 0 (17). PROVISIONAL: real.yaml
       expects exactly this (refuses if it changes). Replace with the lab's value for the mounted tool.
 - [x] **J3 limit**: +/-165 (user checked on the teach pendant, 2026-10-12); set in both settings files.

@@ -10,7 +10,7 @@ Tool raw value: button = bits 8..15, trigger = bits 16..31 (ReadButtonStatus in 
 
 Usage:
     python scripts/12_leader_arm_live.py
-    python scripts/12_leader_arm_live.py --port /dev/ttyUSB0
+    python scripts/12_leader_arm_live.py --port /dev/ttyUSB0   # default: config.LEADER_PORT (by adapter serial)
 Stop with Ctrl+C.
 """
 import argparse
@@ -21,6 +21,8 @@ from pathlib import Path
 
 import dynamixel_sdk.port_handler as dxl_port_handler
 from dynamixel_sdk import COMM_SUCCESS, GroupSyncRead, PacketHandler, PortHandler
+
+import config
 
 PROTOCOL_VERSION = 2.0     # rby1-sdk dynamixel_bus.h: kProtocolVersion
 BAUDRATE = 2000000         # rby1-sdk dynamixel_bus.h: kDefaultBaudrate
@@ -100,7 +102,7 @@ def draw(lines, first):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", default="/dev/ttyUSB0", help="USB-serial device of the leader arm")
+    parser.add_argument("--port", default=config.LEADER_PORT, help="USB-serial device of the leader arm")
     args = parser.parse_args()
 
     latency_timer = read_latency_timer(args.port)

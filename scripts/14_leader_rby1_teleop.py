@@ -53,6 +53,8 @@ from dynamixel_sdk import COMM_SUCCESS, GroupSyncRead, GroupSyncWrite, PacketHan
 import numpy as np
 import rby1_sdk as rby
 
+import config
+
 ROOT = Path(__file__).resolve().parent.parent
 
 # --- Loop and RB-Y1 command stream
@@ -623,7 +625,7 @@ CSV_HEADER = (["t_s", "cycle_interval_ms", "send_interval_ms", "send_call_ms", "
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--address", default="localhost:50051", help="RB-Y1 simulator address")
-    parser.add_argument("--port", default="/dev/ttyUSB0", help="leader arm USB-serial device")
+    parser.add_argument("--port", default=config.LEADER_PORT, help="leader arm USB-serial device")
     parser.add_argument("--period", type=float, default=0.02, choices=PERIOD_CHOICES,
                         help="loop period in seconds (0.02 = 50 Hz default, 0.01 = 100 Hz)")
     args = parser.parse_args()

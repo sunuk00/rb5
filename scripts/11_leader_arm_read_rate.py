@@ -32,6 +32,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from dynamixel_sdk import COMM_SUCCESS, GroupSyncRead, PacketHandler, PortHandler
 
+import config
+
 ROOT = Path(__file__).resolve().parent.parent
 
 PROTOCOL_VERSION = 2.0     # rby1-sdk dynamixel_bus.h: kProtocolVersion
@@ -186,7 +188,7 @@ def save_histogram(lat_ms, title, path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", default="/dev/ttyUSB0", help="USB-serial device of the leader arm")
+    parser.add_argument("--port", default=config.LEADER_PORT, help="USB-serial device of the leader arm")
     parser.add_argument("--all", action="store_true", help="sync-read all 16 devices instead of 0..6 + 128")
     parser.add_argument("--count", type=int, default=1000, help="number of GroupSyncRead calls")
     parser.add_argument("--seq-cycles", type=int, default=200, help="number of one-by-one read cycles")

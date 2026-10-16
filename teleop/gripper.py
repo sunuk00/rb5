@@ -1,7 +1,7 @@
 """Gripper side of the teleop: the leader trigger -> a gripper closing signal.
 
-Moved from teleop/leader.py (2026-10-16) so the gripper has its own module before the Allegro Hand V4
-(16 DoF, CAN bus) is connected; its commands will go here. For now the signal is only logged (CSV columns
+Moved from teleop/leader.py (2026-10-16) so the gripper has its own module before the gripper (3D-printed parallel
+gripper, one Dynamixel MX-106T on its own U2D2) is connected; its commands will go here. For now the signal is only logged (CSV columns
 trigger_raw, grip_close, grip_state_closed).
 
 Open (docs/decisions.md PENDING): the right trigger read 0 for whole Real runs, so the direction below

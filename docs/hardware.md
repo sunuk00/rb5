@@ -30,10 +30,11 @@ Decisions and measurements behind them are in `docs/decisions.md`.
 
 ## RB-Y1 leader arm
 - Two 7-joint arms with a handle (tool) each. Only the right arm is used for the RB5 teleop.
-- Dynamixel bus, Protocol 2.0, 2 Mbps, through an FTDI FT232H USB-serial adapter (serial FT62AJW7),
-  now `/dev/ttyUSB0`.
+- Dynamixel bus, Protocol 2.0, 2 Mbps, through an FTDI FT232H USB-serial adapter (serial FT62AJW7).
+  Port: `/dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FT62AJW7-if00-port0` (by serial number, since
+  grip-1: with the gripper U2D2 also connected, `/dev/ttyUSB0` / `1` depend on the plug order).
 - **FTDI latency_timer must be 1 ms** (default 16 ms makes each read about 16 ms, 11). The udev rule
-  `assets/udev/99-rby1-leader-arm.rules` sets it and adds `/dev/rby1_leader_arm`; **not installed yet**.
+  `assets/udev/99-rb-cobot-usb-serial.rules` sets it and adds `/dev/rby1_leader_arm`; **not installed yet**.
 - IDs: right arm joints 0-6, left arm 7-13, right tool 128 (0x80), left tool 129 (0x81).
 - Motors (model number from ping, 11): XM540-W150 for IDs 0-3 and 7-10, XM430-W210 for IDs 4-6 and
   11-13.
@@ -54,8 +55,20 @@ Decisions and measurements behind them are in `docs/decisions.md`.
 - The D405 has no separate RGB sensor: color comes from its stereo module (no auto_exposure_priority).
 - Measured (cam-1): see docs/decisions.md 2026-10-17.
 
-## Allegro Hand
-- Allegro Hand V4: 4 fingers, 16 DoF, CAN bus. Left / right: **TBD**. Not integrated yet.
+## Gripper
+- 3D-printed parallel gripper (built by a team member, in progress), one Dynamixel MX-106T (TTL, 3-pin).
+  The Allegro Hand V4 is not used (user, 2026-10-17).
+- Own bus: U2D2 (USB) -> U2D2 Power Hub Board -> MX-106T. The U2D2 does not power the motor (e-Manual).
+  U2D2 serial and USB ids: **TBD** (not connected yet); expected FTDI, then the udev rule needs its serial.
+- MX-106 (e-Manual): 10.0-14.8 V, **12 V recommended**; standby 100 mA; stall 8.4 N.m at 12 V, **5.2 A**
+  (11.1 V 4.8 A, 14.8 V 6.3 A); 45 rev/min no load at 12 V; factory ID 1, 57,600 bps.
+  Power: 12 V, at least 5 A (the stall current), separate from the leader arm supply. Power Hub: 3.5-24 V,
+  max 10 A, one power input only. Plug and unplug cables only with the power off.
+- Firmware decides the protocol: model number 320 = Protocol 1.0 firmware (below v39; modes wheel /
+  joint / multi-turn, torque control without position), 321 = MX-106(2.0) (v39 or above; operating
+  modes 0 current, 1 velocity, 3 position, 4 extended position, **5 current-based position** (Goal Current
+  limits the current, "ideal for grippers"), 16 PWM). Which one this motor has: **TBD** (script 27).
+  Updating 1.0 -> 2.0 (DYNAMIXEL Wizard 2.0): only after the user checks the motor's other uses in the lab.
 
 ## Notes
 - M808 warning on the controller: the PC firewall is not the cause (ufw inactive).

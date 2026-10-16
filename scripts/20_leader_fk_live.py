@@ -21,7 +21,7 @@ stops if they differ (rby1_sdk silently ignored J3..J6 when make_state got only 
 Keys: b = save baseline (right arm), q = quit.
 Usage:
     python scripts/20_leader_fk_live.py
-    python scripts/20_leader_fk_live.py --port /dev/ttyUSB0
+    python scripts/20_leader_fk_live.py --port /dev/ttyUSB0   # default: config.LEADER_PORT (by adapter serial)
 """
 import argparse
 import os
@@ -37,6 +37,8 @@ import dynamixel_sdk.port_handler as dxl_port_handler
 from dynamixel_sdk import COMM_SUCCESS, GroupSyncRead, PacketHandler, PortHandler
 import numpy as np
 import rby1_sdk as rby
+
+import config
 
 ROOT = Path(__file__).resolve().parent.parent
 URDF_PATH = ROOT / "assets" / "leader_arm" / "model.urdf"   # copy of rby1-sdk v0.10.0 (was refs/rby1-sdk)
@@ -183,7 +185,7 @@ def read_key():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", default="/dev/ttyUSB0", help="USB-serial device of the leader arm")
+    parser.add_argument("--port", default=config.LEADER_PORT, help="USB-serial device of the leader arm")
     args = parser.parse_args()
 
     fk = LeaderFK(URDF_PATH)

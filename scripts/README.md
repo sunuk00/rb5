@@ -9,7 +9,8 @@ by number). The teleop is not here: `python -m teleop` (see `docs/teleop_guide.m
 - Robot IP and speed bar come from `configs/robot.yaml` through `scripts/config.py` (`import config`).
   01 and 02 have the IP written in the file.
 - Every script prints its options with `--help` (all except 01, 02, 04 and 17, which have none).
-- Leader arm scripts need `/dev/ttyUSB0` with FTDI `latency_timer` = 1 (`docs/teleop_guide.md`, udev rule).
+- Leader arm scripts use `config.LEADER_PORT` (the adapter by serial number, `/dev/serial/by-id/...FT62AJW7...`)
+  with FTDI `latency_timer` = 1 (`docs/teleop_guide.md`, udev rule).
 - The leader arm URDF is `assets/leader_arm/model.urdf` (teleop, 15, 20, 21).
 - Outputs go to `data/` (not committed), measurement plots to `docs/measurements/`.
 - Values that are not options (poses, speeds, limits) are UPPER_CASE constants at the top of each file.
@@ -48,6 +49,7 @@ default, Real with `--real` and typed confirmation; **leader** = writes torque t
 | 24 | `24_run_report.py` | Full report on teleop runs: speeds, limits per mode, drops, smoothness with the real sample times, lag, timing | - (log files only) | tool |
 | 25 | `25_camera_rgb_test.py` | RGB from all RealSense cameras at once: fps, frame intervals, missed frames, camera vs PC time (cam-1) | - (cameras only) | tool |
 | 26 | `26_jnt_ref_check.py` | What jnt_ref is: IK of the sent target vs jnt_ref vs jnt_ang, delays, model-free Cartesian check | - (log files only) | tool |
+| 27 | `27_gripper_scan.py` | Read-only scan of the gripper bus (MX-106T on its U2D2): protocol, baud, model, firmware, settings, read time (grip-1) | - (gripper motor only) | tool |
 
 ## Usage per script
 
@@ -143,7 +145,7 @@ python scripts/11_leader_arm_read_rate.py --all     # all 14 joints + both tools
 ```
 | Option | Default | Meaning |
 |---|---|---|
-| `--port` | /dev/ttyUSB0 | leader arm device |
+| `--port` | `config.LEADER_PORT` | leader arm device |
 | `--all` | off | read all 16 devices |
 | `--count` | 1000 | sync-read calls |
 | `--seq-cycles` | 200 | one-by-one read cycles |
@@ -157,7 +159,7 @@ python scripts/12_leader_arm_live.py --port /dev/ttyUSB0
 ```
 | Option | Default | Meaning |
 |---|---|---|
-| `--port` | /dev/ttyUSB0 | leader arm device |
+| `--port` | `config.LEADER_PORT` | leader arm device |
 
 Shows joints [deg], button and trigger at about 10 Hz. Ctrl+C to stop.
 
@@ -169,7 +171,7 @@ python scripts/13_leader_j6_teleop.py --real    # Real (type to confirm)
 | Option | Default | Meaning |
 |---|---|---|
 | `--sim` / `--real` | Simulation | mode |
-| `--port` | /dev/ttyUSB0 | leader arm device |
+| `--port` | `config.LEADER_PORT` | leader arm device |
 
 Hold the handle button (clutch) to move. Log: `data/13_leader_j6_<mode>_<time>.csv`.
 
@@ -182,7 +184,7 @@ python scripts/14_leader_rby1_teleop.py --period 0.01   # 100 Hz
 | Option | Default | Meaning |
 |---|---|---|
 | `--address` | localhost:50051 | RB-Y1 simulator |
-| `--port` | /dev/ttyUSB0 | leader arm device |
+| `--port` | `config.LEADER_PORT` | leader arm device |
 | `--period 0.02\|0.01` | 0.02 | loop period [s] |
 
 The leader arm moves by itself at start (aligns to the READY pose with weak torque). Log:
@@ -212,7 +214,7 @@ python scripts/16_leader_hold_diag.py --compare A.csv B.csv    # compare two run
 | Option | Default | Meaning |
 |---|---|---|
 | `--label` | - | name of the power setup (in the file name) |
-| `--port` | /dev/ttyUSB0 | leader arm device |
+| `--port` | `config.LEADER_PORT` | leader arm device |
 | `--compare A B` | - | compare two CSVs |
 
 Writes torque: the leader arm holds poses (support the arm). Log: `data/16_hold_diag_<label>_<time>.csv`.
@@ -255,7 +257,7 @@ python scripts/20_leader_fk_live.py
 ```
 | Option | Default | Meaning |
 |---|---|---|
-| `--port` | /dev/ttyUSB0 | leader arm device |
+| `--port` | `config.LEADER_PORT` | leader arm device |
 
 Keys: `b` save baseline (shows the right arm change from it), `q` quit.
 
@@ -271,7 +273,7 @@ python scripts/21_leader_rb5_position.py --speed-mm-s 200 --max-lag-mm 0 --scale
 | `--speed-mm-s` | 50 | TCP speed limit, at most 200 |
 | `--max-lag-mm` | 30 | catch-up lag (C), 0 = B, at most 50 |
 | `--no-yaw` | off | keep the start orientation |
-| `--port` | /dev/ttyUSB0 | leader arm device |
+| `--port` | `config.LEADER_PORT` | leader arm device |
 
 Replaced by `python -m teleop` (settings in `configs/sim.yaml`). Log: `data/21_leader_pos_sim_<time>.csv`.
 
@@ -340,3 +342,16 @@ python scripts/26_jnt_ref_check.py data/teleop/teleop_real_20261016_051339.csv
 ```
 One log at a time. Prints the DH model error (FK(jnt_ref) vs tcp_ref), the best delays of jnt_ref / jnt_ang
 behind the IK of the sent target and of tcp_ref behind the sent target, and the differences at rest.
+
+### 27 gripper scan
+```
+python scripts/27_gripper_scan.py --port /dev/serial/by-id/usb-FTDI_..._<U2D2 serial>-if00-port0
+```
+| option | default | meaning |
+|---|---|---|
+| `--port` | `config.GRIPPER_PORT` (not set yet) | U2D2 device; refused if it is the leader arm's adapter |
+| `--all` | off | scan every baud rate (default: stop at the first one where a motor answers) |
+
+Read-only (ping and read). Tries Protocol 2.0 and 1.0 at 57,600 (factory default), 1M, 2M, 3M, 4M, 115,200
+and 9,600 bps. Prints the model number (320 = MX-106 Protocol 1.0 firmware, 321 = MX-106(2.0)), the
+firmware version, the settings and the read time of the block the gripper thread would read.

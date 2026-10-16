@@ -120,7 +120,7 @@ MAX_LEADER_FAILS = 3       # leader joint read failures in a row -> stop
 HOLD_ON_EXIT_S = 0.3
 
 # --- Leader arm (rby1-sdk: dynamixel_bus.h, leader_arm.cpp)
-LEADER_PORT = "/dev/ttyUSB0"
+LEADER_PORT = config.LEADER_PORT
 PROTOCOL_VERSION = 2.0
 BAUDRATE = 2000000
 ADDR_PRESENT_POSITION = 132  # the tool returns its button state at the same address

@@ -31,10 +31,12 @@ from pathlib import Path
 
 import numpy as np
 
+import config
+
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 
-PORT = "/dev/ttyUSB0"
+PORT = config.LEADER_PORT
 PROTOCOL_VERSION = 2.0
 BAUDRATE = 2000000
 JOINT_IDS = list(range(14))
