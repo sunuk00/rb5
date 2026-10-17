@@ -1776,6 +1776,11 @@ delay 500 us. No firmware update needed (the user also checked with DYNAMIXEL Wi
 torque enable 1 (not written by us), position 2388 (= the min limit), hardware error status 1 = input
 voltage (9.2 V < min 9.5 V; supply to be changed to 12 V). Reading 10 bytes (current, velocity,
 position) took 16.0 ms p50 because the U2D2 latency_timer was still 16 ms.
+Second scan after the udev rule (user installed it) and the supply change: latency_timer 1 on both
+adapters, `/dev/gripper_u2d2` -> ttyUSB0 and `/dev/rby1_leader_arm` -> ttyUSB1 (the order swapped, as
+expected); the same read 2.0 ms p50 / 2.9 ms max, 0 failed. Torque enable 0, position 2223 (below the min
+limit 2388; torque off, so not refused). **Input voltage still 9.1 V** and the voltage error bit still set:
+the 12 V does not reach the motor yet.
 
 **Plan after grip-1:** grip-2 the gripper alone (mode 5, low Goal Current, open / closed positions,
 trigger direction); grip-3 a gripper thread in the teleop (latest goal / latest state shared, the loop
