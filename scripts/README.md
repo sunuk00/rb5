@@ -50,7 +50,7 @@ default, Real with `--real` and typed confirmation; **leader** = writes torque t
 | 25 | `25_camera_rgb_test.py` | RGB from all RealSense cameras at once: fps, frame intervals, missed frames, camera vs PC time (cam-1) | - (cameras only) | tool |
 | 26 | `26_jnt_ref_check.py` | What jnt_ref is: IK of the sent target vs jnt_ref vs jnt_ang, delays, model-free Cartesian check | - (log files only) | tool |
 | 27 | `27_gripper_scan.py` | Read-only scan of the gripper bus (MX-106T on its U2D2): protocol, baud, model, firmware, settings, read time (grip-1) | - (gripper motor only) | tool |
-| 28 | `28_trigger_gripper.py` | Leader trigger (left by default) -> gripper alone (no RB5): released 0 closed, pulled 1000 open, catch at start, current-based position mode with a low force cap (grip-2) | gripper (writes), leader arm (read only) | test |
+| 28 | `28_trigger_gripper.py` | Leader trigger (left by default) -> gripper alone (no RB5): released 0 closed, pulled 1000 open, catch at start, current-based position mode with a low force cap (grip-2; code in `teleop/gripper.py`, gripper thread, since grip-3a) | gripper (writes), leader arm (read only) | test |
 
 ## Usage per script
 

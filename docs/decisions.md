@@ -102,6 +102,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
 - [2026-10-17 — grip-2: left trigger -> gripper alone (script 28), current-based position mode](#2026-10-17--grip-2-left-trigger---gripper-alone-script-28-current-based-position-mode)
+- [2026-10-17 — grip-3a: gripper code in teleop/gripper.py (Motor, GripCommand, GripperWorker thread)](#2026-10-17--grip-3a-gripper-code-in-teleopgripperpy-motor-gripcommand-gripperworker-thread)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1866,6 +1867,43 @@ profile acceleration 100, left trigger only, catch with pass-over, mode 3 at the
 knob); in the teleop (grip-3) `teleop/gripper.py` assumes the right trigger and "pulled = closed" (the
 opposite of this): change it with the thread.
 
+## 2026-10-17 — grip-3a: gripper code in teleop/gripper.py (Motor, GripCommand, GripperWorker thread)
+
+**Decision:** the MX-106 code of script 28 moves to `teleop/gripper.py` so the teleop (grip-3b) and script 28
+use the same code:
+- `Motor`: read, write, state block, `reset_port`, `end_state` (torque off, mode 3, retried, read back).
+- `check_motor` (model 321, no hardware error, voltage) and `start_motor` (the confirmed writes; the
+  position must not move with the mode change).
+- `GripCommand`: open fraction (trigger / 1000) -> goal, clipped to the measured range, catch (5 % or
+  pass-over). Pure logic.
+- `GripperWorker`: a thread that owns the gripper bus at its own 50 Hz. The caller only calls `set(frac)`
+  and `latest()` / `events()` (short lock, no waiting). It writes the goal when it changed by 2 ticks or
+  more, reads the state, keeps one row per cycle (`ROW_HEADER`, with the age of the trigger value).
+  It stops by itself on a hardware error, > 70 C, 3 failed reads or any error, leaving the motor as it
+  is; `finish()` stops the thread and runs `end_state`.
+- Script 28 now reads the trigger in its loop and hands it to the worker (same behaviour, same checks;
+  the CSV columns are the worker's rows). The old `GripSignal` stays until grip-3b replaces it in the loop.
+
+**Teleop decisions for grip-3b (user approved the recommendations, 2026-10-17):**
+1. A gripper fault (read failures, hardware error, U2D2 lost) stops only the gripper thread and shows an
+   event; the arm teleop continues. Rejected: stopping the whole teleop (the arm would stop suddenly
+   because of the gripper).
+2. Input voltage < 10 V during the teleop: warning event only (`low_voltage_stops=False`); turning the
+   torque off would drop the object. Script 28 still stops.
+3. At the teleop end: torque off and mode 3, like grip-2. The object must be put down first (checklist).
+4. The gripper moves in Simulation mode too; on by default, `--no-gripper` to turn it off.
+
+**Why a thread:** one gripper bus transaction takes about 2 ms (script 27, p50) and a cycle has 2-3 of
+them (goal write, state read, error read; grip-2 work up to about 10 ms); in the teleop loop that would
+add to every cycle. On its own U2D2 and thread it runs
+in parallel with the leader read (the bus I/O releases the GIL).
+
+**Checked:** 14 new tests in `tests/test_gripper.py` with a fake motor (proportional mapping, clipping,
+catch window and pass-over, deadband, write only on change, stops on failed reads / hardware error /
+temperature / low voltage or warning only, an exception still cleans up, start-write order, refusal when
+the position moved, `end_state` clears the busy flag); all 72 tests pass. Script 28 not run on the
+hardware yet in this step.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -1893,6 +1931,6 @@ opposite of this): change it with the thread.
   - **Optional, when the operator wants more speed:** sideways 400 mm/s, radial / vertical 300 mm/s.
     Each raise is a Real limit change and needs its own decision.
   - **Recording rate 50 Hz vs 30 Hz** and the action definition: see the 2026-10-17 entries.
-  - **Gripper (after grip-2):** supply 12 V (10.2 V while gripping); return delay 500 us -> 0 (motor
-    setting, ask first); grip-3 thread in the teleop with the left trigger (released = closed), replacing
-    the right-trigger assumption in `teleop/gripper.py`.
+  - **Gripper (after grip-3a):** supply 12 V (10.2 V while gripping); return delay 500 us -> 0 (motor
+    setting, ask first); grip-3b: `GripperWorker` in the teleop with the left trigger (released = closed),
+    replacing `GripSignal`; Sim run with and without the gripper compared with script 24.
