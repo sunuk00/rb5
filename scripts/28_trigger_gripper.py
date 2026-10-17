@@ -1,6 +1,7 @@
 """Leader arm trigger -> gripper (grip-2): the gripper alone, no RB5. The leader arm is only read.
 
-Trigger 0 = closed, 1000 = fully open (user, 2026-10-17); in between the gripper opens in proportion:
+The LEFT trigger by default (--trigger right for the right one). Trigger 0 (released) = closed, 1000
+(fully pulled) = fully open (user, 2026-10-17); in between the gripper opens in proportion:
     goal = closed + trigger / 1000 * (open - closed)
 The motor (MX-106(2.0), ID 2, 1 Mbps, script 27) runs in current-based position control (operating
 mode 5): it goes to the goal position, but its current (the gripping force) is capped by Goal Current.
@@ -14,16 +15,20 @@ positions measured here are the only position limits: every goal is clipped to t
 3. Writes, after typed confirmation: torque off, operating mode 5, profile velocity, profile
    acceleration, goal current, goal position = present position, torque on. The position is read
    again after the mode change and must not have moved.
-4. Loop at 50 Hz until Ctrl+C: read the trigger, write the goal position when it changes by 2 ticks or
+4. Catch: the gripper holds its position until the trigger points within 5 % of the range of where the
+   gripper is (no jump at the start, like the teleop clutch); the needed trigger value is shown.
+5. Loop at 50 Hz until Ctrl+C: read the trigger, write the goal position when it changes by 2 ticks or
    more, read the gripper state (current, position, voltage, temperature, hardware error). Stops by
-   itself on a hardware error, input voltage < 10 V, temperature > 70 C or 3 failed gripper reads.
-5. Always at the end: torque off, operating mode back to the value it had at the start (3).
+   itself on a hardware error, input voltage < 10 V, temperature > 70 C, 3 failed gripper or trigger
+   reads in a row, or any error (e.g. a USB adapter disconnected).
+6. Always at the end: torque off, operating mode back to the value it had at the start (3), the log saved.
 
 Addresses and units: ROBOTIS e-Manual, MX-106T/R(2.0) control table.
 Output: data/gripper/trigger_gripper_<time>.csv (one row per cycle), a summary.
 Usage:
     python scripts/28_trigger_gripper.py                       # measure open / closed by hand
-    python scripts/28_trigger_gripper.py --closed 2400 --open 3100 --current 150
+    python scripts/28_trigger_gripper.py --closed 3968 --open 2196 --current 150
+    python scripts/28_trigger_gripper.py --trigger right
 """
 import argparse
 import csv
@@ -56,6 +61,7 @@ CURRENT_MAX = 300              # 1.0 A: more needs its own decision
 MIN_VOLTAGE = 10.0             # e-Manual operating range 10.0-14.8 V
 MAX_TEMPERATURE = 70           # C (motor shutdown at 80)
 MIN_RANGE = 50                 # ticks between open and closed (4.4 deg)
+CATCH_FRAC = 0.05              # follow the trigger once it points within 5 % of the range of the position
 MAX_MOVE_ON_MODE_CHANGE = 20   # ticks: the position must not change when the mode changes
 FAIL_STOP = 3
 CURRENT_UNIT_MA = 3.36
@@ -74,7 +80,7 @@ PRESENT_POSITION = (132, 4)
 STATE_BLOCK = (126, 21)        # 126 current (2), 128 velocity (4), 132 position (4), 136 / 140 trajectory, 144 voltage (2), 146 temperature (1)
 MODE_CURRENT_POSITION = 5
 
-HEADER = ["t_s", "trigger_raw", "trigger", "open_frac", "goal", "goal_written", "position", "current_mA",
+HEADER = ["t_s", "trigger_raw", "trigger", "open_frac", "following", "goal", "goal_written", "position", "current_mA",
           "velocity_rpm", "voltage_V", "temperature_C", "hardware_error", "work_ms"]
 
 
@@ -169,6 +175,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--closed", type=int, help="closed position [ticks] (default: measure by hand)")
     parser.add_argument("--open", type=int, help="fully open position [ticks] (default: measure by hand)")
+    parser.add_argument("--trigger", choices=("left", "right"), default="left", help="which leader trigger (default left)")
     parser.add_argument("--current", type=int, default=CURRENT_DEFAULT,
                         help=f"goal current = force cap, x 3.36 mA (default {CURRENT_DEFAULT}, max {CURRENT_MAX})")
     args = parser.parse_args()
@@ -187,9 +194,10 @@ def main():
     dxl_port_handler.LATENCY_TIMER = 1   # reply timeout follows this (12)
 
     leader = LeaderArm(config.LEADER_PORT)
-    problems = leader.open()
+    problems = leader.open(left_tool=args.trigger == "left")
     if problems:
         raise SystemExit("\n".join(problems))
+    read_trigger_raw = leader.read_left_button_raw if args.trigger == "left" else leader.read_button_raw
     gripper = Gripper(config.GRIPPER_PORT)
     gripper.open()
     mode_at_start = None
@@ -242,22 +250,32 @@ def main():
             e = gripper.write(item, value)
             if e:
                 raise SystemExit(e)
-        print("\nrunning: trigger 0 = closed, 1000 = open. Ctrl+C to stop.\n")
+        need = (pos2 - closed) / (opened - closed) * TRIGGER_FULL
+        print(f"\nrunning: {args.trigger} trigger 0 = closed, 1000 = open. Ctrl+C to stop.")
+        print(f"catch: holding at {pos2}; move the {args.trigger} trigger to about {need:.0f} to start following\n")
 
-        last_goal, trigger, fails = pos2, None, 0
+        last_goal, trigger, fails, trigger_fails, following = pos2, None, 0, 0, False
         t0 = time.monotonic()
         next_t = t0
         while True:
             t_start = time.monotonic()
-            raw = leader.read_button_raw()
+            raw = read_trigger_raw()
             if raw is not None:
                 trigger = (raw >> 16) & 0xFFFF
+                trigger_fails = 0
+            else:
+                trigger_fails += 1
             if trigger is None:
                 goal, frac = last_goal, None
             else:
                 frac = min(max(trigger / TRIGGER_FULL, 0.0), 1.0)
                 goal = int(round(closed + frac * (opened - closed)))
                 goal = min(max(goal, lo), hi)
+                if not following and abs(goal - last_goal) <= CATCH_FRAC * (hi - lo):
+                    following = True
+                    print(f"\rcaught at trigger {trigger}: following" + " " * 60)
+                if not following:
+                    goal = last_goal
             written = abs(goal - last_goal) >= GOAL_DEADBAND
             if written:
                 e = gripper.write(GOAL_POSITION, goal)
@@ -273,11 +291,12 @@ def main():
             else:
                 fails = 0
             rows.append([f"{t_start - t0:.4f}", raw if raw is not None else "", trigger if trigger is not None else "",
-                         f"{frac:.4f}" if frac is not None else "", goal, int(written)]
+                         f"{frac:.4f}" if frac is not None else "", int(following), goal, int(written)]
                         + ([s[2], f"{s[0]:.0f}", f"{s[1]:.2f}", f"{s[3]:.1f}", s[4]] if s else ["", "", "", "", ""])
                         + [err if err is not None else "", f"{work_ms:.2f}"])
             if len(rows) % 10 == 0 and s:
-                print(f"\rtrigger {trigger if trigger is not None else '-':>5}  goal {goal:5d}  position {s[2]:5d}  "
+                mode_txt = "follow" if following else f"catch: trigger -> {need:.0f}"
+                print(f"\r{mode_txt}  trigger {trigger if trigger is not None else '-':>5}  goal {goal:5d}  position {s[2]:5d}  "
                       f"current {s[0]:6.0f} mA  {s[3]:4.1f} V  {s[4]} C  work {work_ms:4.1f} ms   ", end="", flush=True)
             if err:
                 stop_reason = f"hardware error status {err}"
@@ -291,30 +310,46 @@ def main():
             if fails >= FAIL_STOP:
                 stop_reason = f"{FAIL_STOP} failed gripper reads in a row"
                 break
+            if trigger_fails >= FAIL_STOP:
+                stop_reason = f"{FAIL_STOP} failed {args.trigger} trigger reads in a row"
+                break
             next_t += PERIOD_S
             time.sleep(max(0.0, next_t - time.monotonic()))
     except KeyboardInterrupt:
         pass
+    except Exception as e:   # e.g. termios.error when a USB adapter disconnects
+        stop_reason = f"error: {e!r}"
     finally:
         if changed:
             for item, value in ((TORQUE_ENABLE, 0), (OPERATING_MODE, mode_at_start)):
-                e = gripper.write(item, value)
+                try:
+                    e = gripper.write(item, value)
+                except Exception as ex:
+                    e = repr(ex)
                 if e:
                     print(f"\nWARNING at the end: {e} (check with script 27 / DYNAMIXEL Wizard)")
-            print(f"\n\nstopped: {stop_reason}. torque off, operating mode {gripper.read(OPERATING_MODE)}")
-        gripper.close()
-        leader.close()
+            try:
+                mode_now = gripper.read(OPERATING_MODE)
+            except Exception:
+                mode_now = "?"
+            print(f"\n\nstopped: {stop_reason}. torque off, operating mode {mode_now}")
+        for port in (gripper, leader):
+            try:
+                port.close()
+            except Exception:
+                pass
 
     if rows:
         OUT_DIR.mkdir(parents=True, exist_ok=True)
         path = OUT_DIR / f"trigger_gripper_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         with open(path, "w", newline="") as f:
             csv.writer(f).writerows([HEADER] + rows)
-        good = [r for r in rows if r[6] != ""]
-        work = np.array([float(r[12]) for r in rows])
-        cur = np.array([abs(float(r[7])) for r in good])
-        volt = np.array([float(r[9]) for r in good])
-        trig = [int(r[2]) for r in rows if r[2] != ""]
+        col = {name: i for i, name in enumerate(HEADER)}
+        good = [r for r in rows if r[col["position"]] != ""]
+        work = np.array([float(r[col["work_ms"]]) for r in rows])
+        cur = np.array([abs(float(r[col["current_mA"]])) for r in good])
+        volt = np.array([float(r[col["voltage_V"]]) for r in good])
+        trig = [int(r[col["trigger"]]) for r in rows if r[col["trigger"]] != ""]
         print(f"saved {path.relative_to(ROOT)} ({len(rows)} cycles, {len(rows) * PERIOD_S:.1f} s)")
         if trig:
             print(f"trigger min / max {min(trig)} / {max(trig)}")

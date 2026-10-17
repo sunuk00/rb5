@@ -50,7 +50,7 @@ default, Real with `--real` and typed confirmation; **leader** = writes torque t
 | 25 | `25_camera_rgb_test.py` | RGB from all RealSense cameras at once: fps, frame intervals, missed frames, camera vs PC time (cam-1) | - (cameras only) | tool |
 | 26 | `26_jnt_ref_check.py` | What jnt_ref is: IK of the sent target vs jnt_ref vs jnt_ang, delays, model-free Cartesian check | - (log files only) | tool |
 | 27 | `27_gripper_scan.py` | Read-only scan of the gripper bus (MX-106T on its U2D2): protocol, baud, model, firmware, settings, read time (grip-1) | - (gripper motor only) | tool |
-| 28 | `28_trigger_gripper.py` | Leader trigger -> gripper alone (no RB5): 0 closed, 1000 open, current-based position mode with a low force cap (grip-2) | gripper (writes), leader arm (read only) | test |
+| 28 | `28_trigger_gripper.py` | Leader trigger (left by default) -> gripper alone (no RB5): released 0 closed, pulled 1000 open, catch at start, current-based position mode with a low force cap (grip-2) | gripper (writes), leader arm (read only) | test |
 
 ## Usage per script
 
@@ -360,14 +360,17 @@ firmware version, the settings and the read time of the block the gripper thread
 ### 28 trigger -> gripper
 ```
 python scripts/28_trigger_gripper.py                                   # measure open / closed by hand
-python scripts/28_trigger_gripper.py --closed 2400 --open 3100 --current 150
+python scripts/28_trigger_gripper.py --closed 3968 --open 2196 --current 150
 ```
 | option | default | meaning |
 |---|---|---|
 | `--closed`, `--open` | measured by hand (torque off, Enter at each) | the only position limits: the motor's own limits are not used in mode 5 |
 | `--current` | 100 (0.34 A) | Goal Current = force cap, x 3.36 mA, max 300 (1.0 A) |
+| `--trigger` | left | which leader trigger (released 0 = closed, pulled 1000 = open) |
 
 **Moves the gripper.** Writes after typed `yes`: torque off, operating mode 5, profile velocity 100
-(22.9 rpm), profile acceleration 50, goal current, goal position = present, torque on. At the end
-(Ctrl+C or an automatic stop: hardware error, < 10 V, > 70 C, 3 failed reads): torque off and the
-operating mode back to its start value (3). The leader arm is only read. Log: `data/gripper/`.
+(22.9 rpm), profile acceleration 50, goal current, goal position = present, torque on. Then it holds
+until the trigger points within 5 % of the gripper position (catch, the needed value is shown). At the
+end (Ctrl+C or an automatic stop: hardware error, < 10 V, > 70 C, 3 failed gripper or trigger reads,
+any error such as a USB disconnect): torque off, the operating mode back to its start value (3), the
+log saved. The leader arm is only read. Log: `data/gripper/`.
