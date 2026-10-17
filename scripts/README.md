@@ -50,6 +50,7 @@ default, Real with `--real` and typed confirmation; **leader** = writes torque t
 | 25 | `25_camera_rgb_test.py` | RGB from all RealSense cameras at once: fps, frame intervals, missed frames, camera vs PC time (cam-1) | - (cameras only) | tool |
 | 26 | `26_jnt_ref_check.py` | What jnt_ref is: IK of the sent target vs jnt_ref vs jnt_ang, delays, model-free Cartesian check | - (log files only) | tool |
 | 27 | `27_gripper_scan.py` | Read-only scan of the gripper bus (MX-106T on its U2D2): protocol, baud, model, firmware, settings, read time (grip-1) | - (gripper motor only) | tool |
+| 28 | `28_trigger_gripper.py` | Leader trigger -> gripper alone (no RB5): 0 closed, 1000 open, current-based position mode with a low force cap (grip-2) | gripper (writes), leader arm (read only) | test |
 
 ## Usage per script
 
@@ -355,3 +356,18 @@ python scripts/27_gripper_scan.py --port /dev/serial/by-id/usb-FTDI_..._<U2D2 se
 Read-only (ping and read). Tries Protocol 2.0 and 1.0 at 57,600 (factory default), 1M, 2M, 3M, 4M, 115,200
 and 9,600 bps. Prints the model number (320 = MX-106 Protocol 1.0 firmware, 321 = MX-106(2.0)), the
 firmware version, the settings and the read time of the block the gripper thread would read.
+
+### 28 trigger -> gripper
+```
+python scripts/28_trigger_gripper.py                                   # measure open / closed by hand
+python scripts/28_trigger_gripper.py --closed 2400 --open 3100 --current 150
+```
+| option | default | meaning |
+|---|---|---|
+| `--closed`, `--open` | measured by hand (torque off, Enter at each) | the only position limits: the motor's own limits are not used in mode 5 |
+| `--current` | 100 (0.34 A) | Goal Current = force cap, x 3.36 mA, max 300 (1.0 A) |
+
+**Moves the gripper.** Writes after typed `yes`: torque off, operating mode 5, profile velocity 100
+(22.9 rpm), profile acceleration 50, goal current, goal position = present, torque on. At the end
+(Ctrl+C or an automatic stop: hardware error, < 10 V, > 70 C, 3 failed reads): torque off and the
+operating mode back to its start value (3). The leader arm is only read. Log: `data/gripper/`.
