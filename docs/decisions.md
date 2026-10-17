@@ -1847,6 +1847,12 @@ end writes fail. Reproduced read-only (flag set -> read None; cleared -> read OK
 clears the flag and the input, tries each write 3 times, reads torque and mode back and warns when they
 are wrong. grip-3 (gripper thread) needs the same cleanup.
 
+**Run 102450 (new defaults, 24 s):** full stroke 0.66-0.76 s (was 1.22-1.28), max 42.8 rpm, 240 ms behind
+the trigger while moving; settled 0-4 ticks; the current reached the 504 mA cap only while accelerating
+(short peaks to 709 mA when braking at the closed end), no sustained grasp in this run; position up to
+4001 (33 ticks past the closed 3968, inertia when reversing); voltage 10.2-10.8 V; the cleanup read back
+torque 0 / mode 3 (checked again with script 27).
+
 **Open (next):** grip with the new defaults (voltage under load: the supply gives only 10.6 V at rest, it
 should be 12 V); stroke speed for pick and place (1.25 s now; profile velocity is the
 knob); in the teleop (grip-3) `teleop/gripper.py` assumes the right trigger and "pulled = closed" (the
