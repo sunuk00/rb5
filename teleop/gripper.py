@@ -23,6 +23,11 @@ TICK_DEG = 360.0 / 4096
 MODE_CURRENT_POSITION = 5
 MODE_AT_END = 3                # position control, how the motor was before grip-2 (user: back to 3)
 MAX_MOVE_ON_MODE_CHANGE = 20   # ticks: the position must not change when the mode changes
+# Added to dynamixel_sdk's reply timeout (about 4.3 ms with latency_timer 1) on the gripper port only. Python
+# switches threads every 5 ms (GIL): when the 32-byte state reply arrives in two USB pieces and the teleop
+# loop is planning in between, the reply was already there but timed out (Real 20261017_143135: 3 in a row,
+# the gripper thread stopped). Read-only test with the planning load: 2859 / 3001 failed, +6 or +12 ms: 0.
+REPLY_TIMEOUT_EXTRA_MS = 10.0
 
 # MX-106(2.0) control table (address, size)
 TORQUE_ENABLE = (64, 1)
@@ -43,6 +48,17 @@ def signed(value, size):
     return value - (1 << bits) if value >= (1 << (bits - 1)) else value
 
 
+def add_reply_margin(port, extra_ms):
+    """Make this port's packet timeout extra_ms longer (setPacketTimeout is called before every reply)."""
+    base = port.setPacketTimeout
+
+    def set_packet_timeout(packet_length):
+        base(packet_length)
+        port.packet_timeout += extra_ms
+
+    port.setPacketTimeout = set_packet_timeout
+
+
 class Motor:
     """One MX-106(2.0) on its own U2D2."""
 
@@ -53,6 +69,7 @@ class Motor:
         self.ph = PacketHandler(2.0)
         self.id = dxl_id
         self.baud = baud
+        add_reply_margin(self.port, REPLY_TIMEOUT_EXTRA_MS)
 
     def open(self):
         """Returns a list of problems (empty = OK)."""

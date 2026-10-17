@@ -107,6 +107,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 
 **Teleop tuning after the gripper**
 - [2026-10-17 — Inner radius by height: r_min 350 / 300 / 250 at z 0 / 50 / 100](#2026-10-17--inner-radius-by-height-r_min-350--300--250-at-z-0--50--100)
+- [2026-10-17 — Gripper: longer reply timeout on its port (thread switching); a bit faster (210 / 200)](#2026-10-17--gripper-longer-reply-timeout-on-its-port-thread-switching-a-bit-faster-210--200)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1983,6 +1984,34 @@ positions through `plan_step` with an ideal robot: 6 cycles over a cap (J2 1.24 
 Real 142316 unchanged (0 before and after); plan time unchanged. Test: the Sim case from real.yaml.
 Real 142316 itself: r_min 20 % of the engaged time (was 35 %), none above z 100, r down to 261;
 joint speeds within the caps.
+
+## 2026-10-17 — Gripper: longer reply timeout on its port (thread switching); a bit faster (210 / 200)
+
+**Problem (Real 20261017_143135):** the gripper thread stopped at 66.2 s after 3 failed state reads in a
+row (the hardware error read of the same cycles answered); the arm continued as decided (grip-3). Range
+part of that run: r_min 3 % of the engaged time (was 20 %, 35 %), joint speeds within the caps.
+
+**Cause (read-only test, the gripper did not move):** a thread reads the state at 50 Hz while the main
+thread runs `plan_step` like the teleop loop. Without the planning: 0 of 3001 failed; with it (phases
+aligned, the worst case): 2859 failed. Python switches threads every 5 ms (GIL); dynamixel_sdk waits
+about 4.3 ms for a reply (latency_timer 1). The 32-byte state reply comes in two USB pieces; if the loop
+is planning in between, the reply is already there but counted as a timeout. The 12-byte error reply
+comes in one piece. Leader joint reads: 0 failures in every run (they run in the main thread).
+
+**Decision (user approved):** the gripper port's packet timeout is 10 ms longer
+(`REPLY_TIMEOUT_EXTRA_MS`, `add_reply_margin` in `teleop/gripper.py`); the leader port is unchanged. Cost
+only when the motor really does not answer. Same test after the change: 0 of 3001 failed (+6 ms and
++12 ms by hand: 0 too). Rejected: a shorter thread switch interval for the whole process (affects every
+thread, more switching); Return Delay 0 alone (0.5 ms, not enough).
+
+**Gripper a bit faster (user):** profile velocity 200 -> 210 (the motor's Velocity Limit; more needs a
+motor setting change) and acceleration 100 -> 200 (0 -> 48 rpm in about 0.07 s instead of 0.13 s), in
+configs/*.yaml and script 28. Measured: top speed at 10.5 V only 38-42 rpm (so the velocity raise helps
+little; 12 V is the bigger gain), and the current while speeding up was 212-337 mA, below the 504 mA cap,
+so the acceleration setting limited the start.
+
+**Late cycles in 143135:** 9 (5 single, 4 within 63.45-63.65 s while planning took 9-11 ms instead of
+about 5 and the gripper thread slowed too); not at the range limit; cause not found. Watch next runs.
 
 ## PENDING
 

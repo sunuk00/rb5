@@ -217,6 +217,19 @@ class FakePacketHandler:
     read2ByteTxRx = read4ByteTxRx = read1ByteTxRx
 
 
+class TestReplyMargin(unittest.TestCase):
+    def test_gripper_port_timeout_is_longer(self):
+        class Port:
+            def setPacketTimeout(self, n):
+                self.packet_timeout = 0.01 * n + 4.0
+        port = Port()
+        g.add_reply_margin(port, g.REPLY_TIMEOUT_EXTRA_MS)
+        port.setPacketTimeout(32)
+        self.assertAlmostEqual(port.packet_timeout, 0.32 + 4.0 + g.REPLY_TIMEOUT_EXTRA_MS)
+        port.setPacketTimeout(11)                                   # every call, not added up
+        self.assertAlmostEqual(port.packet_timeout, 0.11 + 4.0 + g.REPLY_TIMEOUT_EXTRA_MS)
+
+
 class TestEndState(unittest.TestCase):
     def test_clears_the_busy_flag_then_torque_off_and_mode_3(self):
         m = g.Motor.__new__(g.Motor)   # without dynamixel_sdk / a port

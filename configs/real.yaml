@@ -131,8 +131,10 @@ gripper:                        # same as Simulation. MX-106T on its own U2D2 (g
   closed_ticks: 3968            # measured by hand (grip-2, docs/hardware.md)
   open_ticks: 2196
   goal_current: 150             # x 3.36 mA = 0.50 A force cap (grip-2, user: enough)
-  profile_velocity: 200         # x 0.229 rpm = 45.8 rpm, full stroke about 0.7 s
-  profile_acceleration: 100
+  profile_velocity: 210         # x 0.229 rpm = 48.1 rpm = the motor's Velocity Limit (was 200; user 2026-10-17: a bit
+                                # faster). At 10.5 V the motor reaches only about 42 rpm: 12 V is the bigger gain
+  profile_acceleration: 200     # x 214.577 rev/min^2: 0 -> 48 rpm in about 0.07 s (was 100, 0.13 s; the current
+                                # while speeding up was 212-337 mA, below the 504 mA cap, so this limited the start)
   catch_frac: 0.05              # follow once the trigger points within 5 % of the gripper position (or passes it)
   min_voltage: 10.0             # below: warning only during the teleop (turning the torque off drops the object)
   max_temperature: 70           # C; above: the gripper thread stops (the arm continues)

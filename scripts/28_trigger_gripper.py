@@ -59,8 +59,8 @@ OUT_DIR = ROOT / "data" / "gripper"
 PERIOD_S = 0.02                # 50 Hz, like the teleop (trigger reads here, gripper cycles in its thread)
 TRIGGER_FULL = 1000.0          # trigger 0 = closed, 1000 = fully open
 GOAL_DEADBAND = 2              # ticks: write the goal only when it changes by this much
-PROFILE_VELOCITY = 200         # x 0.229 rpm = 45.8 rpm, about the no-load maximum (45 rpm at 12 V). 100 (22.9 rpm): full stroke 1.25 s, too slow (user)
-PROFILE_ACCELERATION = 100     # x 214.577 rev/min^2: 0 -> 45.8 rpm in about 0.13 s (was 50)
+PROFILE_VELOCITY = 210         # x 0.229 rpm = 48.1 rpm = the motor's Velocity Limit (same as configs/*.yaml; was 200, 100)
+PROFILE_ACCELERATION = 200     # x 214.577 rev/min^2: 0 -> 48 rpm in about 0.07 s (same as configs/*.yaml; was 100, 50)
 CURRENT_DEFAULT = 150          # x 3.36 mA = 0.50 A (stall 5.2 A at 12 V). 100 (0.34 A): grip a little weak and the cap
                                # slowed the closing (run 102033: current at the cap while moving)
 CURRENT_MAX = 300              # 1.0 A: more needs its own decision
