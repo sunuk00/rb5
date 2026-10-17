@@ -1781,6 +1781,9 @@ adapters, `/dev/gripper_u2d2` -> ttyUSB0 and `/dev/rby1_leader_arm` -> ttyUSB1 (
 expected); the same read 2.0 ms p50 / 2.9 ms max, 0 failed. Torque enable 0, position 2223 (below the min
 limit 2388; torque off, so not refused). **Input voltage still 9.1 V** and the voltage error bit still set:
 the 12 V does not reach the motor yet.
+Third scan after the user fixed the supply: **input voltage 10.8 V, hardware error 0**, read 2.0 ms p50 /
+2.9 ms max, 0 failed. Inside the e-Manual range (10.0-14.8 V) but 1.2 V below the 12 V recommended at
+almost no load (about 30 mA): check the voltage under load in grip-2 (it must stay >= 10 V).
 
 **Plan after grip-1:** grip-2 the gripper alone (mode 5, low Goal Current, open / closed positions,
 trigger direction); grip-3 a gripper thread in the teleop (latest goal / latest state shared, the loop
@@ -1816,6 +1819,6 @@ firmware right away (other lab users).
   - **Optional, when the operator wants more speed:** sideways 400 mm/s, radial / vertical 300 mm/s.
     Each raise is a Real limit change and needs its own decision.
   - **Recording rate 50 Hz vs 30 Hz** and the action definition: see the 2026-10-17 entries.
-  - **Gripper (grip-1):** 12 V supply, then check that the input voltage error clears (it may need a
-    reboot instruction: a write, ask first); latency_timer 1 on the U2D2 (udev rule) and re-time the read;
-    return delay 500 us -> 0 is a motor setting change (ask first, grip-2).
+  - **Gripper (grip-2):** input voltage under load (10.8 V at rest; must stay >= 10 V); return delay
+    500 us -> 0 is a motor setting change (ask first); position limits 2388-3853 vs the gripper's open /
+    closed positions.
