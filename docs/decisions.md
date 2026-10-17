@@ -1832,8 +1832,23 @@ off: **closed 3968, open 2196** (155.7 deg; closed is 127 ticks from the 4095 wr
 **Decisions:** left trigger for the gripper; trigger only (no button); keep the 5 % catch with the pass-over
 rule; mode 3 at the end of every run.
 
-**Open (next):** grasp an object (force cap vs grip, voltage under load: the supply gives only
-10.6 V at rest, it should be 12 V); stroke speed for pick and place (1.25 s now; profile velocity is the
+**Grasp run (102033, 77 s, Goal Current 100):** an object held at about 3190-3290 with the current at
+the cap (336 mA) and 10.2 V (min 10.1 V). The current also reached the cap while closing without an
+object (51.4-51.9 s), so the cap slowed the closing. User: grip a little weak, closing too slow.
+-> defaults: **Goal Current 150 (0.50 A)**, **profile velocity 200 (45.8 rpm, about the no-load maximum;
+the velocity limit 210 is checked at the start)**, profile acceleration 100 (0 -> 45.8 rpm in about 0.13 s).
+More current means more voltage drop: at 0.34 A the supply already fell to 10.1 V, so 0.50 A may hit the
+10 V stop until the supply gives 12 V.
+
+**Cleanup bug (found after run 102033):** the motor was again in mode 5 with torque on although the log
+was saved. Cause: Ctrl+C in the middle of a serial transaction (about 7 of every 20 ms) leaves
+dynamixel_sdk's `port.is_using = True`, so every later packet is refused ("port is in use") and the
+end writes fail. Reproduced read-only (flag set -> read None; cleared -> read OK). Fix: the cleanup
+clears the flag and the input, tries each write 3 times, reads torque and mode back and warns when they
+are wrong. grip-3 (gripper thread) needs the same cleanup.
+
+**Open (next):** grip with the new defaults (voltage under load: the supply gives only 10.6 V at rest, it
+should be 12 V); stroke speed for pick and place (1.25 s now; profile velocity is the
 knob); in the teleop (grip-3) `teleop/gripper.py` assumes the right trigger and "pulled = closed" (the
 opposite of this): change it with the thread.
 

@@ -360,16 +360,16 @@ firmware version, the settings and the read time of the block the gripper thread
 ### 28 trigger -> gripper
 ```
 python scripts/28_trigger_gripper.py                                   # measure open / closed by hand
-python scripts/28_trigger_gripper.py --closed 3968 --open 2196 --current 150
+python scripts/28_trigger_gripper.py --closed 3968 --open 2196 --current 130
 ```
 | option | default | meaning |
 |---|---|---|
 | `--closed`, `--open` | measured by hand (torque off, Enter at each) | the only position limits: the motor's own limits are not used in mode 5 |
-| `--current` | 100 (0.34 A) | Goal Current = force cap, x 3.36 mA, max 300 (1.0 A) |
+| `--current` | 150 (0.50 A) | Goal Current = force cap, x 3.36 mA, max 300 (1.0 A) |
 | `--trigger` | left | which leader trigger (released 0 = closed, pulled 1000 = open) |
 
-**Moves the gripper.** Writes after typed `yes`: torque off, operating mode 5, profile velocity 100
-(22.9 rpm), profile acceleration 50, goal current, goal position = present, torque on. Then it holds
+**Moves the gripper.** Writes after typed `yes`: torque off, operating mode 5, profile velocity 200
+(45.8 rpm), profile acceleration 100, goal current, goal position = present, torque on. Then it holds
 until the trigger points within 5 % of the gripper position (catch, the needed value is shown). At the
 end (Ctrl+C or an automatic stop: hardware error, < 10 V, > 70 C, 3 failed gripper or trigger reads,
 any error such as a USB disconnect, SIGTERM / SIGHUP): torque off, operating mode 3, the log saved.

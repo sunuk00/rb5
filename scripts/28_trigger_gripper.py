@@ -30,7 +30,7 @@ Addresses and units: ROBOTIS e-Manual, MX-106T/R(2.0) control table.
 Output: data/gripper/trigger_gripper_<time>.csv (one row per cycle), a summary.
 Usage:
     python scripts/28_trigger_gripper.py                       # measure open / closed by hand
-    python scripts/28_trigger_gripper.py --closed 3968 --open 2196 --current 150
+    python scripts/28_trigger_gripper.py --closed 3968 --open 2196 --current 130
     python scripts/28_trigger_gripper.py --trigger right
 """
 import argparse
@@ -58,9 +58,10 @@ MODEL_MX106_2 = 321
 PERIOD_S = 0.02                # 50 Hz, like the teleop
 TRIGGER_FULL = 1000.0          # trigger 0 = closed, 1000 = fully open
 GOAL_DEADBAND = 2              # ticks: write the goal only when it changes by this much
-PROFILE_VELOCITY = 100         # x 0.229 rpm = 22.9 rpm (no-load maximum at 12 V: 45 rpm)
-PROFILE_ACCELERATION = 50      # x 214.577 rev/min^2
-CURRENT_DEFAULT = 100          # x 3.36 mA = 0.34 A (stall 5.2 A at 12 V)
+PROFILE_VELOCITY = 200         # x 0.229 rpm = 45.8 rpm, about the no-load maximum (45 rpm at 12 V). 100 (22.9 rpm): full stroke 1.25 s, too slow (user)
+PROFILE_ACCELERATION = 100     # x 214.577 rev/min^2: 0 -> 45.8 rpm in about 0.13 s (was 50)
+CURRENT_DEFAULT = 150          # x 3.36 mA = 0.50 A (stall 5.2 A at 12 V). 100 (0.34 A): grip a little weak and the cap
+                               # slowed the closing (run 102033: current at the cap while moving)
 CURRENT_MAX = 300              # 1.0 A: more needs its own decision
 MIN_VOLTAGE = 10.0             # e-Manual operating range 10.0-14.8 V
 MAX_TEMPERATURE = 70           # C (motor shutdown at 80)
@@ -79,6 +80,7 @@ HARDWARE_ERROR = (70, 1)
 GOAL_CURRENT = (102, 2)
 PROFILE_ACC = (108, 4)
 PROFILE_VEL = (112, 4)
+VELOCITY_LIMIT = (44, 4)       # profile velocity must not exceed it (default 210)
 GOAL_POSITION = (116, 4)
 PRESENT_POSITION = (132, 4)
 STATE_BLOCK = (126, 21)        # 126 current (2), 128 velocity (4), 132 position (4), 136 / 140 trajectory, 144 voltage (2), 146 temperature (1)
@@ -131,6 +133,30 @@ class Gripper:
             return None
         word = lambda o, n: signed(int.from_bytes(bytes(data[o:o + n]), "little"), n)
         return (word(0, 2) * CURRENT_UNIT_MA, word(2, 4) * 0.229, word(6, 4), word(18, 2) / 10.0, data[20])
+
+    def reset_port(self):
+        """After an interrupted transaction (Ctrl+C in the middle of a read or write) dynamixel_sdk keeps
+        port.is_using = True and refuses every later packet ("port is in use"): clear it and the input."""
+        self.port.is_using = False
+        self.port.clearPort()
+
+    def end_state(self):
+        """Torque off and operating mode MODE_AT_END, each tried 3 times, then read back.
+        Returns (torque, mode) read back (None if unreadable)."""
+        self.reset_port()
+        for item, value in ((TORQUE_ENABLE, 0), (OPERATING_MODE, MODE_AT_END)):
+            for _ in range(3):
+                try:
+                    if self.write(item, value) is None:
+                        break
+                except Exception:
+                    pass
+                self.reset_port()
+                time.sleep(0.05)
+        try:
+            return self.read(TORQUE_ENABLE), self.read(OPERATING_MODE)
+        except Exception:
+            return None, None
 
     def close(self):
         self.port.closePort()
@@ -218,6 +244,9 @@ def main():
             raise SystemExit("\n".join(problems))
         mode_at_start = gripper.read(OPERATING_MODE)
         s = gripper.state()
+        vlimit = gripper.read(VELOCITY_LIMIT)
+        if vlimit is None or PROFILE_VELOCITY > vlimit:
+            raise SystemExit(f"profile velocity {PROFILE_VELOCITY} is above the motor's velocity limit {vlimit}")
         torque = gripper.read(TORQUE_ENABLE)
         print(f"gripper: MX-106(2.0) ID {GRIPPER_ID}, mode {mode_at_start}, torque {torque}, position {s[2]}, "
               f"{s[3]:.1f} V, {s[4]} C")
@@ -348,18 +377,11 @@ def main():
     finally:
         signal.signal(signal.SIGINT, signal.SIG_IGN)   # a second Ctrl+C must not skip the cleanup
         if changed:
-            for item, value in ((TORQUE_ENABLE, 0), (OPERATING_MODE, MODE_AT_END)):
-                try:
-                    e = gripper.write(item, value)
-                except Exception as ex:
-                    e = repr(ex)
-                if e:
-                    print(f"\nWARNING at the end: {e} (check with script 27 / DYNAMIXEL Wizard)")
-            try:
-                mode_now = gripper.read(OPERATING_MODE)
-            except Exception:
-                mode_now = "?"
-            print(f"\n\nstopped: {stop_reason}. torque off, operating mode {mode_now}")
+            torque_now, mode_now = gripper.end_state()
+            print(f"\n\nstopped: {stop_reason}. read back: torque {torque_now}, operating mode {mode_now}")
+            if torque_now != 0 or mode_now != MODE_AT_END:
+                print(f"WARNING: the gripper is NOT in torque 0 / mode {MODE_AT_END}: run this script again (it turns "
+                      "them off with the confirmed writes) or use DYNAMIXEL Wizard")
         for port in (gripper, leader):
             try:
                 port.close()
