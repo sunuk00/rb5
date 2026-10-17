@@ -1853,6 +1853,12 @@ the trigger while moving; settled 0-4 ticks; the current reached the 504 mA cap 
 4001 (33 ticks past the closed 3968, inertia when reversing); voltage 10.2-10.8 V; the cleanup read back
 torque 0 / mode 3 (checked again with script 27).
 
+**Run 102724 (grasp, 64 s, Goal Current 150):** three holds of 0.9-2.4 s at about 3440-3515 (the object),
+current 502 mA = the cap (504), voltage 10.2-10.3 V (no 10 V stop), temperature max 36 C; one hold with
+the trigger partly pulled (goal 3663) still pressed at the cap because the goal was past the object.
+Strokes and tracking as in 102450. Catch: started open (2202) with the trigger released, so it waited
+until the first full pull (19.6 s; expected). Cleanup read back torque 0 / mode 3.
+
 **Open (next):** grip with the new defaults (voltage under load: the supply gives only 10.6 V at rest, it
 should be 12 V); stroke speed for pick and place (1.25 s now; profile velocity is the
 knob); in the teleop (grip-3) `teleop/gripper.py` assumes the right trigger and "pulled = closed" (the
