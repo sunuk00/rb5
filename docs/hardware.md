@@ -67,7 +67,8 @@ Decisions and measurements behind them are in `docs/decisions.md`.
   129 deg, set before we got it), current limit 2047 (6.88 A), voltage limits 9.5-16.0 V, return delay
   250 (500 us).
 - Gripper positions (measured by hand, grip-2): **closed 3968, open 2196** (155.7 deg). Closed is 127 ticks
-  from the single-turn wrap (4095). Full stroke at profile velocity 100 (22.9 rpm): about 1.25 s.
+  from the single-turn wrap (4095). Settings (grip-2): mode 5, Goal Current 150 (0.50 A), profile
+  velocity 200 (45.8 rpm), acceleration 100: full stroke about 0.7 s; holding an object at 0.50 A, 10.2 V.
 - Leader arm control: **left** trigger, released 0 = closed, fully pulled 1000 = fully open (user, 2026-10-17).
 - MX-106 (e-Manual): 10.0-14.8 V, **12 V recommended**; standby 100 mA; stall 8.4 N.m at 12 V, **5.2 A**
   (11.1 V 4.8 A, 14.8 V 6.3 A); 45 rev/min no load at 12 V; factory ID 1, 57,600 bps.

@@ -1859,8 +1859,10 @@ the trigger partly pulled (goal 3663) still pressed at the cap because the goal 
 Strokes and tracking as in 102450. Catch: started open (2202) with the trigger released, so it waited
 until the first full pull (19.6 s; expected). Cleanup read back torque 0 / mode 3.
 
-**Open (next):** grip with the new defaults (voltage under load: the supply gives only 10.6 V at rest, it
-should be 12 V); stroke speed for pick and place (1.25 s now; profile velocity is the
+**Closed (2026-10-17, user: "grip force enough"):** Goal Current 150 (0.50 A), profile velocity 200,
+profile acceleration 100, left trigger only, catch with pass-over, mode 3 at the end.
+
+**Open (next):** the supply gives only 10.6 V at rest (10.2 V while gripping), it should be 12 V; stroke speed for pick and place (1.25 s now; profile velocity is the
 knob); in the teleop (grip-3) `teleop/gripper.py` assumes the right trigger and "pulled = closed" (the
 opposite of this): change it with the thread.
 
@@ -1891,6 +1893,6 @@ opposite of this): change it with the thread.
   - **Optional, when the operator wants more speed:** sideways 400 mm/s, radial / vertical 300 mm/s.
     Each raise is a Real limit change and needs its own decision.
   - **Recording rate 50 Hz vs 30 Hz** and the action definition: see the 2026-10-17 entries.
-  - **Gripper (after grip-2):** grasp an object (force cap, voltage under load; supply 12 V); stroke speed;
-    return delay 500 us -> 0 (motor setting, ask first); grip-3 thread in the teleop with the left trigger
-    (released = closed), replacing the right-trigger assumption in `teleop/gripper.py`.
+  - **Gripper (after grip-2):** supply 12 V (10.2 V while gripping); return delay 500 us -> 0 (motor
+    setting, ask first); grip-3 thread in the teleop with the left trigger (released = closed), replacing
+    the right-trigger assumption in `teleop/gripper.py`.
