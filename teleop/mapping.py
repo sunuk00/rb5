@@ -35,7 +35,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from .kinematics import clip_norm, rot_z, wrap_deg
+from .kinematics import CylinderRange, clip_norm, rot_z, wrap_deg
 
 
 class Limits:
@@ -206,7 +206,7 @@ class Mapper:
         self.vertical_z_scale = s.mapping.vertical_z_scale  # extra z gain in the vertical mode
         self.rotate_deg_per_mm = s.mapping.rotate_deg_per_mm
         self.rotate_max_lag_deg = s.mapping.rotate_max_lag_deg
-        self.r_min = s.range.r_min_mm   # the rotate circle stays 1 mm outside it (no range flag flicker)
+        self.cyl = CylinderRange.from_settings(s.range)   # the rotate circle stays 1 mm outside r_min (no flag flicker)
         self.max_dstep = s.mapping.accel_mm_s2 * s.servo.period_s ** 2   # acceleration limit per cycle^2
         self.prev_step = np.zeros(3)   # position step applied in the last cycle (acceleration limit)
         self.lock_azimuth = s.mapping.lock_azimuth
@@ -236,7 +236,7 @@ class Mapper:
         self.vertical_xy = stop[:2].copy()
         a = np.arctan2(stop[1], stop[0])
         _, r, z = to_cyl(self.target)
-        r = max(r, self.r_min + 1.0)   # a circle on r_min itself: every straight step cut inside it (flag flicker)
+        r = max(r, self.cyl.r_min_at(z) + 1.0)   # a circle on r_min itself: every straight step cut inside it (flag flicker)
         self.rotate_anchor = (np.degrees(a), r, z)   # the radius and z of the target, the azimuth where it stops
 
     @property

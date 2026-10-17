@@ -13,6 +13,8 @@ from types import SimpleNamespace
 
 import yaml
 
+from .kinematics import CylinderRange
+
 
 class SettingsError(Exception):
     """Raised with the full list of problems found in a settings file."""
@@ -94,6 +96,8 @@ SCHEMA = {
         "z_max_mm": _num(-200.0, 900.0),
         # [z, r_max] points: r_max falls with height (linear between points, the last value above)
         "r_max_by_z": _pairs(lo=(-200.0, 150.0), hi=(900.0, 900.0), nullable=True),
+        # [z, r_min] points: r_min rises toward the floor (linear between points, never below r_min_mm)
+        "r_min_by_z": _pairs(lo=(-200.0, 150.0), hi=(900.0, 900.0), nullable=True),
         "azimuth_min_deg": _num(-360.0, 360.0),       # TCP azimuth about the base z axis
         "azimuth_max_deg": _num(-360.0, 360.0),
     },
@@ -268,6 +272,21 @@ def _check_relations(d, problems):
         for a, b in table:
             if not r["r_min_mm"] < b <= r["r_max_mm"]:
                 problems.append(f"range.r_max_by_z: r {b} at height {a} must be above r_min_mm and at most r_max_mm")
+    inner = r.get("r_min_by_z")
+    if isinstance(inner, list) and inner and all(isinstance(p, list) and len(p) == 2 for p in inner):
+        dz = [p[0] for p in inner]
+        if any(b <= a for a, b in zip(dz, dz[1:])):
+            problems.append(f"range.r_min_by_z: heights must increase, got {dz}")
+        for a, b in inner:
+            if not r["r_min_mm"] <= b < r["r_max_mm"]:
+                problems.append(f"range.r_min_by_z: r {b} at height {a} must be at least r_min_mm and below r_max_mm")
+        if not problems:   # the inner radius must stay below the outer one at every height
+            cyl = CylinderRange(r["r_min_mm"], r["r_max_mm"], r["z_min_mm"], r["z_max_mm"], 0.0, 1.0,
+                                table if isinstance(table, list) else None, inner)
+            heights = sorted({r["z_min_mm"], r["z_max_mm"], *dz, *[p[0] for p in (table or [])]})
+            for z in heights:
+                if cyl.r_min_at(z) >= cyl.r_max_at(z):
+                    problems.append(f"range: r_min ({cyl.r_min_at(z):.0f}) is not below r_max ({cyl.r_max_at(z):.0f}) at z {z}")
     g = d["gripper"]
     if abs(g["open_ticks"] - g["closed_ticks"]) < GRIPPER_MIN_RANGE:
         problems.append(f"gripper: open_ticks ({g['open_ticks']}) and closed_ticks ({g['closed_ticks']}) must be at "

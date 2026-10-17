@@ -110,9 +110,11 @@ class CylinderRange:
     pose): r_min..r_max, z_min..z_max, azimuth az_min..az_max [deg]. Optional r_max_by_z: [z, r_max]
     points where the outer radius falls with height (linear between points, the first value below the
     first point, the last above the last), so the top outer corner the arm cannot reach is cut off.
+    Optional r_min_by_z: [z, r_min] points the same way for the inner radius (never below r_min): low down
+    the folded arm brings J3 near its limit, so the inner radius rises toward the floor (2026-10-17).
     Clamped in z first, then r (at the clamped z), and azimuth."""
 
-    def __init__(self, r_min, r_max, z_min, z_max, az_min, az_max, r_max_by_z=None):
+    def __init__(self, r_min, r_max, z_min, z_max, az_min, az_max, r_max_by_z=None, r_min_by_z=None):
         self.r_min, self.r_max = r_min, r_max
         self.z_lo, self.z_hi = z_min, z_max
         self.az0, self.az_half = 0.5 * (az_min + az_max), 0.5 * (az_max - az_min)   # center and half width
@@ -121,6 +123,17 @@ class CylinderRange:
             self.table_z, self.table_r = table[:, 0], table[:, 1]
         else:
             self.table_z = self.table_r = None
+        if r_min_by_z:
+            table = np.asarray(r_min_by_z, dtype=float)
+            self.inner_z, self.inner_r = table[:, 0], table[:, 1]
+        else:
+            self.inner_z = self.inner_r = None
+
+    def r_min_at(self, z):
+        """Inner radius at height z (absolute)."""
+        if self.inner_z is None:
+            return self.r_min
+        return max(self.r_min, float(np.interp(z, self.inner_z, self.inner_r)))
 
     def r_max_at(self, z):
         """Outer radius at height z (absolute)."""
@@ -131,14 +144,14 @@ class CylinderRange:
     @classmethod
     def from_settings(cls, rng):
         return cls(rng.r_min_mm, rng.r_max_mm, rng.z_min_mm, rng.z_max_mm, rng.azimuth_min_deg,
-                   rng.azimuth_max_deg, rng.r_max_by_z)
+                   rng.azimuth_max_deg, rng.r_max_by_z, rng.r_min_by_z)
 
     def clamp(self, p):
         """Return the point clamped into the range (r, z and azimuth separately)."""
         r = np.hypot(p[0], p[1])
         daz = (np.degrees(np.arctan2(p[1], p[0])) - self.az0 + 180.0) % 360.0 - 180.0
         z_c = np.clip(p[2], self.z_lo, self.z_hi)
-        r_c = np.clip(r, self.r_min, self.r_max_at(z_c))
+        r_c = np.clip(r, self.r_min_at(z_c), self.r_max_at(z_c))
         az_c = np.radians(self.az0 + np.clip(daz, -self.az_half, self.az_half))
         out = np.array([r_c * np.cos(az_c), r_c * np.sin(az_c), z_c])
         return out if np.linalg.norm(out - p) > 1e-9 else np.array(p, dtype=float)

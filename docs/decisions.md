@@ -105,6 +105,9 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-17 — grip-3a: gripper code in teleop/gripper.py (Motor, GripCommand, GripperWorker thread)](#2026-10-17--grip-3a-gripper-code-in-teleopgripperpy-motor-gripcommand-gripperworker-thread)
 - [2026-10-17 — grip-3b: gripper in the teleop (left trigger, own thread, Simulation and Real)](#2026-10-17--grip-3b-gripper-in-the-teleop-left-trigger-own-thread-simulation-and-real)
 
+**Teleop tuning after the gripper**
+- [2026-10-17 — Inner radius by height: r_min 350 / 300 / 250 at z 0 / 50 / 100](#2026-10-17--inner-radius-by-height-r_min-350--300--250-at-z-0--50--100)
+
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
 - [2026-10-14 — environment.yml for the rb5 env](#2026-10-14--environmentyml-for-the-rb5-env)
@@ -1932,6 +1935,41 @@ off?).
 
 **Checked:** 73 tests pass (new: the trigger goes to the gripper thread independent of the clutch, a
 stopped gripper does not stop the arm, blank columns without a gripper, settings relations).
+
+## 2026-10-17 — Inner radius by height: r_min 350 / 300 / 250 at z 0 / 50 / 100
+
+**Problem (user, Real run 20261017_140618):** the RB5 felt held back; it should come closer in along x.
+The target sat on r_min (350 mm) for 33 % of the engaged time (8.8 of 27 s); the hand asked for r p10 235,
+median 318 mm, at z p50 69 (133433: 30 % of the time, z p50 183).
+
+**Why not just lower r_min:** low down the folded arm brings J3 to its limit (+/-165). J3 margin, DH IK
+from the ready pose with its tool orientation (yaw follow_base, so the same at every azimuth):
+
+| z \ r | 250 | 300 | 350 |
+|---|---|---|---|
+| -50 | 2 (stop) | 9 (stop) | 17 |
+| 0 | 6 (stop) | 12 (slow) | 19 |
+| 50 | 12 (slow) | 17 | 23 |
+| >= 100 | >= 18 | >= 22 | >= 28 |
+
+J5, shoulder and elbow margins are not limiting for r >= 250.
+
+**Decision (user):** `range.r_min_by_z: [[0, 350], [50, 300], [100, 250]]` with `r_min_mm: 250` (linear
+between the points, 350 below z 0, 250 above z 100; never below r_min_mm), in sim.yaml and real.yaml.
+Along this boundary (5 mm steps): J3 margin >= 16.7 deg (no slowdown), elbow >= 31.7 deg, shoulder
+>= 136 mm, J5 >= 86 deg.
+
+**Implementation:** `CylinderRange.r_min_at(z)` (like `r_max_at`), used by the clamp, the rotate circle
+(1 mm outside r_min at its height), the start-pose check and the report's r_min split (script 24).
+Settings: heights increasing, each r in r_min_mm..r_max_mm, inner below outer at every table height.
+
+**Effect to know:** going down while close in pushes the target outward (the inner radius rises).
+
+**Rejected:** r 200 above z 150 (J3 22 deg, possible in the model) because r 250 is already close to the
+robot base and the model has no robot body; one lower r_min for every height (stops low down).
+
+**Checked:** 74 tests pass (inner radius clamp, settings relations). Not run on the robot yet: Simulation
+first, then Real with a slow first approach to check the gap to the base by eye.
 
 ## PENDING
 

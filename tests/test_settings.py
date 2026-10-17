@@ -126,6 +126,12 @@ class TestSettings(unittest.TestCase):
         self.assert_problem(d, "heights must increase")
         d = raw(SIM); d["range"]["r_max_by_z"] = [[200.0, 900.0]]
         self.assert_problem(d, "at most r_max_mm")
+        d = raw(SIM); d["range"]["r_min_by_z"] = [[50.0, 300.0], [0.0, 350.0]]
+        self.assert_problem(d, "r_min_by_z: heights must increase")
+        d = raw(SIM); d["range"]["r_min_by_z"] = [[0.0, 200.0]]          # below r_min_mm (250)
+        self.assert_problem(d, "must be at least r_min_mm")
+        d = raw(SIM); d["range"]["r_min_by_z"] = [[400.0, 690.0], [465.0, 700.0]]   # r_max is 650 at the top
+        self.assert_problem(d, "is not below r_max")
         d = raw(SIM); d["range"]["r_max_by_z"] = [[200.0]]
         self.assert_problem(d, "pairs")
 

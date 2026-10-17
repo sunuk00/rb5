@@ -93,7 +93,8 @@ Speeds: radial / vertical up to 250 mm/s, sideways (turning J1) up to 360 mm/s, 
 20 mm (rotate mode: 15 deg) of lag and catches up after the hand stops; more than that is dropped, so
 the hand and the robot drift apart a little: release and press the clutch again to re-align.
 
-Range (absolute, base frame): radius 350-800 mm, height -50..465 mm (the outer radius falls from 800 to
+Range (absolute, base frame): radius 250-800 mm (the inner radius rises toward the floor: 350 at z <= 0,
+300 at z 50, 250 at z >= 100; going down close in pushes the robot outward), height -50..465 mm (the outer radius falls from 800 to
 650 between z 265 and 465), azimuth -160..133 deg. Releasing the left button or switching modes never
 makes the robot jump.
 

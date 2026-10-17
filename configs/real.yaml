@@ -62,7 +62,13 @@ yaw:
 
 range:                          # absolute in the RB5 base frame (2026-10-16; before: relative to the start pose,
                                 # so every ready-pose change moved the range). Same space as before.
-  r_min_mm: 350.0               # same as Simulation (user, 2026-10-12); was 340..420
+  r_min_mm: 250.0               # same as Simulation; the smallest inner radius (z >= 100). Was 350 at every height
+  r_min_by_z: [[0.0, 350.0], [50.0, 300.0], [100.0, 250.0]]
+                                # [z, r_min] (user, 2026-10-17: closer in): 350 at z <= 0, 300 at z 50, 250 at z >= 100,
+                                # linear between. Low down the folded arm brings J3 near its limit (DH IK, ready pose
+                                # orientation, 5 mm steps): on this boundary J3 margin >= 16.7 deg (no slowdown, slow < 15),
+                                # elbow >= 31.7 deg, shoulder >= 136 mm, J5 >= 86 deg.
+                                # The model does not know the robot body: r 250 is close to the base
   r_max_mm: 800.0               # same as Simulation; elbow >= 43 deg up to r 800 (DH grid)
   z_min_mm: -50.0               # TCP never below z -50 (2026-10-16, user: lower; nothing is mounted on the flange,
                                 # the TCP is 187 mm below the flange center, so the flange center is at about 140 mm

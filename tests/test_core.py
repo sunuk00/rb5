@@ -62,6 +62,16 @@ class TestKinematics(unittest.TestCase):
         self.assertTrue(across.contains(np.array([-500.0, 0.0, 0.0])))
         np.testing.assert_allclose(np.degrees(np.arctan2(*across.clamp(np.array([0.0, 500.0, 0.0]))[1::-1])), 150.0)
 
+    def test_cylinder_inner_radius_rises_toward_the_floor(self):
+        cyl = CylinderRange(250, 800, -50.0, 465.0, -90, 90, r_min_by_z=[[0, 350], [50, 300], [100, 250]])
+        self.assertEqual(cyl.r_min_at(-50.0), 350.0)                # below the first point
+        self.assertAlmostEqual(cyl.r_min_at(25.0), 325.0)           # halfway between 0 and 50
+        self.assertEqual(cyl.r_min_at(300.0), 250.0)                # above the last point
+        np.testing.assert_allclose(cyl.clamp(np.array([260.0, 0.0, 200.0])), [260.0, 0.0, 200.0])   # high: inside
+        np.testing.assert_allclose(cyl.clamp(np.array([260.0, 0.0, 25.0])), [325.0, 0.0, 25.0])     # low: pushed out
+        np.testing.assert_allclose(cyl.clamp(np.array([200.0, 0.0, -100.0])), [350.0, 0.0, -50.0])  # floor, then r
+        self.assertEqual(CylinderRange(350, 800, 0.0, 500.0, -90, 90).r_min_at(0.0), 350.0)        # no table
+
     def test_cylinder_outer_radius_falls_with_height(self):
         cyl = CylinderRange(350, 800, 0.0, 500.0, -90, 90, r_max_by_z=[[300, 800], [400, 700], [500, 650]])
         self.assertEqual(cyl.r_max_at(100.0 + 100), 800.0)          # below the first point

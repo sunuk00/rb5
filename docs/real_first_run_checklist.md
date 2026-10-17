@@ -8,7 +8,8 @@ on 2026-10-16). The first section is for every run; the rest are the open items 
 - [ ] **Collision detection is ON** on the controller (check on the tablet). Do not start
       `python -m teleop --real` while it is Off. The teleop does not check this itself.
 - [ ] Emergency stop within reach of the operator; a second person watches the robot.
-- [ ] Workspace clear: radius up to 800 mm around the base, height up to about 465 mm, TCP azimuth
+- [ ] Workspace clear: radius up to 800 mm around the base (and in to 250 mm above z 100: check the tool's gap to
+      the robot's own base when going close in; the model does not know the robot body), height up to about 465 mm, TCP azimuth
       -160 .. 133 deg about the base z axis (the sides and the back of the RB5 too); cables free.
 - [ ] Nothing in the way of the ready-pose move (large wrist turns are warned).
 - [ ] Tablet connected; speed bar 0.1.
@@ -32,7 +33,8 @@ on 2026-10-16). The first section is for every run; the rest are the open items 
 - [ ] **z lower bound** (`range.z_min_mm`): -50 mm because **nothing is mounted** on the flange (the TCP
       is 187 mm below the flange center; the flange center is about 140 mm above the table at the floor).
       **Raise it before mounting any tool**: tool tip height + margin (z 0 = base bottom).
-- [x] Range (`range.*`, absolute in the base frame since 2026-10-16): r 350-800, z -50 .. 465 (outer
+- [x] Range (`range.*`, absolute in the base frame since 2026-10-16): r 250-800 (inner radius 350 / 300 / 250 at
+      z 0 / 50 / 100, 2026-10-17; was 350 everywhere), z -50 .. 465 (outer
       radius 800 -> 650 between z 265 and 465), azimuth -160 .. 133 deg.
 
 ## Speeds (real-1 final, 2026-10-16)

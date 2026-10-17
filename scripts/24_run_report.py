@@ -131,8 +131,11 @@ def analyze(path):
         table = rng.get("r_max_by_z")
         rmax = (np.minimum(rng["r_max_mm"], np.interp(de[:, 2], *np.asarray(table, float).T)) if table
                 else np.full(n, rng["r_max_mm"]))
+        inner = rng.get("r_min_by_z")
+        rmin = (np.maximum(rng["r_min_mm"], np.interp(de[:, 2], *np.asarray(inner, float).T)) if inner
+                else np.full(n, rng["r_min_mm"]))
         r["range_split_s"] = {
-            "r_min": float((rl & (rd < rng["r_min_mm"] - 0.5)).sum() * DT),
+            "r_min": float((rl & (rd < rmin - 0.5)).sum() * DT),
             "r_max": float((rl & (rd > rmax + 0.5)).sum() * DT),
             "floor": float((rl & (de[:, 2] < rng["z_min_mm"] - 0.5)).sum() * DT),
             "top": float((rl & (de[:, 2] > rng["z_max_mm"] + 0.5)).sum() * DT),

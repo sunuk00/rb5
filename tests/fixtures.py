@@ -33,7 +33,7 @@ def test_raw():
     p0 = RB5Model([0.0, -187.0, -40.0]).tcp(POSE_D)[0]   # 21: +/-150 mm and +/-90 deg around pose D
     az0 = float(np.degrees(np.arctan2(p0[1], p0[0])))
     d["range"].update(r_min_mm=450.0, r_max_mm=550.0, z_min_mm=float(p0[2]) - 150.0, z_max_mm=float(p0[2]) + 150.0,
-                      azimuth_min_deg=az0 - 90.0, azimuth_max_deg=az0 + 90.0, r_max_by_z=None)
+                      azimuth_min_deg=az0 - 90.0, azimuth_max_deg=az0 + 90.0, r_max_by_z=None, r_min_by_z=None)
     d["safety"]["joint_limit_deg"] = [360.0, 360.0, 150.0, 360.0, 360.0, 360.0]
     d["safety"]["joint_limit_slow_deg"] = 20.0    # 21's value (the settings use 15 since 2026-10-16)
     # sim.yaml values of the 2026-10-12 tests (sim.yaml = real.yaml since 2026-10-16)

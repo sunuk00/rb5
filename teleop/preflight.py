@@ -83,8 +83,8 @@ def check_start_pose(tcp0, q0, model: RB5Model, watch, s):
         problems.append(f"DH model differs from tcp_ref by {fk_error:.2f} mm (> {s.safety.max_fk_error_mm})")
     r0 = float(np.hypot(tcp0[0], tcp0[1]))
     cyl = range_for(s)
-    if not cyl.r_min <= r0 <= cyl.r_max_at(tcp0[2]):
-        problems.append(f"TCP radius {r0:.1f} mm is outside {cyl.r_min:.0f}..{cyl.r_max_at(tcp0[2]):.0f} mm")
+    if not cyl.r_min_at(tcp0[2]) <= r0 <= cyl.r_max_at(tcp0[2]):
+        problems.append(f"TCP radius {r0:.1f} mm is outside {cyl.r_min_at(tcp0[2]):.0f}..{cyl.r_max_at(tcp0[2]):.0f} mm")
     if not cyl.z_lo <= tcp0[2] <= cyl.z_hi:
         problems.append(f"TCP z {tcp0[2]:.1f} mm is outside {cyl.z_lo:.0f}..{cyl.z_hi:.0f} mm")
     az = float(np.degrees(np.arctan2(tcp0[1], tcp0[0])))

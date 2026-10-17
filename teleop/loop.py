@@ -151,7 +151,8 @@ class TeleopLoop:
                 "jspeed": f"joint speed limit ({lim.max_dq_deg.tolist()} deg/cycle predicted)",
                 "range": f"range limit (cylinder r {s.range.r_min_mm:.0f}..{s.range.r_max_mm:.0f} mm, "
                          f"z {s.range.z_min_mm:.0f}..{s.range.z_max_mm:.0f} mm"
-                         f"{'' if s.range.r_max_by_z is None else ', r_max falls with height'}, "
+                         f"{'' if s.range.r_max_by_z is None else ', r_max falls with height'}"
+                         f"{'' if s.range.r_min_by_z is None else ', r_min rises toward the floor'}, "
                          f"azimuth {s.range.azimuth_min_deg:.0f}..{s.range.azimuth_max_deg:.0f} deg)",
                 "lead": f"target waits for robot (lead limit {lim.max_lead_mm} mm)",
                 "yspeed": f"yaw speed limit ({lim.max_yaw_step_deg} deg/cycle)",
