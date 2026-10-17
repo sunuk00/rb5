@@ -101,6 +101,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
+- [2026-10-17 — grip-2: left trigger -> gripper alone (script 28), current-based position mode](#2026-10-17--grip-2-left-trigger---gripper-alone-script-28-current-based-position-mode)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1792,6 +1793,50 @@ never waits for the gripper bus), compared in Simulation by `work_ms` and late c
 **Rejected:** the leader arm bus (shared time and IDs); `/dev/ttyUSBn` names (plug order); updating the
 firmware right away (other lab users).
 
+## 2026-10-17 — grip-2: left trigger -> gripper alone (script 28), current-based position mode
+
+**Request (user):** move the gripper with the leader trigger 0-1000 to check it works; then the left
+trigger instead of the right (like the left button for RB5 J1); trigger only, no button.
+
+**Setup (script 28):** left trigger, released 0 = closed, fully pulled 1000 = fully open (user), in
+proportion: goal = closed + trigger / 1000 x (open - closed). Open / closed measured by hand with torque
+off: **closed 3968, open 2196** (155.7 deg; closed is 127 ticks from the 4095 wrap). Operating mode 5
+(current-based position): Goal Current 100 (0.34 A) caps the force; the motor's position limits
+(2388-3853) are not used in mode 5 (e-Manual), so every goal is clipped to open..closed. Profile velocity
+100 (22.9 rpm), acceleration 50. At the end always torque off and mode 3 (user: back to 3).
+
+**Problems found on the way (fixed):**
+- Run 1: the leader arm FTDI disconnected (kernel `usb 1-9.2: USB disconnect`, ttyUSB1 -> ttyUSB2) before
+  the first loop read; torque off / mode restore worked, but the error showed as "Ctrl+C" and no log was
+  saved -> any error now stops with its reason and the log is always saved. The leader adapter, the U2D2
+  and the D405 were on one VIA USB 2.0 hub; the user moved the leader adapter.
+- Run 2: the catch (hold until the trigger points within 5 % of the gripper position) was skipped by a
+  fast trigger (643 -> 779 in one 20 ms read, window 662-762), so it only caught when the user pressed
+  the button and moved slowly; it looked like "button needed". Now it also catches when the trigger
+  passes over the position (replayed on the log: catches at the first pull, button 0).
+- A run that did not finish left the motor in mode 5 with torque on (no log; probably the terminal
+  closed or a double Ctrl+C), and the restore used "the mode at the start" (would have kept 5) ->
+  always mode 3 at the end, SIGTERM / SIGHUP clean up like Ctrl+C, a second Ctrl+C is ignored during the
+  cleanup, torque left on is turned off with the confirmed writes (no DYNAMIXEL Wizard needed).
+
+**Result (run 101652, 34 s, trigger only, button never pressed):**
+
+| | value |
+|---|---|
+| loop | 20.0 ms period (p99 20.1), work p50 6.8 / max 10.6 ms, 0 failed reads |
+| tracking when settled | 0-2 ticks (closed 3968 +0, open +1); in proportion in between |
+| full stroke (156 deg) | 1.22-1.28 s, limited by the profile velocity (max 23.8 rpm); 420 ms behind the trigger while moving |
+| current | p50 40, p95 138, max 366 mA (cap 336, 4 short peaks); 0 mA holding closed (nothing inside) |
+| voltage | 10.3-10.7 V (run 1: 10.1 V); no hardware error |
+
+**Decisions:** left trigger for the gripper; trigger only (no button); keep the 5 % catch with the pass-over
+rule; mode 3 at the end of every run.
+
+**Open (next):** grasp an object (force cap vs grip, voltage under load: the supply gives only
+10.6 V at rest, it should be 12 V); stroke speed for pick and place (1.25 s now; profile velocity is the
+knob); in the teleop (grip-3) `teleop/gripper.py` assumes the right trigger and "pulled = closed" (the
+opposite of this): change it with the thread.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -1819,6 +1864,6 @@ firmware right away (other lab users).
   - **Optional, when the operator wants more speed:** sideways 400 mm/s, radial / vertical 300 mm/s.
     Each raise is a Real limit change and needs its own decision.
   - **Recording rate 50 Hz vs 30 Hz** and the action definition: see the 2026-10-17 entries.
-  - **Gripper (grip-2):** input voltage under load (10.8 V at rest; must stay >= 10 V); return delay
-    500 us -> 0 is a motor setting change (ask first); position limits 2388-3853 vs the gripper's open /
-    closed positions.
+  - **Gripper (after grip-2):** grasp an object (force cap, voltage under load; supply 12 V); stroke speed;
+    return delay 500 us -> 0 (motor setting, ask first); grip-3 thread in the teleop with the left trigger
+    (released = closed), replacing the right-trigger assumption in `teleop/gripper.py`.

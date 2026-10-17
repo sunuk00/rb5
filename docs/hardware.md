@@ -66,6 +66,9 @@ Decisions and measurements behind them are in `docs/decisions.md`.
   **ID 2, 1,000,000 bps**, Protocol 2.0, operating mode 3 (position), position limits 2388-3853 (about
   129 deg, set before we got it), current limit 2047 (6.88 A), voltage limits 9.5-16.0 V, return delay
   250 (500 us).
+- Gripper positions (measured by hand, grip-2): **closed 3968, open 2196** (155.7 deg). Closed is 127 ticks
+  from the single-turn wrap (4095). Full stroke at profile velocity 100 (22.9 rpm): about 1.25 s.
+- Leader arm control: **left** trigger, released 0 = closed, fully pulled 1000 = fully open (user, 2026-10-17).
 - MX-106 (e-Manual): 10.0-14.8 V, **12 V recommended**; standby 100 mA; stall 8.4 N.m at 12 V, **5.2 A**
   (11.1 V 4.8 A, 14.8 V 6.3 A); 45 rev/min no load at 12 V; factory ID 1, 57,600 bps.
   Power: 12 V, at least 5 A (the stall current), separate from the leader arm supply. Power Hub: 3.5-24 V,
