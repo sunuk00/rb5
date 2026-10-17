@@ -56,6 +56,9 @@ class Limits:
         self.max_dq_deg = np.asarray(s.safety.joint_speed_deg_per_cycle, dtype=float)
 
 
+CLAMP_FIT_ITERATIONS = 8   # bisection steps when the clamped step is over a limit (step kept to 1/256)
+
+
 def clip_step(step, at, max_other, max_tangential):
     """Scale the step down (same direction) so that (t / max_tangential)^2 + (o / max_other)^2 <= 1, with
     t = the horizontal part perpendicular to the radius at `at` (sideways about the base z axis) and o =
@@ -142,7 +145,31 @@ def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch, prev_ste
             ylimited = wrap_deg(yaw_at(target + limited) - yaw["target"])
     new = target + limited
     clamped = cyl.clamp(new)   # a straight step between two inside points can cut the inner radius
-    flags["range"] = flags["range"] or bool(np.any(clamped != new))
+    if np.any(clamped != new):
+        flags["range"] = True
+        # The clamp moves the target (outward on the inner radius) after the speed and joint speed limits, so
+        # check the step it gives; if it is over, shorten this cycle's step until the clamped one fits.
+        # (Sim 20261017_142123: along the sloped inner radius J2 reached 73 deg/s with the 60 deg/s cap.)
+        def fits(f):
+            c = cyl.clamp(target + f * limited)
+            d = c - target
+            yd = wrap_deg(yaw_at(c) - yaw["target"]) if follow else f * ylimited
+            speed_ok = np.linalg.norm(clip_step(d, target, lim.max_step_mm * scale, lim.max_tangential_step_mm * scale)
+                                      - d) < 1e-6
+            return speed_ok and bool(np.all(np.abs(model.predict(q, d, jac, yd)) <= lim.max_dq_deg + 1e-9)), c
+        ok, c = fits(1.0)
+        if not ok:
+            lo, hi, c = 0.0, 1.0, cyl.clamp(target)
+            for _ in range(CLAMP_FIT_ITERATIONS):
+                mid = 0.5 * (lo + hi)
+                ok, c_mid = fits(mid)
+                if ok:
+                    lo, c = mid, c_mid
+                else:
+                    hi = mid
+            limited, ylimited = limited * lo, ylimited * lo
+            flags["jspeed"] = True
+        clamped = c
     if np.linalg.norm(clamped - tcp_pos) > lim.max_lead_mm:
         clamped = target.copy()
         flags["lead"] = True

@@ -173,6 +173,36 @@ class TestPlanStep(unittest.TestCase):
                 self.assertEqual(a.flags["jspeed"], without_lag)   # the lag does not change the decision
             without_lag = a.flags["jspeed"]
 
+    def test_clamped_step_keeps_the_joint_speed_cap(self):
+        # Sim 20261017_142123: the hand far inside and below the sloped inner radius (real.yaml: r_min 350 / 300
+        # / 250 at z 0 / 50 / 100); the final clamp pushed each step outward and J2 went over its cap.
+        from teleop.settings import load_settings
+        s = load_settings(ROOT / "configs" / "real.yaml", real=True)[0]
+        model, watch, lim, cyl = RB5Model(OFFSET), Watch(s.safety), Limits(s), CylinderRange.from_settings(s.range)
+        q = np.array(s.ready_pose.joints_deg, dtype=float)
+        p0 = model.tcp(q)[0]
+        az = np.degrees(np.arctan2(p0[1], p0[0]))
+        at = lambda r, z: np.array([r * np.cos(np.radians(az)), r * np.sin(np.radians(az)), z])   # noqa: E731
+        start = at(cyl.r_min_at(30.0), 30.0)                       # on the inner radius at z 30 (r 320)
+        for k in range(1, 41):                                     # walk the ready pose there (orientation kept)
+            goal = p0 + (start - p0) * k / 40
+            for _ in range(5):
+                q = q + model.predict(q, goal - model.tcp(q)[0])
+        target = model.tcp(q)[0]
+        yaw = {"target": 0.0, "desired": 0.0, "tcp": 0.0, "base_az0": az}
+        prev = np.zeros(3)
+        for _ in range(10):                                        # going down along the boundary
+            a = plan_step(target, at(260.0, -18.0), target, q, model, cyl, yaw, lim, watch, prev)
+            d = a.target - target
+            dq = np.abs(model.predict(q, d, None, wrap_deg(a.yaw - yaw["target"])))
+            self.assertTrue(np.all(dq <= lim.max_dq_deg + 1e-6), (dq, lim.max_dq_deg))
+            self.assertTrue(cyl.contains(a.target))
+            self.assertLessEqual(np.linalg.norm(d), max(lim.max_step_mm, lim.max_tangential_step_mm) + 1e-6)
+            q = q + model.predict(q, d, None, wrap_deg(a.yaw - yaw["target"]))
+            prev, target, yaw["target"] = d, a.target, a.yaw
+            yaw["tcp"] = a.yaw
+        self.assertLess(target[2], 30.0 - 5.0)                     # it still goes down
+
 
 def _ns(d):
     if isinstance(d, dict):

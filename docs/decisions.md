@@ -1971,6 +1971,19 @@ robot base and the model has no robot body; one lower r_min for every height (st
 **Checked:** 74 tests pass (inner radius clamp, settings relations). Not run on the robot yet: Simulation
 first, then Real with a slow first approach to check the gap to the base by eye.
 
+**Fix after the first runs (2026-10-17, user approved):** in Sim 20261017_142123 J2 went over its cap
+(60 deg/s; up to about 73 deg/s from 20 ms samples, 1.69 % of the samples over 1.05 x cap) while going down
+fast along the sloped inner radius. Cause: `plan_step` applies the speed, joint speed and acceleration
+limits, then the final `cyl.clamp` pushes the target outward, and that push was not checked. The region
+is not convex at the z 0 corner (the straight step between two inside points crosses the inner radius),
+so the push is large there; the old fixed r_min had the same gap with a smaller push. Now the clamped
+step is checked against the joint speed and the speed caps; if it is over, the step is shortened by
+bisection (8 steps) until the clamped one fits (`joint_speed_limited` set). Replay of the run's desired
+positions through `plan_step` with an ideal robot: 6 cycles over a cap (J2 1.24 x) before, 0 after;
+Real 142316 unchanged (0 before and after); plan time unchanged. Test: the Sim case from real.yaml.
+Real 142316 itself: r_min 20 % of the engaged time (was 35 %), none above z 100, r down to 261;
+joint speeds within the caps.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
