@@ -16,7 +16,8 @@ positions measured here are the only position limits: every goal is clipped to t
    acceleration, goal current, goal position = present position, torque on. The position is read
    again after the mode change and must not have moved.
 4. Catch: the gripper holds its position until the trigger points within 5 % of the range of where the
-   gripper is (no jump at the start, like the teleop clutch); the needed trigger value is shown.
+   gripper is, or passes over that point between two reads (a fast trigger skips the 5 % window: first
+   run, 2026-10-17); no jump at the start, like the teleop clutch. The needed trigger value is shown.
 5. Loop at 50 Hz until Ctrl+C: read the trigger, write the goal position when it changes by 2 ticks or
    more, read the gripper state (current, position, voltage, temperature, hardware error). Stops by
    itself on a hardware error, input voltage < 10 V, temperature > 70 C, 3 failed gripper or trigger
@@ -255,6 +256,7 @@ def main():
         print(f"catch: holding at {pos2}; move the {args.trigger} trigger to about {need:.0f} to start following\n")
 
         last_goal, trigger, fails, trigger_fails, following = pos2, None, 0, 0, False
+        prev_side = None   # sign of (trigger goal - held position) at the last read, for the catch
         t0 = time.monotonic()
         next_t = t0
         while True:
@@ -271,9 +273,13 @@ def main():
                 frac = min(max(trigger / TRIGGER_FULL, 0.0), 1.0)
                 goal = int(round(closed + frac * (opened - closed)))
                 goal = min(max(goal, lo), hi)
-                if not following and abs(goal - last_goal) <= CATCH_FRAC * (hi - lo):
-                    following = True
-                    print(f"\rcaught at trigger {trigger}: following" + " " * 60)
+                if not following:
+                    side = (goal > last_goal) - (goal < last_goal)
+                    crossed = prev_side is not None and side != prev_side
+                    if abs(goal - last_goal) <= CATCH_FRAC * (hi - lo) or crossed:
+                        following = True
+                        print(f"\rcaught at trigger {trigger}: following" + " " * 60)
+                    prev_side = side
                 if not following:
                     goal = last_goal
             written = abs(goal - last_goal) >= GOAL_DEADBAND
