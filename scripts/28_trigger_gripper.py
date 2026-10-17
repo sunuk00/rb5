@@ -9,7 +9,8 @@ In mode 5 the motor's own position limits (48, 52) are NOT used (e-Manual), so t
 positions measured here are the only position limits: every goal is clipped to them.
 
 1. Checks (read only): both FTDI latency timers 1 ms, leader arm ping, gripper model 321, no hardware
-   error, input voltage >= 10 V, torque off.
+   error, input voltage >= 10 V. Torque on or mode 5 (left by a run that did not finish) is shown and
+   turned off with the confirmed writes (before measuring by hand: its own confirmation).
 2. Open / closed positions: move the gripper by hand (torque off) and press Enter at each, or give
    --closed / --open.
 3. Writes, after typed confirmation: torque off, operating mode 5, profile velocity, profile
@@ -22,7 +23,8 @@ positions measured here are the only position limits: every goal is clipped to t
    more, read the gripper state (current, position, voltage, temperature, hardware error). Stops by
    itself on a hardware error, input voltage < 10 V, temperature > 70 C, 3 failed gripper or trigger
    reads in a row, or any error (e.g. a USB adapter disconnected).
-6. Always at the end: torque off, operating mode back to the value it had at the start (3), the log saved.
+6. Always at the end (also on SIGTERM / SIGHUP; Ctrl+C is ignored while cleaning up): torque off,
+   operating mode 3 (position, as before grip-2; user), the log saved.
 
 Addresses and units: ROBOTIS e-Manual, MX-106T/R(2.0) control table.
 Output: data/gripper/trigger_gripper_<time>.csv (one row per cycle), a summary.
@@ -33,6 +35,7 @@ Usage:
 """
 import argparse
 import csv
+import signal
 import sys
 import time
 from datetime import datetime
@@ -80,6 +83,7 @@ GOAL_POSITION = (116, 4)
 PRESENT_POSITION = (132, 4)
 STATE_BLOCK = (126, 21)        # 126 current (2), 128 velocity (4), 132 position (4), 136 / 140 trajectory, 144 voltage (2), 146 temperature (1)
 MODE_CURRENT_POSITION = 5
+MODE_AT_END = 3                # position control, how the motor was before grip-2 (user: back to 3)
 
 HEADER = ["t_s", "trigger_raw", "trigger", "open_frac", "following", "goal", "goal_written", "position", "current_mA",
           "velocity_rpm", "voltage_V", "temperature_C", "hardware_error", "work_ms"]
@@ -147,16 +151,18 @@ def check_start(gripper):
         return problems
     err = gripper.read(HARDWARE_ERROR)
     s = gripper.state()
-    torque = gripper.read(TORQUE_ENABLE)
     if err != 0:
         problems.append(f"hardware error status {err} (bit 0 input voltage, 2 overheating, 3 encoder, 4 shock, 5 overload)")
     if s is None:
         problems.append("cannot read the gripper state")
     elif s[3] < MIN_VOLTAGE:
         problems.append(f"input voltage {s[3]:.1f} V < {MIN_VOLTAGE} V (12 V recommended)")
-    if torque != 0:
-        problems.append("gripper torque is on: turn it off (power cycle or DYNAMIXEL Wizard) so it can be moved by hand")
     return problems
+
+
+def to_keyboard_interrupt(signum, frame):
+    """SIGTERM / SIGHUP (terminal closed, kill) end the run like Ctrl+C, so the cleanup runs."""
+    raise KeyboardInterrupt
 
 
 def measure_positions(gripper):
@@ -201,6 +207,8 @@ def main():
     read_trigger_raw = leader.read_left_button_raw if args.trigger == "left" else leader.read_button_raw
     gripper = Gripper(config.GRIPPER_PORT)
     gripper.open()
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, to_keyboard_interrupt)
     mode_at_start = None
     changed = False
     rows, stop_reason = [], "Ctrl+C"
@@ -210,8 +218,20 @@ def main():
             raise SystemExit("\n".join(problems))
         mode_at_start = gripper.read(OPERATING_MODE)
         s = gripper.state()
-        print(f"gripper: MX-106(2.0) ID {GRIPPER_ID}, mode {mode_at_start}, position {s[2]}, {s[3]:.1f} V, {s[4]} C")
+        torque = gripper.read(TORQUE_ENABLE)
+        print(f"gripper: MX-106(2.0) ID {GRIPPER_ID}, mode {mode_at_start}, torque {torque}, position {s[2]}, "
+              f"{s[3]:.1f} V, {s[4]} C")
+        if torque != 0 or mode_at_start != MODE_AT_END:
+            print(f"  left by an earlier run that did not finish (expected torque 0, mode {MODE_AT_END})")
 
+        if args.closed is None and torque != 0:
+            print("Measuring by hand needs torque off: the gripper becomes free (it may open or close by itself).")
+            if ask("Type yes to turn the torque off: ") != "yes":
+                raise SystemExit("not confirmed; nothing written")
+            changed = True   # from here the cleanup also puts the mode back
+            e = gripper.write(TORQUE_ENABLE, 0)
+            if e:
+                raise SystemExit(e)
         if args.closed is None:
             closed, opened = measure_positions(gripper)
         else:
@@ -226,7 +246,7 @@ def main():
 
         print("\nwrites to the gripper (current -> new):")
         print(f"  torque enable          {gripper.read(TORQUE_ENABLE)} -> 0")
-        print(f"  operating mode         {mode_at_start} -> {MODE_CURRENT_POSITION} (current-based position; back to {mode_at_start} at the end)")
+        print(f"  operating mode         {mode_at_start} -> {MODE_CURRENT_POSITION} (current-based position; {MODE_AT_END} at the end)")
         print(f"  profile velocity       {gripper.read(PROFILE_VEL)} -> {PROFILE_VELOCITY} ({PROFILE_VELOCITY * 0.229:.1f} rpm)")
         print(f"  profile acceleration   {gripper.read(PROFILE_ACC)} -> {PROFILE_ACCELERATION}")
         print(f"  goal current           {gripper.read(GOAL_CURRENT)} -> {args.current} ({args.current * CURRENT_UNIT_MA:.0f} mA, force cap)")
@@ -326,8 +346,9 @@ def main():
     except Exception as e:   # e.g. termios.error when a USB adapter disconnects
         stop_reason = f"error: {e!r}"
     finally:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)   # a second Ctrl+C must not skip the cleanup
         if changed:
-            for item, value in ((TORQUE_ENABLE, 0), (OPERATING_MODE, mode_at_start)):
+            for item, value in ((TORQUE_ENABLE, 0), (OPERATING_MODE, MODE_AT_END)):
                 try:
                     e = gripper.write(item, value)
                 except Exception as ex:

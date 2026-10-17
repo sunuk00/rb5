@@ -372,5 +372,5 @@ python scripts/28_trigger_gripper.py --closed 3968 --open 2196 --current 150
 (22.9 rpm), profile acceleration 50, goal current, goal position = present, torque on. Then it holds
 until the trigger points within 5 % of the gripper position (catch, the needed value is shown). At the
 end (Ctrl+C or an automatic stop: hardware error, < 10 V, > 70 C, 3 failed gripper or trigger reads,
-any error such as a USB disconnect): torque off, the operating mode back to its start value (3), the
-log saved. The leader arm is only read. Log: `data/gripper/`.
+any error such as a USB disconnect, SIGTERM / SIGHUP): torque off, operating mode 3, the log saved.
+Torque on or mode 5 left by a run that did not finish is shown and turned off with the confirmed writes. The leader arm is only read. Log: `data/gripper/`.
