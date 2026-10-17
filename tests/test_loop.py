@@ -113,7 +113,39 @@ class ScriptModel:
         return np.array(self.leader.step()[1], dtype=float)
 
 
-def run(steps, s=None, q0=D, slow_at=None):
+class FakeWorker:
+    """GripperWorker stand-in: records set() values; its position follows the fraction at once.
+    stop_at: after that many set() calls it reports a stop (like 3 failed gripper reads)."""
+
+    def __init__(self, stop_at=None):
+        self.fracs, self.stop_at, self.t0 = [], stop_at, time.monotonic()
+        self.pending, self.row = [], None
+
+    def set(self, frac):
+        self.fracs.append(frac)
+        if self.stopped():
+            if len(self.fracs) == self.stop_at:
+                self.pending.append("gripper stopped: 3 failed gripper reads in a row")
+            return
+        pos = self.row["position"] if self.row and frac is None else round(1000 * (frac or 0.0))
+        self.row = {"t_s": time.monotonic() - self.t0, "open_frac": frac, "following": 1, "goal": pos,
+                    "position": pos, "current_mA": 0.0, "voltage_V": 11.0, "hardware_error": 0}
+
+    def stopped(self):
+        return self.stop_at is not None and len(self.fracs) >= self.stop_at
+
+    def is_alive(self):
+        return not self.stopped()
+
+    def latest(self):
+        return None if self.row is None else dict(self.row)
+
+    def events(self):
+        out, self.pending = self.pending, []
+        return out
+
+
+def run(steps, s=None, q0=D, slow_at=None, gripper=None, event=lambda m: None):
     """Run the loop on a script. Returns (loop, start pose, end pose, column getter, stop text)."""
     s = s or settings()
     model = RB5Model(OFFSET)
@@ -121,7 +153,7 @@ def run(steps, s=None, q0=D, slow_at=None):
     leader = ScriptLeader(steps, slow_at)
     p0 = robot.pose()
     loop = TeleopLoop(s, leader, ScriptModel(leader), robot, FakeReader(robot), model,
-                      event=lambda m: None, status=False, sleep=lambda t: None)
+                      event=event, status=False, sleep=lambda t: None, gripper=gripper)
     stop = None
     try:
         loop.run()
@@ -373,16 +405,32 @@ class TestLoop(unittest.TestCase):
         self.assertAlmostEqual(y[-1], 2 * tick, places=3)                     # a real two-tick turn passes
 
     def test_gripper_independent_of_clutch(self):
-        # trigger 1000 = released (open), 0 = pulled (closed)
-        steps = ([(0, [0, 0, 0], 0, 1000)] * 3 + [(0, [0, 0, 0], 0, 0)] * 3        # pulled while the clutch is released
-                 + [(1, [0, 0, 0], 0, 0)] * 3 + [(1, [0, 0, 0], 0, None)] * 2      # failed reads
-                 + [(1, [0, 0, 0], 0, 1000)] * 3)
-        _, _, _, col, _ = run(steps)
-        closed = col("grip_state_closed")
-        self.assertEqual(closed[0], 0)
-        self.assertEqual(closed[4], 1)              # closed while the clutch is released
-        self.assertEqual(closed[10], 1)             # kept on failed reads
-        self.assertEqual(closed[-1], 0)
+        # trigger 0 = released (closed), 1000 = fully pulled (open); right trigger here (the fake left tool has none)
+        steps = ([(0, [0, 0, 0], 0, 0)] * 3 + [(0, [0, 0, 0], 0, 1000)] * 3        # pulled while the clutch is released
+                 + [(1, [0, 0, 0], 0, 500)] * 3 + [(1, [0, 0, 0], 0, None)] * 2    # failed reads
+                 + [(1, [0, 0, 0], 0, 0)] * 3)
+        worker = FakeWorker()
+        loop, _, _, col, _ = run(steps, settings(gripper__trigger="right"), gripper=worker)
+        self.assertEqual(worker.fracs, [0.0] * 3 + [1.0] * 3 + [0.5] * 3 + [None] * 2 + [0.0] * 3)
+        self.assertEqual(list(col("trigger_raw")[:6]), [0] * 3 + [1000] * 3)
+        self.assertTrue(np.isnan(col("trigger_raw")[9]))
+        self.assertEqual(col("grip_position")[-1], 0.0)              # latest row of the gripper thread
+        self.assertEqual(col("grip_stopped")[-1], 0)
+
+    def test_gripper_stop_does_not_stop_the_arm(self):
+        steps = ARM + [(1, [1.0 * i, 0, 0], 0, 0) for i in range(1, 11)]
+        worker = FakeWorker(stop_at=3)
+        events = []
+        loop, p0, p1, col, stop = run(steps, settings(gripper__trigger="right"), gripper=worker, event=events.append)
+        self.assertEqual(stop, "script end")                         # the arm ran to the end
+        self.assertGreater(p1[0] - p0[0], 1.0)
+        self.assertEqual(col("grip_stopped")[-1], 1)
+        self.assertTrue(any("gripper stopped: 3 failed gripper reads in a row (the arm teleop continues)" in e
+                            for e in events), events)
+
+    def test_no_gripper_columns_blank(self):
+        _, _, _, col, _ = run(ARM)
+        self.assertTrue(np.all(np.isnan(col("grip_position"))))
 
     def test_measured_columns(self):
         steps = ARM + [(1, [1.0 * i, 0, 0], 0) for i in range(1, 11)]

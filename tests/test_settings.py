@@ -114,8 +114,12 @@ class TestSettings(unittest.TestCase):
         self.assert_problem(d, "J5 stop")
         d = raw(SIM); d["range"]["r_min_mm"] = d["range"]["r_max_mm"] + 1.0
         self.assert_problem(d, "r_min_mm")
-        d = raw(SIM); d["gripper"]["open_below"] = 0.7
-        self.assert_problem(d, "open_below")
+        d = raw(SIM); d["gripper"]["open_ticks"] = d["gripper"]["closed_ticks"] - 10
+        self.assert_problem(d, "at least 50 ticks apart")
+        d = raw(SIM); d["gripper"]["port"] = d["leader"]["port"]
+        self.assert_problem(d, "gripper.port is the leader arm's port")
+        d = raw(SIM); d["gripper"]["goal_current"] = 400
+        self.assert_problem(d, "goal_current")
         d = raw(SIM); d["servo"]["t1_s"] = 0.01
         self.assert_problem(d, "t1_s")
         d = raw(SIM); d["range"]["r_max_by_z"] = [[300.0, 700.0], [250.0, 750.0]]

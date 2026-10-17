@@ -46,6 +46,7 @@ CPU set the right cores or `null` (no pinning).
 
 ## 2. Before each run
 - [ ] Leader arm powered (12 V) and its USB cable connected (leader torque is not used).
+- [ ] Gripper: 12 V on the U2D2 Power Hub, U2D2 USB connected (or run with `--no-gripper`).
 - [ ] RB5 control box on; the tablet may stay connected (the teleop sets the mode itself).
 - [ ] **Real only:** the required items at the top of `docs/real_first_run_checklist.md` (collision
       detection ON, emergency stop in reach, a second person, the workspace clear).
@@ -55,18 +56,24 @@ CPU set the right cores or `null` (no pinning).
 conda activate rb5
 python -m teleop            # Simulation (configs/sim.yaml)
 python -m teleop --real     # REAL robot (configs/real.yaml); asks you to type REAL
+python -m teleop --no-gripper   # without the gripper (Simulation or --real)
 ```
 What happens:
 1. The settings are checked (unknown keys, ranges, relations, Real limits). Any problem: it does not start.
-2. Checks: latency_timer, leader arm ping (right arm joints, right handle, left handle), RB5 mode,
-   robot not moving, no controller errors, TCP offset (Real: equal to the expected value).
+2. Checks: latency_timer, leader arm ping (right arm joints, right handle, left handle), gripper (read
+   only: model, hardware error, >= 10 V, position inside closed / open), RB5 mode, robot not moving, no
+   controller errors, TCP offset (Real: equal to the expected value).
 3. Ready pose (173.650, 4.300, -119.566, 31.666, -87.544, 53.521) deg: TCP about r 450, z 152, tool
    down. The current / target joints and the change are shown; type `yes` to move (5 deg/s). Skipped
    when already there.
 4. Checks at the ready pose: DH model vs controller (<= 5 mm), inside the range, singularity and joint
    limit margins.
-5. Teleop until Ctrl+C. The log is saved as `data/teleop/teleop_<sim|real>_<time>.csv` with a copy of
-   the settings (`..._settings.yaml`). Summary of runs: `python scripts/23_trial_summary.py <logs>`; full report: `python scripts/24_run_report.py <log>`.
+5. Gripper: the writes are listed (mode 5, speed, force cap 0.50 A, goal = present position, torque
+   on); type `yes`. It moves in Simulation too. It holds still until the left trigger points at its
+   position (catch), then follows.
+6. Teleop until Ctrl+C. At the end the gripper torque goes off (mode 3): **put a held object down
+   first**. The log is saved as `data/teleop/teleop_<sim|real>_<time>.csv` with a copy of
+   the settings (`..._settings.yaml`) and the gripper thread log (`..._gripper.csv`). Summary of runs: `python scripts/23_trial_summary.py <logs>`; full report: `python scripts/24_run_report.py <log>`.
 
 ## 4. Controls
 | input | effect |
@@ -78,7 +85,8 @@ What happens:
 | **left** button held (with the right one) | rotate mode: radius and height stay; moving the hand left / right turns the RB5 base (J1), 100 mm = 30 deg (left = counterclockwise seen from above) |
 | right button released | the RB5 holds its pose; move the hand freely, press again to continue |
 | twist the handle | not used: the gripper turns with J1, RB5 J6 stays still |
-| trigger | gripper signal, logged only (gripper not connected) |
+| **left** trigger | gripper: released (0) = closed, fully pulled (1000) = fully open, in proportion; independent of the clutch |
+| right trigger | not used (logged when `gripper.trigger: right`) |
 
 Speeds: radial / vertical up to 250 mm/s, sideways (turning J1) up to 360 mm/s, joints J1 75 / others
 60 deg/s, acceleration 2.5 m/s^2 (smooth starts and stops). If the hand is faster, the robot keeps up to

@@ -5,8 +5,7 @@
 - GripCommand: open fraction (trigger / 1000) -> goal position, clipped to the measured range, with the
   catch (no jump at the start). Pure logic.
 - GripperWorker: a thread that owns the motor bus: writes the latest goal and reads the state at its own
-  50 Hz, so the caller (scripts/28, later the teleop loop) never waits for the gripper.
-- GripSignal: the old right-trigger signal the teleop still logs; replaced by the above in grip-3b.
+  50 Hz, so the caller (scripts/28, the teleop loop since grip-3b) never waits for the gripper.
 
 The motor runs in current-based position control (operating mode 5): it goes to the goal position, but
 its current (the gripping force) is capped by Goal Current. In mode 5 the motor's own position limits
@@ -304,45 +303,14 @@ class GripperWorker(threading.Thread):
             self.stop_reason = f"error: {e!r}"
             self._event(f"gripper stopped: {self.stop_reason}")
 
+    def csv_rows(self):
+        """rows as CSV values in the order of ROW_HEADER (blank for None)."""
+        fmt = lambda v: "" if v is None else f"{v:.4f}" if isinstance(v, float) else v   # noqa: E731
+        return [[fmt(r[k]) for k in self.ROW_HEADER] for r in self.rows]
+
     def finish(self):
         """Stop the thread (if started), then torque off and mode 3. Returns (torque, mode) read back."""
         self.stop_event.set()
         if self.is_alive():
             self.join(1.0)
         return self.motor.end_state()
-
-
-class GripSignal:
-    """Gripper closing from the tool trigger. The trigger reads 0 when pulled closed and trigger_full
-    (1000) when fully open / released (user, 2026-10-12), so grip_close = 1 - trigger / trigger_full:
-    pulled = closed, released = open. State closed above close_above, open below open_below, kept in
-    between. A failed read keeps the previous value (no drop), unlike the clutch. Independent of the
-    clutch."""
-
-    def __init__(self, g):
-        self.g = g
-        self.trigger = None        # last good raw trigger value
-        self.close = None          # 0 = open .. 1 = closed
-        self.closed = None         # True closed / False open (hysteresis)
-        self.fail_count = 0
-
-    def update(self, raw):
-        """Feed one tool read (raw value or None). Returns an event string or None."""
-        if raw is None:
-            self.fail_count += 1
-            if self.fail_count == self.g.fail_warn:
-                return f"gripper: {self.g.fail_warn} failed tool reads in a row, keeping the last value"
-            return None
-        self.fail_count = 0
-        self.trigger = (raw >> 16) & 0xFFFF
-        self.close = 1.0 - min(max(self.trigger / self.g.trigger_full, 0.0), 1.0)
-        previous = self.closed
-        if self.closed is None:
-            self.closed = self.close >= 0.5
-        elif self.close > self.g.close_above:
-            self.closed = True
-        elif self.close < self.g.open_below:
-            self.closed = False
-        if self.closed != previous:
-            return f"gripper {'CLOSED' if self.closed else 'OPEN'} (trigger {self.trigger})"
-        return None

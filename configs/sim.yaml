@@ -113,11 +113,20 @@ ready_pose:                     # 2026-10-16 (user): the pose the user set on th
   tolerance_deg: 0.05
   wrist_warning_deg: 90.0
 
-gripper:                        # same as Simulation: grip_close = 1 - trigger / trigger_full
-  trigger_full: 1000.0
-  close_above: 0.6
-  open_below: 0.4
-  fail_warn: 3
+gripper:                        # same as Simulation. MX-106T on its own U2D2 (grip-1 .. grip-3b, teleop/gripper.py)
+  enabled: true                 # the gripper moves in Simulation too; python -m teleop --no-gripper turns it off
+  port: /dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FT62AJAX-if00-port0   # gripper U2D2; same as scripts/config.py
+  trigger: left                 # left handle trigger (like the left button that turns J1)
+  trigger_full: 1000.0          # trigger 0 (released) = closed, 1000 (fully pulled) = fully open, in proportion
+  closed_ticks: 3968            # measured by hand (grip-2, docs/hardware.md)
+  open_ticks: 2196
+  goal_current: 150             # x 3.36 mA = 0.50 A force cap (grip-2, user: enough)
+  profile_velocity: 200         # x 0.229 rpm = 45.8 rpm, full stroke about 0.7 s
+  profile_acceleration: 100
+  catch_frac: 0.05              # follow once the trigger points within 5 % of the gripper position (or passes it)
+  min_voltage: 10.0             # below: warning only during the teleop (turning the torque off drops the object)
+  max_temperature: 70           # C; above: the gripper thread stops (the arm continues)
+  fail_stop: 3                  # failed gripper reads in a row: the gripper thread stops (the arm continues)
 
 logging:
   dir: data/teleop             # teleop runs only; the scripts write to data/

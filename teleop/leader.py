@@ -1,6 +1,6 @@
 """RB-Y1 leader arm: read-only joint and tool (handle) access, URDF FK, filter and clutch.
 
-The trigger -> gripper signal is in teleop/gripper.py.
+The trigger -> gripper (motor, thread) is in teleop/gripper.py.
 
 Moved from scripts/21_leader_rb5_position.py. Only ping and read instructions are sent to the leader
 arm. Protocol, addresses and conversions follow rby1-sdk (dynamixel_bus.h / .cpp, leader_arm.cpp):

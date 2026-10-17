@@ -8,6 +8,9 @@ passed in, so the tests can use fakes:
   rb5:     check_errors(), send_servo(xyz, rpy)
   reader:  latest() -> (tcp pose, joints [deg], age [s]); optional measured() -> encoder joints [deg]
            (logged with their DH-model TCP to see how the real arm follows the commands)
+  gripper: None (no gripper) or a started GripperWorker (teleop/gripper.py): set(open fraction),
+           latest() -> row dict, events(), is_alive(), t0. The loop never waits for it; a stopped gripper
+           thread does not stop the arm (user, grip-3).
 """
 import sys
 import time
@@ -15,13 +18,17 @@ import time
 import numpy as np
 
 from .kinematics import CylinderRange, wrap_deg
-from .gripper import GripSignal
 from .leader import Clutch, LeaderFilter
 from .mapping import Limits, Mapper, plan_step
 from .safety import Watch, joint_limit_margin, singular_distance
 
 STATUS_EVERY = 25
 CLEAR_LINE = "\r\x1b[2K"
+
+# trigger_raw: the trigger value (bits 16-31) of the gripper's handle (gripper.trigger), blank on a failed read.
+# grip_*: the latest gripper thread row (blank without a gripper); grip_age_ms = how old that row is.
+GRIP_COLUMNS = ["grip_open_frac", "grip_following", "grip_goal", "grip_position", "grip_current_mA", "grip_voltage_V",
+                "grip_hw_error", "grip_age_ms", "grip_stopped"]
 
 CSV_HEADER = (["t_s", "cycle_interval_ms", "button_raw", "clutch_engaged"]
               + [f"leader_q{i}_deg" for i in range(7)] + [f"leader_{a}_mm" for a in "xyz"]
@@ -34,7 +41,7 @@ CSV_HEADER = (["t_s", "cycle_interval_ms", "button_raw", "clutch_engaged"]
               + ["joint_limit_margin_pred_deg", "joint_limit_slow"]
               + ["yaw_desired_deg", "yaw_target_deg", "yaw_tcp_deg", "yaw_speed_limited", "yaw_range_limited",
                  "yaw_lead_limited", "yaw_lag_deg", "yaw_dropped_deg"]
-              + ["trigger_raw", "grip_close", "grip_state_closed", "tool_read_failed"]
+              + ["trigger_raw"] + GRIP_COLUMNS + ["tool_read_failed"]
               + [f"jnt_ang_{i}" for i in range(6)] + [f"meas_tcp_{a}" for a in "xyz"] + ["target_minus_meas_mm"]
               + [f"leader_used_{a}_mm" for a in "xyz"] + ["leader_j6_used_deg"]
               + ["left_button_raw", "left_mode_active", "accel_limited"])
@@ -42,8 +49,8 @@ CSV_HEADER = (["t_s", "cycle_interval_ms", "button_raw", "clutch_engaged"]
 
 def csv_row(t, interval, button_raw, engaged, leader_q, leader_p, desired, target, tcp, q, j5_pred, sh_pred,
             max_dq, flags, late, late_early, stale, state_age, t_leader, t_plan, t_send, t_work, send_interval,
-            el_pred, lag, dropped, jl_pred, yaw_desired, yaw_target, yaw_tcp, yaw_lag, dropped_yaw, grip, measured,
-            used_p, used_j6, left_raw, left_active):
+            el_pred, lag, dropped, jl_pred, yaw_desired, yaw_target, yaw_tcp, yaw_lag, dropped_yaw, trigger, grip,
+            measured, used_p, used_j6, left_raw, left_active):
     """One CSV row in the order of CSV_HEADER (times in s, written in ms where the header says ms)."""
     def f(v, fmt="{:.3f}"):
         return [fmt.format(x) for x in v]
@@ -63,8 +70,7 @@ def csv_row(t, interval, button_raw, engaged, leader_q, leader_p, desired, targe
             + ["" if yaw_desired is None else f"{yaw_desired:.3f}", f"{yaw_target:.3f}", f"{yaw_tcp:.3f}"]
             + [int(flags.get(k, False)) for k in ("yspeed", "yrange", "ylead")]
             + [f"{yaw_lag:.3f}", f"{dropped_yaw:.3f}"]
-            + ["" if grip.trigger is None else grip.trigger, "" if grip.close is None else f"{grip.close:.3f}",
-               "" if grip.closed is None else int(grip.closed), int(button_raw is None)]
+            + ["" if trigger is None else trigger] + grip + [int(button_raw is None)]
             + measured
             + ([f"{v:.3f}" for v in used_p] + [f"{used_j6:.3f}"] if used_p is not None else [""] * 4)
             + ["" if left_raw is None else left_raw, int(left_active), int(flags.get("accel", False))])
@@ -80,7 +86,8 @@ def print_event(msg):
 
 
 class TeleopLoop:
-    def __init__(self, s, leader, leader_model, rb5, reader, model, event=print_event, status=True, sleep=time.sleep):
+    def __init__(self, s, leader, leader_model, rb5, reader, model, event=print_event, status=True, sleep=time.sleep,
+                 gripper=None):
         self.s, self.leader, self.leader_model = s, leader, leader_model
         self.rb5, self.reader, self.model = rb5, reader, model
         self.event, self.status, self.sleep = event, status, sleep
@@ -88,7 +95,7 @@ class TeleopLoop:
         self.rows = []
         self.target = self.rpy = None          # what is being sent (for the normal stop)
         self.clutch = Clutch()
-        self.grip = GripSignal(s.gripper)
+        self.gripper = gripper
 
     def _measured_columns(self, q_meas, target):
         """Encoder joints, their TCP from the DH model (absolute about 2 mm off the controller, 17) and the
@@ -99,6 +106,29 @@ class TeleopLoop:
         return ([f"{v:.3f}" for v in q_meas] + [f"{v:.3f}" for v in p]
                 + [f"{np.linalg.norm(np.asarray(target) - p):.3f}"])
 
+    def _grip_columns(self):
+        """GRIP_COLUMNS values from the latest gripper thread row, and the row (None if none)."""
+        g = self.gripper.latest() if self.gripper is not None else None
+        if g is None:
+            return [""] * len(GRIP_COLUMNS), None
+        fmt = lambda v, f="{:.0f}": "" if v is None else f.format(v)   # noqa: E731
+        age = time.monotonic() - self.gripper.t0 - g["t_s"]
+        return ([fmt(g["open_frac"], "{:.3f}"), g["following"], g["goal"], fmt(g["position"]), fmt(g["current_mA"]),
+                 fmt(g["voltage_V"], "{:.1f}"), fmt(g["hardware_error"]), f"{age * 1000:.1f}",
+                 int(not self.gripper.is_alive())], g)
+
+    def _grip_text(self, g):
+        """Status line part: off / STOPPED / how far open the gripper is and its current."""
+        if self.gripper is None:
+            return "off"
+        if not self.gripper.is_alive():
+            return "STOPPED"
+        if g is None or g["position"] is None:
+            return "-"
+        gs = self.s.gripper
+        opened = 100.0 * (g["position"] - gs.closed_ticks) / (gs.open_ticks - gs.closed_ticks)
+        return f"{'' if g['following'] else 'catch '}open {opened:3.0f}% {abs(g['current_mA']):4.0f} mA"
+
     def _status_line(self, clutch, mapper, grip, tcp0, q, leader_fail_total, leader_reads):
         tool_rate = 100.0 * clutch.failures / max(clutch.reads, 1)
         leader_rate = 100.0 * leader_fail_total / max(leader_reads, 1)
@@ -107,8 +137,7 @@ class TeleopLoop:
             f"{(' ' + self.s.mapping.left_button.upper()) if mapper.left_active else ''}  "
             f"target-start {np.round(mapper.target - tcp0[:3], 1)} mm  yaw {mapper.yaw:6.1f}  "
             f"J5 {singular_distance(q[4]):5.1f}  shoulder {self.model.shoulder_margin(q):5.0f} mm  "
-            f"grip {'-' if grip.close is None else f'{grip.close:.2f}'}"
-            f"{'' if grip.closed is None else (' CLOSED' if grip.closed else ' OPEN')}  |  "
+            f"grip {self._grip_text(grip)}  |  "
             f"button fail {tool_rate:4.1f}%  leader fail {leader_rate:4.1f}%")
         sys.stdout.flush()
 
@@ -140,9 +169,11 @@ class TeleopLoop:
         self.target = mapper.target
         cyl = CylinderRange.from_settings(s.range)
         labels = self.labels()
-        clutch, grip = self.clutch, self.grip
+        clutch = self.clutch
         left = Clutch()   # left button, same debounce as the clutch (a held button must be released once)
         left_on = s.mapping.left_button != "off"
+        grip_left = s.gripper.trigger == "left"
+        read_left = left_on or grip_left   # leader.open(left_tool=...) pings the left tool in the same cases
         left_text = {"vertical": "vertical mode ON: x, y fixed, only z follows",
                      "rotate": "rotate mode ON: radius and z fixed, sideways hand motion turns J1"}
         leader_q = leader_p = None
@@ -176,11 +207,15 @@ class TeleopLoop:
                 leader_q, leader_p = q_l, self.leader_model.wrist_center_mm(q_l)
                 used_p, used_j6 = lf.update(leader_p, np.degrees(leader_q[6]))
             button_raw = self.leader.read_button_raw()
-            left_raw = self.leader.read_left_button_raw() if left_on else None
+            left_raw = self.leader.read_left_button_raw() if read_left else None
             t_leader = time.monotonic() - t_leader0
-            grip_event = grip.update(button_raw)   # independent of the clutch
-            if grip_event:
-                self.event(f"[{time.monotonic() - t_start:7.2f} s] {grip_event}")
+            trig_raw = left_raw if grip_left else button_raw   # gripper: independent of the clutch
+            trigger = None if trig_raw is None else (trig_raw >> 16) & 0xFFFF
+            if self.gripper is not None:
+                self.gripper.set(None if trigger is None else trigger / s.gripper.trigger_full)   # does not wait
+                for grip_event in self.gripper.events():
+                    self.event(f"[{time.monotonic() - t_start:7.2f} s] {grip_event}"
+                               + (" (the arm teleop continues)" if grip_event.startswith("gripper stopped") else ""))
 
             # 2. Clutch
             button, clutch_event = clutch.update(button_raw)
@@ -281,6 +316,7 @@ class TeleopLoop:
             send_interval = None if last_send is None else t_send0 - last_send
             last_send = t_send0
 
+            grip_cols, grip = self._grip_columns()
             self.rows.append(csv_row(
                 t=t_cycle - t_start, interval=interval, button_raw=button_raw, engaged=clutch.engaged,
                 leader_q=leader_q, leader_p=leader_p, desired=desired, target=mapper.target, tcp=tcp, q=q,
@@ -289,7 +325,8 @@ class TeleopLoop:
                 t_work=t_send_end - t_cycle, send_interval=send_interval, el_pred=el_pred, lag=lag,
                 dropped=0.0 if late else np.linalg.norm(dropped), jl_pred=jl_pred, yaw_desired=yaw_desired,
                 yaw_target=mapper.yaw, yaw_tcp=yaw_tcp, yaw_lag=yaw_lag,
-                dropped_yaw=abs(plan.dropped_yaw) if plan is not None and not late else 0.0, grip=grip,
+                dropped_yaw=abs(plan.dropped_yaw) if plan is not None and not late else 0.0, trigger=trigger,
+                grip=grip_cols,
                 measured=self._measured_columns(q_meas, mapper.target), used_p=used_p, used_j6=used_j6,
                 left_raw=left_raw, left_active=mapper.left_active))
 

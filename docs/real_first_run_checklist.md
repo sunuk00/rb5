@@ -12,6 +12,9 @@ on 2026-10-16). The first section is for every run; the rest are the open items 
       -160 .. 133 deg about the base z axis (the sides and the back of the RB5 too); cables free.
 - [ ] Nothing in the way of the ready-pose move (large wrist turns are warned).
 - [ ] Tablet connected; speed bar 0.1.
+- [ ] **Gripper mounted on the flange?** Then first: raise `range.z_min_mm`, set the tool mass and TCP
+      offset (controller settings: ask first). The teleop does not know whether it is mounted.
+- [ ] Gripper: 12 V supply on, fingers clear. At Ctrl+C its torque goes off: put a held object down first.
 - [ ] After the run: `python scripts/24_run_report.py <log>` (late cycles, limits, joint speeds vs caps).
 
 ## Controller and robot (ask before changing any controller setting, CLAUDE.md)

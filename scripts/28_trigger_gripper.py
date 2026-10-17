@@ -241,11 +241,8 @@ def main():
     if rows:
         OUT_DIR.mkdir(parents=True, exist_ok=True)
         path = OUT_DIR / f"trigger_gripper_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        fmt = lambda v: "" if v is None else f"{v:.4f}" if isinstance(v, float) else v
         with open(path, "w", newline="") as f:
-            w = csv.writer(f)
-            w.writerow(GripperWorker.ROW_HEADER)
-            w.writerows([[fmt(r[k]) for k in GripperWorker.ROW_HEADER] for r in rows])
+            csv.writer(f).writerows([GripperWorker.ROW_HEADER] + worker.csv_rows())
         good = [r for r in rows if r["position"] is not None]
         work = np.array([r["work_ms"] for r in rows])
         fracs = [r["open_frac"] for r in rows if r["open_frac"] is not None]

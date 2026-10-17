@@ -128,10 +128,19 @@ SCHEMA = {
         "wrist_warning_deg": _num(0.0, 360.0),
     },
     "gripper": {
+        "enabled": _bool(),
+        "port": _str(),
+        "trigger": _str(("left", "right")),
         "trigger_full": _num(1.0, 65535.0),
-        "close_above": _num(0.0, 1.0),
-        "open_below": _num(0.0, 1.0),
-        "fail_warn": _num(1, 100, integer=True),
+        "closed_ticks": _num(0, 4095, integer=True),
+        "open_ticks": _num(0, 4095, integer=True),
+        "goal_current": _num(1, 300, integer=True),          # x 3.36 mA; 300 = 1.0 A (more needs its own decision)
+        "profile_velocity": _num(1, 210, integer=True),      # x 0.229 rpm; the motor's velocity limit is 210
+        "profile_acceleration": _num(1, 1000, integer=True), # x 214.577 rev/min^2
+        "catch_frac": _num(0.01, 0.5),
+        "min_voltage": _num(9.5, 14.8),
+        "max_temperature": _num(30, 80, integer=True),
+        "fail_stop": _num(1, 20, integer=True),
     },
     "logging": {
         "dir": _str(),
@@ -140,6 +149,8 @@ SCHEMA = {
         "cpu_cores": _vec(2, 0, 1023, nullable=True),   # [first, last] CPU to pin the process to; null = no pinning
     },
 }
+
+GRIPPER_MIN_RANGE = 50   # ticks (4.4 deg), as scripts/28
 
 ROBOT_FILE = Path(__file__).resolve().parent.parent / "configs" / "robot.yaml"
 
@@ -258,8 +269,11 @@ def _check_relations(d, problems):
             if not r["r_min_mm"] < b <= r["r_max_mm"]:
                 problems.append(f"range.r_max_by_z: r {b} at height {a} must be above r_min_mm and at most r_max_mm")
     g = d["gripper"]
-    if g["open_below"] >= g["close_above"]:
-        problems.append(f"gripper: open_below ({g['open_below']}) must be below close_above ({g['close_above']})")
+    if abs(g["open_ticks"] - g["closed_ticks"]) < GRIPPER_MIN_RANGE:
+        problems.append(f"gripper: open_ticks ({g['open_ticks']}) and closed_ticks ({g['closed_ticks']}) must be at "
+                        f"least {GRIPPER_MIN_RANGE} ticks apart")
+    if g["port"] == d["leader"]["port"]:
+        problems.append("gripper.port is the leader arm's port")
     sv = d["servo"]
     if abs(sv["t1_s"] - sv["period_s"]) > 1e-9:
         problems.append(f"servo: t1_s ({sv['t1_s']}) must equal period_s ({sv['period_s']}) (06 / 10)")

@@ -103,6 +103,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
 - [2026-10-17 — grip-2: left trigger -> gripper alone (script 28), current-based position mode](#2026-10-17--grip-2-left-trigger---gripper-alone-script-28-current-based-position-mode)
 - [2026-10-17 — grip-3a: gripper code in teleop/gripper.py (Motor, GripCommand, GripperWorker thread)](#2026-10-17--grip-3a-gripper-code-in-teleopgripperpy-motor-gripcommand-gripperworker-thread)
+- [2026-10-17 — grip-3b: gripper in the teleop (left trigger, own thread, Simulation and Real)](#2026-10-17--grip-3b-gripper-in-the-teleop-left-trigger-own-thread-simulation-and-real)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -1904,6 +1905,34 @@ temperature / low voltage or warning only, an exception still cleans up, start-w
 the position moved, `end_state` clears the busy flag); all 72 tests pass. Script 28 not run on the
 hardware yet in this step.
 
+## 2026-10-17 — grip-3b: gripper in the teleop (left trigger, own thread, Simulation and Real)
+
+**Request (user):** move the gripper with `python -m teleop --real`. Implemented for both modes (decision 4
+of grip-3a: the gripper moves in Simulation too, `--no-gripper` turns it off).
+
+**Decision:**
+- Settings `gripper:` replaced (sim.yaml = real.yaml): `enabled`, `port` (U2D2 by serial), `trigger: left`,
+  `trigger_full`, `closed_ticks` 3968 / `open_ticks` 2196, `goal_current` 150 (max 300), `profile_velocity`
+  200 (max 210), `profile_acceleration` 100, `catch_frac`, `min_voltage`, `max_temperature`, `fail_stop`.
+  Checked: at least 50 ticks between open and closed, port not the leader's.
+- `__main__`: the gripper read-only checks run with the leader checks (refused before the RB5 moves); its
+  writes run after the ready pose, after a typed `yes`, right before the loop. At the end (also SIGTERM /
+  SIGHUP; a second Ctrl+C is ignored during the cleanup): RB5 stop first, then the gripper torque off and
+  mode 3, read back.
+- Loop: the trigger of `gripper.trigger`'s handle (left: the left tool read that already runs for the
+  rotate mode, so no extra leader read) -> `worker.set(trigger / 1000)`; never waits. Gripper events are
+  shown; a stopped gripper thread does not stop the arm. `GripSignal` removed.
+- CSV: `trigger_raw` (now the trigger value of the gripper's handle) + `grip_open_frac, grip_following,
+  grip_goal, grip_position, grip_current_mA, grip_voltage_V, grip_hw_error, grip_age_ms, grip_stopped`
+  (replace `grip_close`, `grip_state_closed`); the gripper thread's own rows in `<stem>_gripper.csv`.
+
+**Not done here:** the Simulation comparison with and without the gripper (script 24) and a run on the
+hardware. The gripper did not answer the read-only check at the time (no reply at any baud rate: supply
+off?).
+
+**Checked:** 73 tests pass (new: the trigger goes to the gripper thread independent of the clutch, a
+stopped gripper does not stop the arm, blank columns without a gripper, settings relations).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -1911,8 +1940,8 @@ hardware yet in this step.
   Skipped for now (simulator only); needed before any real RB-Y1 use. Measure its cost in the 50 Hz loop.
 
 - **real-1 follow-ups (2026-10-16):**
-  - **Gripper:** connect it to the leader trigger. The right trigger read 0 for whole runs (the left one
-    stayed at 0-2), and the closing direction is not confirmed. Log the gripper state with the demonstrations.
+  - **Gripper:** connected in grip-3b (left trigger, released = closed). Log the gripper state with the
+    demonstrations.
   - **Before mounting any tool:**
     - Raise `range.z_min_mm` (now -50 because nothing is mounted): tool tip height + margin.
     - Set the tool mass and the lab's TCP offset (controller settings: ask first).
@@ -1931,6 +1960,6 @@ hardware yet in this step.
   - **Optional, when the operator wants more speed:** sideways 400 mm/s, radial / vertical 300 mm/s.
     Each raise is a Real limit change and needs its own decision.
   - **Recording rate 50 Hz vs 30 Hz** and the action definition: see the 2026-10-17 entries.
-  - **Gripper (after grip-3a):** supply 12 V (10.2 V while gripping); return delay 500 us -> 0 (motor
-    setting, ask first); grip-3b: `GripperWorker` in the teleop with the left trigger (released = closed),
-    replacing `GripSignal`; Sim run with and without the gripper compared with script 24.
+  - **Gripper (after grip-3b):** supply 12 V (10.2 V while gripping); return delay 500 us -> 0 (motor
+    setting, ask first); first teleop runs with the gripper: loop timing with and without it (script 24);
+    when the gripper is mounted on the flange: z_min, tool mass, TCP offset (ask first).

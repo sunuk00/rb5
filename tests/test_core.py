@@ -1,4 +1,4 @@
-"""Tests for teleop.kinematics, teleop.safety, teleop.mapping and teleop.leader (no hardware).
+"""Tests for teleop.kinematics, teleop.safety, teleop.mapping and teleop.leader (no hardware; the gripper: test_gripper).
 Run: python -m unittest discover tests"""
 import sys
 import unittest
@@ -11,7 +11,6 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 from teleop.kinematics import CylinderRange, RB5Model, rot_zyx, tcp_offset_from, wrap_deg, zyx_from_rot  # noqa: E402
-from teleop.gripper import GripSignal  # noqa: E402
 from teleop.leader import Clutch, LeaderFilter, LeaderModel  # noqa: E402
 from teleop.mapping import Limits, Mapper, clip_step, plan_step  # noqa: E402
 from teleop.safety import Watch, joint_limit_margin, ramp_scale, singular_distance  # noqa: E402
@@ -139,22 +138,6 @@ class TestLeader(unittest.TestCase):
         c.update(None); c.update(None)
         self.assertTrue(c.engaged)
         self.assertIn("released", c.update(None)[1])
-
-    def test_grip_close_direction_and_hysteresis(self):
-        g = GripSignal(SIM.gripper)
-        out = []
-        # trigger: 1000 released (open) .. 0 pulled (closed); grip_close = 1 - trigger / 1000
-        for c in [0, 300, 650, 500, 450, 350, None, None, None, 900, 380]:
-            g.update(None if c is None else (1000 - c) << 16)
-            out.append((g.close, g.closed))
-        self.assertEqual(out[0], (0.0, False))                   # released trigger (1000) = open
-        self.assertEqual(out[2][1], True)                        # 0.65 > 0.6: closed
-        self.assertEqual(out[4][1], True)                        # 0.45 kept
-        self.assertEqual(out[5][1], False)                       # 0.35 < 0.4: open
-        self.assertEqual(out[8], out[5])                         # failed reads keep the value
-        self.assertEqual(g.update(None), None)
-        self.assertEqual(out[10], (0.38, False))
-
 
 
 class TestPlanStep(unittest.TestCase):
