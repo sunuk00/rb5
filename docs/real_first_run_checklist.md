@@ -30,6 +30,8 @@ on 2026-10-16). The first section is for every run; the rest are the open items 
 - [ ] **Base +x direction**: confirm with `scripts/22_base_axis_check.py` and a tape (manual
       Appendix F: +Y toward the cable connector, so +X is 90 deg clockwise from it seen from above).
 - [x] **Ready pose**: 2026-10-16, the user's pose moved out to r 450 (decisions), margins checked.
+      2026-10-18: turned by J1 to azimuth -83 deg (workspace at the side); same margins.
+- [ ] The new side workspace (around azimuth -83 deg) clear; azimuth range -160 .. 133 leaves 77 deg on the minus side.
 - [ ] **z lower bound** (`range.z_min_mm`): -50 mm because **nothing is mounted** on the flange (the TCP
       is 187 mm below the flange center; the flange center is about 140 mm above the table at the floor).
       **Raise it before mounting any tool**: tool tip height + margin (z 0 = base bottom).

@@ -108,6 +108,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 **Teleop tuning after the gripper**
 - [2026-10-17 — Inner radius by height: r_min 350 / 300 / 250 at z 0 / 50 / 100](#2026-10-17--inner-radius-by-height-r_min-350--300--250-at-z-0--50--100)
 - [2026-10-17 — Gripper: longer reply timeout on its port (thread switching); a bit faster (210 / 200)](#2026-10-17--gripper-longer-reply-timeout-on-its-port-thread-switching-a-bit-faster-210--200)
+- [2026-10-18 — Ready pose turned to azimuth -83 deg (workspace moved to the side)](#2026-10-18--ready-pose-turned-to-azimuth--83-deg-workspace-moved-to-the-side)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -2012,6 +2013,31 @@ so the acceleration setting limited the start.
 
 **Late cycles in 143135:** 9 (5 single, 4 within 63.45-63.65 s while planning took 9-11 ms instead of
 about 5 and the gripper thread slowed too); not at the range limit; cause not found. Watch next runs.
+
+## 2026-10-18 — Ready pose turned to azimuth -83 deg (workspace moved to the side)
+
+**Request (user):** the workspace moved to the side; the home (teleop ready pose) should be where the robot
+is now. Read-only state: jnt_ref (81.740, -10.618, -148.051, 74.914, -87.178, -303.121), DH TCP r 352,
+z -52, azimuth -83.3, the same wrist shape as the 2026-10-16 ready pose.
+
+**Why not that pose as is:** it is at the inner / floor corner of the range (2 mm to r_min, tcp_ref z
+-49.9 with the floor at -50: the start check would pass by 0.1 mm), J3 limit margin 16.9 deg (slowdown below
+15), and the first hand motion down or in would be clamped (the 2026-10-16 reason to move the pose out).
+
+**Decision (user, option A):** the 2026-10-16 ready pose turned by J1 only to azimuth -83.25 deg:
+(85.116, 4.300, -119.566, 31.666, -87.544, 53.521) in sim.yaml and real.yaml. The tool turns with J1
+(follow_base), so the margins are the same: J5 87.5, shoulder 336 mm, elbow 60.4, J3 limit 45.4 deg;
+DH TCP (52.9, -446.9, 152.3), r 450, z 152, 200 mm to r_min and the floor. From the current pose the move
+is about 9 s, largest change J4 -43 deg, no wrist warning, start checks pass (computed). J6: the move
+picks the nearest equivalent, so from -303 it goes to -306.5 (the wrist stays one turn wound as now).
+
+**Rejected:** option B (r 420, z 60 at the same azimuth: closer to the working height but less margin,
+J3 33 deg); the current pose itself (above).
+
+**Open:** the azimuth range (-160 .. 133, absolute) was set for the old workspace; from the new ready pose
+there are 77 deg to the minus side and 216 to the plus side. Recentre it if the side workspace needs more
+room on the minus side (Real limit change: its own decision). The ready pose is the start of every
+demonstration: fix it before recording (camera framing too).
 
 ## PENDING
 

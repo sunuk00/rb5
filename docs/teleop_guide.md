@@ -63,8 +63,8 @@ What happens:
 2. Checks: latency_timer, leader arm ping (right arm joints, right handle, left handle), gripper (read
    only: model, hardware error, >= 10 V, position inside closed / open), RB5 mode, robot not moving, no
    controller errors, TCP offset (Real: equal to the expected value).
-3. Ready pose (173.650, 4.300, -119.566, 31.666, -87.544, 53.521) deg: TCP about r 450, z 152, tool
-   down. The current / target joints and the change are shown; type `yes` to move (5 deg/s). Skipped
+3. Ready pose (85.116, 4.300, -119.566, 31.666, -87.544, 53.521) deg: TCP about r 450, z 152, azimuth
+   -83 deg (the workspace is at the robot's side since 2026-10-18), tool down. The current / target joints and the change are shown; type `yes` to move (5 deg/s). Skipped
    when already there.
 4. Checks at the ready pose: DH model vs controller (<= 5 mm), inside the range, singularity and joint
    limit margins.
