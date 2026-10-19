@@ -99,6 +99,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-17 — What jnt_ref is: the controller's joint reference, 60 ms behind the sent target](#2026-10-17--what-jnt_ref-is-the-controllers-joint-reference-60-ms-behind-the-sent-target)
 - [2026-10-17 — Open (step 3): demonstration recording rate 50 Hz vs 30 Hz](#2026-10-17--open-step-3-demonstration-recording-rate-50-hz-vs-30-hz)
 - [2026-10-19 — rec-1: demonstration format (30 Hz; action x, y, z, gripper; state 6 joints + gripper; keyboard episodes)](#2026-10-19--rec-1-demonstration-format-30-hz-action-x-y-z-gripper-state-6-joints--gripper-keyboard-episodes)
+- [2026-10-19 — rec-2: separate conda env lerobot (LeRobot 0.6.1, Python 3.12); dummy dataset with the rec-1 format](#2026-10-19--rec-2-separate-conda-env-lerobot-lerobot-061-python-312-dummy-dataset-with-the-rec-1-format)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -2194,6 +2195,29 @@ dataset rate and contents can be changed later without recording again.
 replay in Simulation); CPU, disk, USB and loop timing with two cameras + teleop + gripper (after the
 D405 is mounted). Real demonstrations start after the D405 is mounted: the camera set must not change
 inside a dataset. The `h` home move is motion code: its own plan and approval in rec-3.
+
+## 2026-10-19 — rec-2: separate conda env lerobot (LeRobot 0.6.1, Python 3.12); dummy dataset with the rec-1 format
+
+**Decision:** LeRobot lives in its own conda env `lerobot` (`environment_lerobot.yml`): Python 3.12,
+`lerobot[training,intelrealsense,dataset-viz]==0.6.1`, ffmpeg 7.1.1 from conda-forge. The teleop stays
+in `rb5` and only writes raw files; the converter (rec-4) and training run in `lerobot`.
+
+**Reason:** LeRobot 0.6 needs Python >= 3.12 (rb5 is 3.10) and pins torch, numpy and pyrealsense2
+(2.56.5; rb5 has 2.58.4). Keeping the teleop free of these avoids changing a tested real-time loop.
+rby1-lerobot needs `lerobot>=0.4`; we do not use its plugins (own teleop), only its pattern.
+
+**Rejected:** LeRobot 0.4.x on Python 3.10 inside rb5 (older API; the newest dataset format and tools
+are in 0.6); recording through `lerobot-record` with a robot plugin (decided earlier: our own loop).
+
+**Checked (script 29, 2026-10-19):**
+- Dummy dataset, 2 episodes x 90 frames + 1 discarded: read back 2 episodes / 180 frames, fps 30; state
+  and action exact (error 0), images through AV1 video mean abs error 0.0035; task text kept.
+- ACT action chunk (delta_timestamps, 100 steps) 10 frames before an episode end: shape (100, 4), 90
+  padded steps, as expected.
+- Saving an episode (video encoding of 2 cameras) took about 0.3x the episode length on the CPU.
+- `lerobot-find-cameras realsense`: D435 943222070221 found (640x480 rgb8 30 fps default, USB 3.2). The
+  D405 was not connected (being mounted).
+- CUDA available in the env (torch 2.11.0+cu130).
 
 ## PENDING
 

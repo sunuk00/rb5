@@ -1,0 +1,16 @@
+# Conda environment `lerobot`: LeRobot datasets, cameras through LeRobot, ACT training (rec-2 onwards).
+# Separate from `rb5` (teleop): LeRobot 0.6 needs Python 3.12 and pins its own torch / numpy / pyrealsense2.
+# Create:  conda env create -f environment_lerobot.yml   then   conda activate lerobot
+# Versions installed on the lab PC on 2026-10-19. torch 2.11.0+cu130 comes with lerobot from PyPI
+# (CUDA 13.0 runtime; the 595 driver supports CUDA 13.2).
+# Run LeRobot commands with the env activated (or `conda run -n lerobot ...`) so that its ffmpeg 7.1
+# comes first on PATH; otherwise the system ffmpeg 6.1 is found.
+name: lerobot
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - ffmpeg=7.1.1                # video encoding (libsvtav1 = LeRobot's default AV1 encoder)
+  - pip
+  - pip:
+      - lerobot[training,intelrealsense,dataset-viz]==0.6.1   # pulls torch 2.11.0, pyrealsense2 2.56.5, rerun-sdk

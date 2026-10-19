@@ -51,6 +51,7 @@ default, Real with `--real` and typed confirmation; **leader** = writes torque t
 | 26 | `26_jnt_ref_check.py` | What jnt_ref is: IK of the sent target vs jnt_ref vs jnt_ang, delays, model-free Cartesian check | - (log files only) | tool |
 | 27 | `27_gripper_scan.py` | Read-only scan of the gripper bus (MX-106T on its U2D2): protocol, baud, model, firmware, settings, read time (grip-1) | - (gripper motor only) | tool |
 | 28 | `28_trigger_gripper.py` | Leader trigger (left by default) -> gripper alone (no RB5): released 0 closed, pulled 1000 open, catch at start, current-based position mode with a low force cap (grip-2; code in `teleop/gripper.py`, gripper thread, since grip-3a) | gripper (writes), leader arm (read only) | test |
+| 29 | `29_lerobot_dummy_dataset.py` | Dummy LeRobotDataset with the rec-1 format: write, discard, read back, ACT action chunk (env `lerobot`, rec-2) | - | test |
 
 ## Usage per script
 
@@ -374,3 +375,16 @@ until the trigger points within 5 % of the gripper position (catch, the needed v
 end (Ctrl+C or an automatic stop: hardware error, < 10 V, > 70 C, 3 failed gripper or trigger reads,
 any error such as a USB disconnect, SIGTERM / SIGHUP): torque off, operating mode 3, the log saved.
 Torque on or mode 5 left by a run that did not finish is shown and turned off with the confirmed writes. The leader arm is only read. Log: `data/gripper/`.
+
+### 29 dummy LeRobot dataset
+Env `lerobot` (not `rb5`): `conda activate lerobot`.
+```bash
+python scripts/29_lerobot_dummy_dataset.py               # 2 episodes x 3 s
+python scripts/29_lerobot_dummy_dataset.py --overwrite --episodes 3 --seconds 10
+lerobot-dataset-viz --repo-id local/dummy_rec1 --root data/lerobot/dummy_rec1 --episode-index 0
+```
+Writes a LeRobotDataset with the rec-1 format (30 fps, state 7 = J1..J6 + gripper, action 4 = x, y, z +
+gripper, `front` / `wrist` 480x640 video) from synthetic values to `data/lerobot/dummy_rec1`, discards
+one more episode (clear_episode_buffer), reads it back and compares state, action and images with what
+was written, and loads an ACT action chunk (100 steps, padded at the episode end). Prints OK or the
+problems. No robot, no cameras.
