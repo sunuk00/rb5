@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
-from teleop.episodes import EpisodeRecorder, KeyReader, parse_keys  # noqa: E402
+from teleop.episodes import EpisodeRecorder, KeyReader, Speaker, parse_keys  # noqa: E402
 from test_loop import ARM, IX, run  # noqa: E402
 
 Q = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
@@ -107,8 +107,9 @@ class TestEpisodeRecorder(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.keys, self.cams, self.clock = FakeKeys(), FakeCameras(), Clock()
+        self.said = []
         self.rec = EpisodeRecorder(Path(self.tmp.name) / "s", "pick", 120.0, 0.0, self.keys, self.cams,
-                                   clock=self.clock)
+                                   clock=self.clock, say=self.said.append)
 
     def step(self, *keys, dt=0.02):
         self.clock.t += dt
@@ -200,6 +201,42 @@ class TestEpisodeRecorder(unittest.TestCase):
         events, _ = self.step("next")
         self.assertFalse(self.rec.recording)
         self.assertIn("camera problem", events[-1])
+
+    def test_spoken_messages(self):
+        self.step("next")
+        self.step("next")
+        self.step("rerecord")
+        self.step("next")
+        self.step(dt=120.0)
+        self.step("next")
+        self.cams.replies.append(("error", "front: USB"))
+        self.step()
+        self.assertEqual(self.said, ["Recording episode 0", "Episode saved", "Episode discarded", "Recording episode 0",
+                                     "Time limit, episode saved", "Recording episode 1", "Camera error",
+                                     "Episode discarded"])
+
+
+class TestSpeaker(unittest.TestCase):
+    def test_runs_the_command_with_the_text(self):
+        import os
+        import stat
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "said.txt"
+            fake = Path(tmp) / "fake-say"
+            fake.write_text(f"#!/bin/sh\necho \"$@\" >> {out}\n")
+            fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+            sp = Speaker(True, command=str(fake))
+            self.assertTrue(sp.enabled)
+            sp.say("Episode saved")
+            sp.wait()
+            self.assertEqual(out.read_text().splitlines(), ["-C", "Episode saved"])
+            self.assertTrue(os.access(fake, os.X_OK))
+
+    def test_missing_command_disables(self):
+        sp = Speaker(True, command="no-such-command-xyz")
+        self.assertFalse(sp.enabled)
+        sp.say("x")
+        sp.wait()
 
 
 class TestLoopWithRecorder(unittest.TestCase):

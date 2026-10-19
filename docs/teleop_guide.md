@@ -126,6 +126,8 @@ python -m teleop --record --no-cameras                      # robot data only (t
 - Ctrl+C stops as always; an episode being recorded is discarded. A camera error discards the episode
   being recorded and blocks new ones (restart the teleop).
 - Status line: `REC <kept> <time> s` or `RESET (kept <n>)`.
+- Spoken messages (`record.sounds`, spd-say): "Recording episode N", "Episode saved", "Time limit, episode
+  saved", "Episode discarded", "Camera error", "Stop recording".
 - Files: `data/demos/<sim|real>_<time>/`: `teleop.csv` (column `episode` = attempt number while
   recording), `gripper.csv`, `settings.yaml`, `episodes.json` (every attempt: kept / discarded, times,
   start pose, camera frame counts), `episode_<attempt>/cam_front|cam_wrist/*.jpg` + `cam_*.csv`.

@@ -157,6 +157,7 @@ record:                         # demonstrations: python -m teleop --record [--t
   front_serial: "943222070221"  # D435, fixed above the workspace
   wrist_serial: "130322273474"  # D405, on the gripper body
   jpeg_quality: 95
+  sounds: true                  # spoken "Recording episode 3", "Episode saved", ... (spd-say, as LeRobot)
 
 runtime:
   cpu_cores: [0, 11]            # pin to the performance cores (i7-13700H cpu0-11): planning p99 5-6 ms instead of

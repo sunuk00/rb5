@@ -313,9 +313,13 @@ def main():
     # 6. Teleop loop
     recorder = keys = None
     if args.record:
-        from .episodes import EpisodeRecorder, KeyReader
+        from .episodes import EpisodeRecorder, KeyReader, Speaker
         keys = KeyReader()
-        recorder = EpisodeRecorder(session, task, s.record.episode_time_s, s.record.reset_time_s, keys, cameras)
+        speaker = Speaker(s.record.sounds)
+        if s.record.sounds and not speaker.enabled:
+            print("Sounds: spd-say not found (sudo apt install speech-dispatcher); no spoken messages")
+        recorder = EpisodeRecorder(session, task, s.record.episode_time_s, s.record.reset_time_s, keys, cameras,
+                                   say=speaker.say)
         print(f"RECORD: starts in the RESET phase. Keys here: -> or n = start / end and keep the episode, "
               f"<- or r = discard, q or Esc = end the session. Episodes end and are kept after "
               f"{s.record.episode_time_s:.0f} s.\n")
@@ -354,6 +358,7 @@ def main():
         if recorder is not None:
             for e in recorder.finish("teleop stopped while recording"):
                 print_event(e)
+            speaker.say("Stop recording")
         close_ports()
 
     # 7. Log
@@ -374,6 +379,7 @@ def main():
         kept = [a for a in recorder.attempts if a["status"] == "kept"]
         print(f"Episodes: {len(kept)} kept, {len(recorder.attempts) - len(kept)} discarded "
               f"(session {session.relative_to(ROOT)}, episodes.json)")
+        speaker.wait()
 
 
 if __name__ == "__main__":

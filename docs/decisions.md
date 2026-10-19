@@ -102,6 +102,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-19 — rec-2: separate conda env lerobot (LeRobot 0.6.1, Python 3.12); dummy dataset with the rec-1 format](#2026-10-19--rec-2-separate-conda-env-lerobot-lerobot-061-python-312-dummy-dataset-with-the-rec-1-format)
 - [2026-10-19 — rec-3a: camera recorder in its own process (JPEG per frame + time CSV)](#2026-10-19--rec-3a-camera-recorder-in-its-own-process-jpeg-per-frame--time-csv)
 - [2026-10-19 — rec-3b: --record in the teleop (LeRobot keys, sessions, episodes.json, 120 s limit)](#2026-10-19--rec-3b---record-in-the-teleop-lerobot-keys-sessions-episodesjson-120-s-limit)
+- [2026-10-19 — rec-3c: spoken messages while recording (spd-say, as LeRobot)](#2026-10-19--rec-3c-spoken-messages-while-recording-spd-say-as-lerobot)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -2281,6 +2282,17 @@ loses the robot data of that session (episodes.json and the camera files are on 
 camera error, quit; loop: `episode` column, q ends the loop). Loop timing without the robot (the real
 loop with the fake leader / robot of the tests, real 50 Hz sleep, 60 s, 3 episodes kept): without
 cameras late 0, interval p99 20.16 ms; with both cameras recording late 0, interval p99 20.14 ms.
+
+## 2026-10-19 — rec-3c: spoken messages while recording (spd-say, as LeRobot)
+
+**Decision:** `record.sounds: true` (Sim and Real): `teleop/episodes.py` `Speaker` speaks "Recording
+episode N", "Episode saved", "Time limit, episode saved", "Episode discarded", "Camera error" and, at the
+end, "Stop recording" with `spd-say` (installed on this PC), in its own thread; a new message cancels one
+still playing (`spd-say -C`). Without spd-say: a note at start, no sound.
+
+**Reason:** LeRobot's lerobot-record speaks the same way (`log_say` -> `spd-say` on Linux); the
+operator's eyes stay on the robot. A camera error is the message that matters most. The loop only puts
+text in a queue.
 
 ## PENDING
 

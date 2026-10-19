@@ -15,11 +15,16 @@ Files in the session folder (data/demos/<mode>_<time>/):
     episode_<attempt>/cam_*      camera files (teleop/cameras.py); deleted for a discarded attempt
     teleop.csv                   the loop CSV; column `episode` = attempt number while recording, else blank
 Attempt numbers count every start (kept or not); the kept ones in order make the dataset.
+
+Sounds (record.sounds, rec-3c): spoken messages as LeRobot's (spd-say on Linux), so the operator does not
+have to look at the terminal: "Recording episode 3", "Episode saved", "Episode discarded", "Camera error".
 """
 import json
 import os
 import queue
 import select
+import shutil
+import subprocess
 import sys
 import termios
 import threading
@@ -98,6 +103,38 @@ class KeyReader:
             self.old = None
 
 
+class Speaker:
+    """Speaks short messages with spd-say in its own thread (the loop only puts the text in a queue).
+    enabled is False when spd-say is not installed; say() then does nothing."""
+
+    def __init__(self, enabled=True, command="spd-say"):
+        self.cmd = shutil.which(command) if enabled else None
+        self.enabled = self.cmd is not None
+        self.q = queue.Queue()
+        if self.enabled:
+            threading.Thread(target=self._run, name="speaker", daemon=True).start()
+
+    def say(self, text):
+        if self.enabled:
+            self.q.put(text)
+
+    def wait(self, timeout=2.0):
+        """Wait until the queued messages were handed to spd-say (before the program exits)."""
+        end = time.monotonic() + timeout
+        while self.enabled and self.q.unfinished_tasks and time.monotonic() < end:
+            time.sleep(0.02)
+
+    def _run(self):
+        while True:
+            text = self.q.get()
+            try:   # spd-say returns at once; the speech daemon plays it. -C cancels a message still playing
+                subprocess.run([self.cmd, "-C"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+                subprocess.run([self.cmd, text], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+            except (OSError, subprocess.SubprocessError):
+                pass
+            self.q.task_done()
+
+
 class EpisodeRecorder:
     """Recording / reset phases. The loop calls cycle() once per cycle; nothing here waits.
 
@@ -105,10 +142,11 @@ class EpisodeRecorder:
     cameras: CameraRecorder or None (robot data only)
     """
 
-    def __init__(self, folder, task, episode_time_s, reset_time_s, keys, cameras=None, clock=time.monotonic):
+    def __init__(self, folder, task, episode_time_s, reset_time_s, keys, cameras=None, clock=time.monotonic,
+                 say=lambda text: None):
         self.folder, self.task = Path(folder), task
         self.episode_time_s, self.reset_time_s = episode_time_s, reset_time_s
-        self.keys, self.cameras, self.clock = keys, cameras, clock
+        self.keys, self.cameras, self.clock, self.say = keys, cameras, clock, say
         self.folder.mkdir(parents=True, exist_ok=True)
         self.attempts = []          # dicts, written to episodes.json
         self.current = None         # attempt being recorded
@@ -160,6 +198,7 @@ class EpisodeRecorder:
                         self.cameras.delete_episode(self.folder / a["dir"])
                     self._write()
                     events.append(f"episode attempt {a['attempt']} discarded; kept {self.kept()}")
+                    self.say("Episode discarded")
                 else:
                     events.append("<-: nothing to discard")
             elif key == "quit":
@@ -200,6 +239,7 @@ class EpisodeRecorder:
         if self.cameras is not None:
             self.cameras.start_episode(self.folder / a["dir"])
         self._write()
+        self.say(f"Recording episode {self.kept()}")
         return f"episode {self.kept()} RECORDING (attempt {n}): -> ends and keeps, <- discards, q quits"
 
     def _end(self, now, status, reason):
@@ -212,6 +252,8 @@ class EpisodeRecorder:
             self.pending_stops += 1
         self._write()
         took = now - a["t_start"]
+        self.say(("Time limit, episode saved" if reason.startswith("time limit") else "Episode saved")
+                 if status == "kept" else "Episode discarded")
         if status == "kept":
             return (f"episode {self.kept() - 1} KEPT ({took:.1f} s, {reason}); reset: place the objects, move to a "
                     f"start pose, then ->  (<- discards it)")
@@ -231,6 +273,7 @@ class EpisodeRecorder:
                     return []
         elif msg[0] == "error":
             self.camera_problem = msg[1]
+            self.say("Camera error")
             return [f"CAMERA ERROR: {msg[1]} (recording is not possible until the cameras work again)"]
         return []
 

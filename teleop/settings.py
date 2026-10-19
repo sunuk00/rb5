@@ -159,6 +159,7 @@ SCHEMA = {
         "front_serial": _str(),                       # D435 above the workspace
         "wrist_serial": _str(),                       # D405 on the gripper body
         "jpeg_quality": _num(50, 100, integer=True),
+        "sounds": _bool(),                            # spoken messages (spd-say), as LeRobot
     },
     "runtime": {
         "cpu_cores": _vec(2, 0, 1023, nullable=True),   # [first, last] CPU to pin the process to; null = no pinning
