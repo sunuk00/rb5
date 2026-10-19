@@ -61,8 +61,8 @@ TRIGGER_FULL = 1000.0          # trigger 0 = closed, 1000 = fully open
 GOAL_DEADBAND = 2              # ticks: write the goal only when it changes by this much
 PROFILE_VELOCITY = 210         # x 0.229 rpm = 48.1 rpm = the motor's Velocity Limit (same as configs/*.yaml; was 200, 100)
 PROFILE_ACCELERATION = 200     # x 214.577 rev/min^2: 0 -> 48 rpm in about 0.07 s (same as configs/*.yaml; was 100, 50)
-CURRENT_DEFAULT = 150          # x 3.36 mA = 0.50 A (stall 5.2 A at 12 V). 100 (0.34 A): grip a little weak and the cap
-                               # slowed the closing (run 102033: current at the cap while moving)
+CURRENT_DEFAULT = 200          # x 3.36 mA = 0.67 A (stall 5.2 A at 12 V), same as configs/*.yaml (2026-10-19; was 150, 100).
+                               # It also caps the acceleration: at 150 the start was at the cap (teleop 084105)
 CURRENT_MAX = 300              # 1.0 A: more needs its own decision
 MIN_VOLTAGE = 10.0             # e-Manual operating range 10.0-14.8 V
 MAX_TEMPERATURE = 70           # C (motor shutdown at 80)

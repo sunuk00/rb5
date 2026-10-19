@@ -109,6 +109,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-17 — Inner radius by height: r_min 350 / 300 / 250 at z 0 / 50 / 100](#2026-10-17--inner-radius-by-height-r_min-350--300--250-at-z-0--50--100)
 - [2026-10-17 — Gripper: longer reply timeout on its port (thread switching); a bit faster (210 / 200)](#2026-10-17--gripper-longer-reply-timeout-on-its-port-thread-switching-a-bit-faster-210--200)
 - [2026-10-18 — Ready pose turned to azimuth -83 deg (workspace moved to the side)](#2026-10-18--ready-pose-turned-to-azimuth--83-deg-workspace-moved-to-the-side)
+- [2026-10-19 — Gripper Goal Current 150 -> 200 (faster start; grip force +33 %)](#2026-10-19--gripper-goal-current-150---200-faster-start-grip-force-33-)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -2038,6 +2039,20 @@ J3 33 deg); the current pose itself (above).
 there are 77 deg to the minus side and 216 to the plus side. Recentre it if the side workspace needs more
 room on the minus side (Real limit change: its own decision). The ready pose is the start of every
 demonstration: fix it before recording (camera framing too).
+
+## 2026-10-19 — Gripper Goal Current 150 -> 200 (faster start; grip force +33 %)
+
+**Analysis (Real 20261019_084105, gripper only; 20261017_144815):** trigger -> gripper starts moving
+about 40 ms (loop sampling 0-20 ms, leader read about 7 ms, gripper thread p50 12 ms, motor). A full
+stroke (141-156 deg) pulled in 80-140 ms reaches 90 % after about 640 ms and the end after 700-740 ms. Top
+speed 42 rpm = the motor at about 10.5 V; while speeding up the current was 474-504 mA = the Goal Current
+cap (504 mA), so the cap (not profile acceleration 200) set the start. The felt delay is the motion time.
+
+**Decision (user, option 3 of: smaller opening, 12 V, higher Goal Current, write on arrival, return delay
+0):** Goal Current 200 (0.67 A) in configs/*.yaml and script 28 (still within the 300 schema limit). In
+mode 5 the same value caps the gripping force, so it grows by a third: the user watches the printed
+gripper and says at once if it is too strong. Expected gain: tens of ms at the start; the top speed
+stays voltage-bound (12 V is still open).
 
 ## PENDING
 
