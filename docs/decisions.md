@@ -2435,8 +2435,18 @@ ResNet part doubles; roughly 0.5 s per step -> 50 k steps about 7 h).
     still an assumption, although the operation felt right.
   - **Collision detection sensitivity** with the lab (it is required ON before every Real run).
   - **RB5 joint speed specification** for this model, to replace our own caps (75 / 60 deg/s).
-  - **Demonstration recording for ACT / LeRobot:** format decided in rec-1 (2026-10-19). Next: rec-2
-    LeRobot env, rec-3 recording in the teleop, rec-4 converter + Simulation replay, rec-5 ACT trial.
+  - **Demonstration recording for ACT / LeRobot (2026-10-19):** rec-1 .. rec-5 done (format, env lerobot,
+    `--record`, converter, Simulation replay, ACT trial on the pilot). Open:
+    - Hardware before the real collection (user): D405 cable strain relief and USB 3 (it is on USB 2
+      since the pilot; check `lsusb -t` 5000M and script 30 while moving the gripper); D435 position
+      (the arm covers about 2/3 of its view); `range.z_min_mm` for the mounted gripper (the pilot went to z 14).
+    - Real collection: one task, about 50 episodes, both cameras.
+    - **rec-6 policy runner (planned, not approved yet):** policy process (cameras + ACT on the GPU, a new
+      chunk every 0.2 s) and servo process (50 Hz, chunk interpolated by time, TargetFollower, never waits);
+      policy speed scale 0.5; stale chunk 0.5 s -> hold, 3 s -> stop; target over 100 mm away -> hold;
+      Real only while the leader right button is held (deadman, read only); dynamixel-sdk in env lerobot.
+      Steps: 6a structure with a fake policy and robot, 6b real ACT + cameras + Simulation, 6c gripper and
+      deadman. Open questions for the user: the five points of the rec-6 plan.
   - **Windows** (only if needed):
     - environment.yml (evdev only on Linux)
     - CPU pinning and the FTDI latency check per OS
