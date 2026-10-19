@@ -11,7 +11,7 @@ are handed over through a bounded queue; when it is full the frame is dropped an
 Episode files (dir given by start_episode):
     cam_<name>/<index>.jpg       index from 0 in the episode
     cam_<name>.csv               CAMERA_HEADER, one row per saved frame
-stop_episode(keep=False) deletes the episode's files (discarded episode); delete_episode removes a stopped
+stop_episode(keep=False) deletes the episode folder (discarded episode); delete_episode removes a stopped
 one later. The teleop side never waits: results come from poll().
 
 Times per frame: t_arrival_s = time.monotonic() when the frame reached the grab thread; cam_ts_ms = the
@@ -228,10 +228,8 @@ def _process_main(cameras, width, height, fps, quality, fake, cmd_q, reply_q):
                     frames[name] = done.get(timeout=10.0)[2]
                 result = {name: dict(frames=frames[name], **st) for name, (_, st, _) in per_cam.items()}
                 if cmd[0] == "stop":
-                    if not cmd[1] and ep_dir is not None:
-                        for name in per_cam:
-                            shutil.rmtree(Path(ep_dir) / f"cam_{name}", ignore_errors=True)
-                            (Path(ep_dir) / f"cam_{name}.csv").unlink(missing_ok=True)
+                    if not cmd[1] and ep_dir is not None:   # the episode folder holds only camera files
+                        shutil.rmtree(ep_dir, ignore_errors=True)
                     reply_q.put(("stopped", cmd[1], result))
                     ep_dir = None
                 else:

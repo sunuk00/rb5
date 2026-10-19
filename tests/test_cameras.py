@@ -55,7 +55,7 @@ class TestCameraRecorder(unittest.TestCase):
         self.rec.stop_episode(keep=False)
         stats = self.rec.wait_stopped()
         self.assertIsNotNone(stats)
-        self.assertEqual(list(ep.glob("cam_*")), [])
+        self.assertFalse(ep.exists())   # the whole episode folder, not only its files
 
     def test_no_frames_between_episodes(self):
         ep = Path(self.tmp.name) / "episode_002"
