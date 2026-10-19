@@ -2221,6 +2221,13 @@ inside a dataset. The `h` home move is motion code: its own plan and approval in
     - Python 3.11+ for the sleep resolution
   - **Optional, when the operator wants more speed:** sideways 400 mm/s, radial / vertical 300 mm/s.
     Each raise is a Real limit change and needs its own decision.
+  - **Wrist rotation (J6 0..90 deg about the tool axis; on hold, 2026-10-19):** for objects that need the
+    fingers turned. User: on hold, ACT first with the gripper orientation fixed (orientation changes
+    need many more demonstrations). If resumed: the right trigger (stays where released) 0..1000 ->
+    0..90 deg added to the follow_base yaw, only while the clutch is pressed, rate limited (about 45
+    deg/s); the action becomes [x, y, z, wrist, gripper], so decide before a dataset is recorded.
+    Leader J6 -> RB5 J6 rejected: unintended leader J6 roll per clutch press (Real 095845 / 103804 /
+    105914) median 17 / 19 / 30 deg, p90 38 / 45 / 73, max 88 deg -> a deadband of 40+ deg would be needed.
   - **Gripper (closed for now, 2026-10-19; see its entry):** 12 V supply; grip force eaten by compliance
     (goal that follows the position while grasping); thin objects not detected (finger pads); real finger
     contact position; return delay 0 (motor setting, ask first); when mounted on the flange: z_min, tool
