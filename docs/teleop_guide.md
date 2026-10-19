@@ -103,6 +103,33 @@ Other settings modes (not used now): `mapping.left_button: vertical` (left butto
 x 1.5), `mapping.lock_azimuth: false` (left / right moves the robot sideways),
 `yaw.mode: leader_j6` (twist the handle to turn the tool). Change real.yaml and sim.yaml together.
 
+## 4b. Recording demonstrations (`--record`)
+```bash
+python -m teleop --record                                   # Simulation; cameras front + wrist
+python -m teleop --real --record --task "pick the block and place it in the box"
+python -m teleop --record --no-cameras                      # robot data only (trying the keys)
+```
+- The cameras (`record.front_serial` D435, `record.wrist_serial` D405) start before anything moves; a
+  missing camera refuses the start. Settings: the `record` section (task, 120 s episode limit, no
+  automatic start).
+- Keys, in the terminal running the teleop (as LeRobot's `lerobot-record`):
+
+| key | recording | reset (between episodes) |
+|---|---|---|
+| → or `n` | end the episode, **kept** | start the next episode |
+| ← or `r` | **discard** the episode | discard the episode just kept |
+| Esc or `q` | end the session; the episode being recorded is **discarded** | end the session |
+
+- The session starts in the reset phase. In the reset: put the objects back, move the robot with the
+  teleop to a start position near the ready pose (vary it, about +/-10 cm), gripper open, then →.
+  Nothing moves by itself. An episode reaching 120 s ends and is kept.
+- Ctrl+C stops as always; an episode being recorded is discarded. A camera error discards the episode
+  being recorded and blocks new ones (restart the teleop).
+- Status line: `REC <kept> <time> s` or `RESET (kept <n>)`.
+- Files: `data/demos/<sim|real>_<time>/`: `teleop.csv` (column `episode` = attempt number while
+  recording), `gripper.csv`, `settings.yaml`, `episodes.json` (every attempt: kept / discarded, times,
+  start pose, camera frame counts), `episode_<attempt>/cam_front|cam_wrist/*.jpg` + `cam_*.csv`.
+
 ## 5. Stop
 - **Ctrl+C**: normal stop (the target is held for 0.3 s, then speed 0, then wait until stopped).
 - **Emergency stop button** on the robot / tablet at any time.
@@ -125,6 +152,9 @@ x 1.5), `mapping.lock_azimuth: false` (left / right moves the robot sideways),
 | `stopping: predicted ... < ...` | a singularity or joint limit was close; restart from the ready pose |
 | clutch released by itself | 3 failed handle reads in a row; check the handle cable |
 | the robot slows down near the base and the floor | joint limit watch (J3 margin below 15 deg); normal there |
+| `cameras: RealSense ... not found` | `--record`: a camera is unplugged or on another serial (`record.*_serial`) |
+| `CAMERA ERROR` | `--record`: a camera stopped (USB); the episode is discarded, restart the teleop |
+| `WARNING attempt ...: camera frames lost` | frames missed or dropped in a kept episode: consider ← in the reset |
 
 The CSV has one row per 20 ms cycle (leader, targets, tcp_ref, joints, margins, limit flags, timing,
 modes). For speeds and accelerations from the RB5 state, divide by the real sample times

@@ -153,6 +153,15 @@ gripper:                        # same as Simulation. MX-106T on its own U2D2 (g
 logging:
   dir: data/teleop             # teleop runs only; the scripts write to data/
 
+record:                         # demonstrations: python -m teleop --record [--task "..."] (rec-3b, docs/decisions.md rec-1)
+  dir: data/demos               # one folder per session: teleop.csv, episodes.json, episode_<n>/cam_*
+  task: "pick the block and place it in the box"
+  episode_time_s: 120.0         # user, 2026-10-19: 2 minutes, then the episode ends and is kept
+  reset_time_s: 0.0             # 0 = the next episode starts only with -> (no automatic start)
+  front_serial: "943222070221"  # D435, fixed above the workspace
+  wrist_serial: "130322273474"  # D405, on the gripper body
+  jpeg_quality: 95
+
 runtime:
   cpu_cores: [0, 11]            # pin to the performance cores (i7-13700H cpu0-11): planning p99 5-6 ms instead of
                                 # 8-9 ms (decisions 2026-10-12); replaces "taskset -c 0-11"; null = no pinning

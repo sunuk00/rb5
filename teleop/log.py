@@ -17,6 +17,15 @@ def run_paths(log_dir, mode, root):
     return folder / f"{stem}.csv", folder / f"{stem}_settings.yaml"
 
 
+def session_dir(record_dir, mode, root):
+    """Path of a new demonstration session folder (--record), e.g. data/demos/sim_20261019_140000/. Not created
+    here: the EpisodeRecorder creates it right before the loop, so a refused start leaves no empty folder."""
+    folder = Path(record_dir)
+    if not folder.is_absolute():
+        folder = Path(root) / folder
+    return folder / f"{mode}_{datetime.now():%Y%m%d_%H%M%S}"
+
+
 def save_csv(path, header, rows):
     with open(path, "w", newline="") as f:
         w = csv.writer(f)

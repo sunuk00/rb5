@@ -33,7 +33,8 @@ class TestCameraRecorder(unittest.TestCase):
         ep = Path(self.tmp.name) / "episode_000"
         self.rec.start_episode(ep)
         time.sleep(0.5)
-        stats = self.rec.stop_episode(keep=True)
+        self.rec.stop_episode(keep=True)
+        stats = self.rec.wait_stopped()
         self.assertEqual(set(stats), {"front", "wrist"})
         for name, _ in CAMS:
             with open(ep / f"cam_{name}.csv") as f:
@@ -51,7 +52,8 @@ class TestCameraRecorder(unittest.TestCase):
         ep = Path(self.tmp.name) / "episode_001"
         self.rec.start_episode(ep)
         time.sleep(0.2)
-        stats = self.rec.stop_episode(keep=False)
+        self.rec.stop_episode(keep=False)
+        stats = self.rec.wait_stopped()
         self.assertIsNotNone(stats)
         self.assertEqual(list(ep.glob("cam_*")), [])
 
@@ -60,9 +62,26 @@ class TestCameraRecorder(unittest.TestCase):
         self.rec.start_episode(ep)
         time.sleep(0.2)
         self.rec.stop_episode(keep=True)
+        self.rec.wait_stopped()
         before = len(list((ep / "cam_front").glob("*.jpg")))
         time.sleep(0.3)
         self.assertEqual(len(list((ep / "cam_front").glob("*.jpg"))), before)
+
+    def test_delete_after_stop_and_poll_does_not_wait(self):
+        ep = Path(self.tmp.name) / "episode_003"
+        self.rec.start_episode(ep)
+        time.sleep(0.2)
+        t0 = time.monotonic()
+        self.rec.stop_episode(keep=True)
+        self.rec.delete_episode(ep)
+        self.assertLess(time.monotonic() - t0, 0.01)   # the teleop loop must not wait
+        msgs, end = [], time.monotonic() + 5.0
+        while time.monotonic() < end and not any(m[0] == "deleted" for m in msgs):
+            msgs += self.rec.poll()
+            time.sleep(0.01)
+        kinds = [m[0] for m in msgs]
+        self.assertLess(kinds.index("stopped"), kinds.index("deleted"))
+        self.assertFalse(ep.exists())
 
 
 class TestOpenFailure(unittest.TestCase):

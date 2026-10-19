@@ -15,11 +15,21 @@ Steps:
      the gripper: torque off and operating mode 3 (a held object is dropped: put it down first)
   7. CSV, the gripper thread CSV and a copy of the settings saved in the log folder
 
+With --record (demonstrations, rec-3b): the cameras (record.front_serial / wrist_serial) start before
+anything moves (refused if one is missing), and the run is a session in record.dir/<mode>_<time>/.
+Keys in this terminal during the loop, as LeRobot's: -> / n end and keep the episode, or start the next
+one; <- / r discard the episode (or, in the reset, the one just finished); Esc / q end the session (an
+episode being recorded is discarded). The session starts in the reset phase. Episodes end and are kept
+after record.episode_time_s. Ctrl+C stops as always (an episode being recorded is discarded).
+
 Usage:
     python -m teleop                       # Simulation, configs/sim.yaml
     python -m teleop --config my_sim.yaml  # another Simulation settings file
     python -m teleop --real                # REAL robot, configs/real.yaml (asks to type REAL)
     python -m teleop --no-gripper          # without the gripper
+    python -m teleop --record              # demonstrations (Simulation); --real --record on the robot
+    python -m teleop --record --task "put the cup on the plate"
+    python -m teleop --record --no-cameras # robot data only (trying the keys)
 Run from the repository root.
 The process pins itself to the CPU cores in settings runtime.cpu_cores (no taskset needed).
 """
@@ -38,6 +48,7 @@ from .kinematics import RB5Model
 from .leader import LeaderArm, LeaderModel, read_latency_timer
 from .log import run_paths, save_csv, save_run
 from .loop import CSV_HEADER, StopRequest, TeleopLoop, print_event
+from .log import session_dir
 from .safety import Watch
 from .settings import GRIPPER_MIN_RANGE, SettingsError, load_settings
 
@@ -94,7 +105,12 @@ def main():
     parser.add_argument("--real", action="store_true", help="REAL robot (uses configs/real.yaml unless --config)")
     parser.add_argument("--config", help="settings file")
     parser.add_argument("--no-gripper", action="store_true", help="run without the gripper (gripper.enabled in the settings)")
+    parser.add_argument("--record", action="store_true", help="record demonstration episodes (keys in this terminal)")
+    parser.add_argument("--task", help="task text of the episodes (default: record.task in the settings)")
+    parser.add_argument("--no-cameras", action="store_true", help="with --record: robot data only, no cameras")
     args = parser.parse_args()
+    if (args.task or args.no_cameras) and not args.record:
+        parser.error("--task and --no-cameras need --record")
     np.set_printoptions(precision=2, suppress=True)
     real = args.real
     path = Path(args.config) if args.config else ROOT / "configs" / ("real.yaml" if real else "sim.yaml")
@@ -112,6 +128,11 @@ def main():
         if cores:
             os.sched_setaffinity(0, cores)   # threads started later (state reader) inherit it
         print(f"CPU cores: {sorted(os.sched_getaffinity(0))}")
+    task = args.task if args.task is not None else s.record.task
+    if args.record and not task.strip():
+        refuse("record", ["--task is empty"])
+    if args.record and not os.isatty(sys.stdin.fileno()):
+        refuse("record", ["stdin is not a terminal: the episode keys could not be read"])
     if real:
         print("REAL mode: the RB5 will move. Keep the emergency stop within reach.")
         if not ask("Type REAL to continue: ", "REAL"):
@@ -133,10 +154,14 @@ def main():
     # Gripper: read only here; the writes come right before the loop, after a typed yes
     motor = None
 
+    cameras = None
+
     def close_ports():
         leader.close()
         if motor is not None:
             motor.close()
+        if cameras is not None:
+            cameras.close()
 
     if s.gripper.enabled and not args.no_gripper:
         motor, problems = open_gripper(s.gripper, s.leader.required_latency_timer_ms)
@@ -152,6 +177,24 @@ def main():
                   "turn the torque off first")
     else:
         print("Gripper: off" + (" (--no-gripper)" if args.no_gripper else " (gripper.enabled is false)"))
+
+    # Cameras (--record): start before anything moves; refuse when one is missing
+    session = None
+    if args.record:
+        session = session_dir(s.record.dir, "real" if real else "sim", ROOT)
+        raw["record"]["task"] = task
+        if args.no_cameras:
+            print(f"Record: session {session.relative_to(ROOT)}, NO cameras (--no-cameras), task '{task}'")
+        else:
+            from .cameras import CameraRecorder
+            cams = [("front", s.record.front_serial), ("wrist", s.record.wrist_serial)]
+            cameras = CameraRecorder(cams, quality=s.record.jpeg_quality)
+            problems = cameras.open()
+            if problems:
+                close_ports()
+                refuse("cameras (python -m teleop --record --no-cameras records without them)", problems)
+            print(f"Record: session {session.relative_to(ROOT)}, cameras "
+                  f"{', '.join(f'{n} {sn}' for n, sn in cams)} streaming, task '{task}'")
 
     from .rb5 import RB5
     rb5 = RB5(s.robot.ip, s.servo)
@@ -268,11 +311,21 @@ def main():
           f"{grip_text}. Ctrl+C to stop.\n")
 
     # 6. Teleop loop
-    loop = TeleopLoop(s, leader, leader_model, rb5, reader, model, gripper=worker)
+    recorder = keys = None
+    if args.record:
+        from .episodes import EpisodeRecorder, KeyReader
+        keys = KeyReader()
+        recorder = EpisodeRecorder(session, task, s.record.episode_time_s, s.record.reset_time_s, keys, cameras)
+        print(f"RECORD: starts in the RESET phase. Keys here: -> or n = start / end and keep the episode, "
+              f"<- or r = discard, q or Esc = end the session. Episodes end and are kept after "
+              f"{s.record.episode_time_s:.0f} s.\n")
+    loop = TeleopLoop(s, leader, leader_model, rb5, reader, model, gripper=worker, recorder=recorder)
     error = None
     for sig in (signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, to_keyboard_interrupt)
     rb5.begin_streaming()
+    if keys is not None:
+        keys.start()   # after the last input(): the terminal is in cbreak mode until keys.stop()
     try:
         loop.run()
     except KeyboardInterrupt:
@@ -284,6 +337,8 @@ def main():
         print_event(f"Error: {e}")
     finally:
         signal.signal(signal.SIGINT, signal.SIG_IGN)   # a second Ctrl+C must not skip the cleanup
+        if keys is not None:
+            keys.stop()   # terminal back to normal first
         if error is None and loop.target is not None:
             rb5.end_streaming(loop.target, loop.rpy, s.safety.hold_on_exit_s, s.servo.period_s)
         else:
@@ -296,19 +351,29 @@ def main():
             if t_back != 0 or m_back != MODE_AT_END:
                 print_event(f"WARNING: the gripper is NOT in torque 0 / mode {MODE_AT_END}: run scripts/28 (it turns "
                             "them off with the confirmed writes) or use DYNAMIXEL Wizard")
+        if recorder is not None:
+            for e in recorder.finish("teleop stopped while recording"):
+                print_event(e)
         close_ports()
 
     # 7. Log
-    csv_path, settings_path = run_paths(s.logging.dir, "real" if real else "sim", ROOT)
+    if session is not None:
+        csv_path, settings_path = session / "teleop.csv", session / "settings.yaml"
+    else:
+        csv_path, settings_path = run_paths(s.logging.dir, "real" if real else "sim", ROOT)
     save_run(loop.rows, CSV_HEADER, raw, csv_path, settings_path)
     if worker is not None and worker.rows:
-        grip_path = csv_path.with_name(f"{csv_path.stem}_gripper.csv")
+        grip_path = csv_path.with_name("gripper.csv" if session is not None else f"{csv_path.stem}_gripper.csv")
         save_csv(grip_path, GripperWorker.ROW_HEADER, worker.csv_rows())
         print(f"Gripper thread log: {grip_path.relative_to(ROOT)} ({len(worker.rows)} cycles)")
     c = loop.clutch
     if c.reads:
         print(f"Tool reads {c.reads}, failed or unexpected {c.failures} ({100.0 * c.failures / c.reads:.1f}%)")
     print(f"Saved: {csv_path.relative_to(ROOT)} ({len(loop.rows)} cycles) and {settings_path.name}")
+    if recorder is not None:
+        kept = [a for a in recorder.attempts if a["status"] == "kept"]
+        print(f"Episodes: {len(kept)} kept, {len(recorder.attempts) - len(kept)} discarded "
+              f"(session {session.relative_to(ROOT)}, episodes.json)")
 
 
 if __name__ == "__main__":

@@ -145,7 +145,7 @@ class FakeWorker:
         return out
 
 
-def run(steps, s=None, q0=D, slow_at=None, gripper=None, event=lambda m: None):
+def run(steps, s=None, q0=D, slow_at=None, gripper=None, event=lambda m: None, recorder=None):
     """Run the loop on a script. Returns (loop, start pose, end pose, column getter, stop text)."""
     s = s or settings()
     model = RB5Model(OFFSET)
@@ -153,7 +153,7 @@ def run(steps, s=None, q0=D, slow_at=None, gripper=None, event=lambda m: None):
     leader = ScriptLeader(steps, slow_at)
     p0 = robot.pose()
     loop = TeleopLoop(s, leader, ScriptModel(leader), robot, FakeReader(robot), model,
-                      event=event, status=False, sleep=lambda t: None, gripper=gripper)
+                      event=event, status=False, sleep=lambda t: None, gripper=gripper, recorder=recorder)
     stop = None
     try:
         loop.run()

@@ -11,7 +11,8 @@ are handed over through a bounded queue; when it is full the frame is dropped an
 Episode files (dir given by start_episode):
     cam_<name>/<index>.jpg       index from 0 in the episode
     cam_<name>.csv               CAMERA_HEADER, one row per saved frame
-stop_episode(keep=False) deletes the episode's files (discarded episode).
+stop_episode(keep=False) deletes the episode's files (discarded episode); delete_episode removes a stopped
+one later. The teleop side never waits: results come from poll().
 
 Times per frame: t_arrival_s = time.monotonic() when the frame reached the grab thread; cam_ts_ms = the
 camera timestamp (global_time domain: the PC wall clock at capture, in ms); t_capture_s = t_arrival_s
@@ -216,6 +217,9 @@ def _process_main(cameras, width, height, fps, quality, fake, cmd_q, reply_q):
                     cq.put(("start", ep_dir))
                 recording.set()
                 reply_q.put(("started", ep_dir))
+            elif cmd[0] == "delete":
+                shutil.rmtree(cmd[1], ignore_errors=True)
+                reply_q.put(("deleted", cmd[1]))
             elif cmd[0] in ("stop", "quit"):
                 recording.clear()
                 frames = {}
@@ -255,6 +259,7 @@ class CameraRecorder:
         self.proc = ctx.Process(target=_process_main, name="cameras", daemon=True,
                                 args=(cameras, width, height, fps, quality, fake, self.cmd_q, self.reply_q))
         self.errors = []
+        self._dead_reported = False
 
     def open(self, timeout=READY_TIMEOUT_S):
         """Start the process and wait until every camera streams. Returns a list of problems."""
@@ -267,27 +272,46 @@ class CameraRecorder:
         return []
 
     def start_episode(self, ep_dir):
+        """Start saving frames into ep_dir (does not wait)."""
         Path(ep_dir).mkdir(parents=True, exist_ok=True)
         self.cmd_q.put(("start", str(ep_dir)))
 
-    def stop_episode(self, keep, timeout=15.0):
-        """Ends the episode (keep=False deletes its camera files). Returns {name: stats} or None."""
+    def stop_episode(self, keep):
+        """End the episode (does not wait; keep=False deletes its camera files). The result comes from
+        poll() as ("stopped", keep, {name: stats}) once the writers have saved the last frames."""
         self.cmd_q.put(("stop", bool(keep)))
+
+    def delete_episode(self, ep_dir):
+        """Delete the camera files of an episode that was already stopped (does not wait)."""
+        self.cmd_q.put(("delete", str(ep_dir)))
+
+    def wait_stopped(self, timeout=15.0):
+        """Wait for the result of stop_episode (scripts and tests; the teleop uses poll). {name: stats} or None."""
         reply = self._wait(("stopped",), timeout)
         return None if reply is None else reply[2]
 
-    def poll_errors(self):
-        """Errors reported by the process since the last call (camera read failures)."""
-        new = []
+    def poll(self):
+        """Messages from the process since the last call, without waiting: ("started", dir),
+        ("stopped", keep, stats), ("deleted", dir), ("error", text). Errors are also kept in self.errors."""
+        out = []
         while True:
             try:
                 msg = self.reply_q.get_nowait()
             except queue.Empty:
                 break
             if msg[0] == "error":
-                new.append(msg[1])
-        self.errors += new
-        return new
+                self.errors.append(msg[1])
+            out.append(msg)
+        if not out and not self.proc.is_alive() and not self._dead_reported:
+            self._dead_reported = True
+            text = f"camera process ended (exit code {self.proc.exitcode})"
+            self.errors.append(text)
+            out.append(("error", text))
+        return out
+
+    def poll_errors(self):
+        """Only the error texts of poll()."""
+        return [m[1] for m in self.poll() if m[0] == "error"]
 
     def close(self, timeout=15.0):
         """Ends the process (an episode still open is closed and kept: call stop_episode first)."""

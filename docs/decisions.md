@@ -101,6 +101,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-19 — rec-1: demonstration format (30 Hz; action x, y, z, gripper; state 6 joints + gripper; keyboard episodes)](#2026-10-19--rec-1-demonstration-format-30-hz-action-x-y-z-gripper-state-6-joints--gripper-keyboard-episodes)
 - [2026-10-19 — rec-2: separate conda env lerobot (LeRobot 0.6.1, Python 3.12); dummy dataset with the rec-1 format](#2026-10-19--rec-2-separate-conda-env-lerobot-lerobot-061-python-312-dummy-dataset-with-the-rec-1-format)
 - [2026-10-19 — rec-3a: camera recorder in its own process (JPEG per frame + time CSV)](#2026-10-19--rec-3a-camera-recorder-in-its-own-process-jpeg-per-frame--time-csv)
+- [2026-10-19 — rec-3b: --record in the teleop (LeRobot keys, sessions, episodes.json, 120 s limit)](#2026-10-19--rec-3b---record-in-the-teleop-lerobot-keys-sessions-episodesjson-120-s-limit)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -2246,6 +2247,40 @@ one lost frame cannot be found); LeRobot's camera classes (env lerobot, other py
   cycles, worst 0.3 ms.
 - Before (script 25, 20 s): both cameras together 30 fps, no missed frames, nearest frames 12-17 ms apart
   (not synchronized).
+
+## 2026-10-19 — rec-3b: --record in the teleop (LeRobot keys, sessions, episodes.json, 120 s limit)
+
+**Decision:** `python -m teleop --record [--task ...] [--no-cameras]` (Simulation and Real). `teleop/episodes.py`:
+`KeyReader` (terminal in cbreak mode in its own thread; → / n, ← / r, Esc / q, as rec-1 changed) and
+`EpisodeRecorder` (recording / reset phases, called once per cycle after the send, never waits). One
+session folder per run in `record.dir` (data/demos/<mode>_<time>/): teleop.csv with a new last column
+`episode` (attempt number while recording), gripper.csv, settings.yaml (task as used), episodes.json
+(rewritten at every change), episode_<attempt>/cam_*. Settings section `record` (dir, task,
+episode_time_s **120 (user)**, reset_time_s 0 = no automatic start, front / wrist serials, jpeg_quality).
+
+**Details:**
+- Attempt numbers count every start; discarded attempts keep their CSV rows (marked by episodes.json)
+  but their camera files are deleted. ← in the reset discards the last kept attempt (its files deleted).
+- Cameras open before the RB5 mode switch, so a missing camera refuses the start before anything moves.
+- `CameraRecorder.stop_episode` no longer waits (results through `poll()`): writing the last frames takes
+  up to about 0.1 s, too long for a 20 ms cycle. Deleting a discarded episode also happens in the camera
+  process.
+- A camera error discards the episode being recorded and blocks new ones; at the session end the
+  recorder waits (up to 10 s) for the camera process to close the files.
+- CSV rows are tuples now: Python's garbage collector stops scanning tuples of strings. A one-hour
+  session is about 180,000 rows kept in memory until the end; as lists, every full GC pass would walk
+  them all inside the loop.
+
+**Rejected:** recording in a separate program next to the teleop (two programs on one leader arm);
+writing the robot CSV per episode during the loop (file writes inside the 20 ms cycle).
+
+**Known limit:** the robot CSV is written at the session end (as before); a hard crash of the process
+loses the robot data of that session (episodes.json and the camera files are on disk already).
+
+**Checked:** 100 tests (episodes: keys incl. a pseudo terminal, phases, time limit, discard in the reset,
+camera error, quit; loop: `episode` column, q ends the loop). Loop timing without the robot (the real
+loop with the fake leader / robot of the tests, real 50 Hz sleep, 60 s, 3 episodes kept): without
+cameras late 0, interval p99 20.16 ms; with both cameras recording late 0, interval p99 20.14 ms.
 
 ## PENDING
 

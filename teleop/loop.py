@@ -11,6 +11,8 @@ passed in, so the tests can use fakes:
   gripper: None (no gripper) or a started GripperWorker (teleop/gripper.py): set(open fraction),
            latest() -> row dict, events(), is_alive(), t0. The loop never waits for it; a stopped gripper
            thread does not stop the arm (user, grip-3).
+  recorder: None or an EpisodeRecorder (teleop/episodes.py, rec-3b): cycle(q, tcp) -> (events, quit) once per
+           cycle after the send; its attempt number goes into the CSV column `episode`. It never waits.
 """
 import sys
 import time
@@ -45,18 +47,20 @@ CSV_HEADER = (["t_s", "cycle_interval_ms", "button_raw", "clutch_engaged"]
               + ["trigger_raw"] + GRIP_COLUMNS + ["tool_read_failed"]
               + [f"jnt_ang_{i}" for i in range(6)] + [f"meas_tcp_{a}" for a in "xyz"] + ["target_minus_meas_mm"]
               + [f"leader_used_{a}_mm" for a in "xyz"] + ["leader_j6_used_deg"]
-              + ["left_button_raw", "left_mode_active", "accel_limited"])
+              + ["left_button_raw", "left_mode_active", "accel_limited"]
+              + ["episode"])   # demonstration attempt number while recording (rec-3b), else blank
 
 
 def csv_row(t, interval, button_raw, engaged, leader_q, leader_p, desired, target, tcp, q, j5_pred, sh_pred,
             max_dq, flags, late, late_early, stale, state_age, t_leader, t_plan, t_send, t_work, send_interval,
             el_pred, lag, dropped, jl_pred, yaw_desired, yaw_target, yaw_tcp, yaw_lag, dropped_yaw, trigger, grip,
-            measured, used_p, used_j6, left_raw, left_active):
-    """One CSV row in the order of CSV_HEADER (times in s, written in ms where the header says ms)."""
+            measured, used_p, used_j6, left_raw, left_active, episode=""):
+    """One CSV row in the order of CSV_HEADER (times in s, written in ms where the header says ms). A tuple:
+    the Python garbage collector stops scanning tuples of strings, so a long session's rows cost it nothing."""
     def f(v, fmt="{:.3f}"):
         return [fmt.format(x) for x in v]
     empty3 = [""] * 3
-    return ([f"{t:.4f}", "" if interval is None else f"{interval * 1000:.3f}",
+    return tuple([f"{t:.4f}", "" if interval is None else f"{interval * 1000:.3f}",
              "" if button_raw is None else button_raw, int(engaged)]
             + (f(np.degrees(leader_q)) if leader_q is not None else [""] * 7)
             + (f(leader_p) if leader_p is not None else empty3)
@@ -74,7 +78,8 @@ def csv_row(t, interval, button_raw, engaged, leader_q, leader_p, desired, targe
             + ["" if trigger is None else trigger] + grip + [int(button_raw is None)]
             + measured
             + ([f"{v:.3f}" for v in used_p] + [f"{used_j6:.3f}"] if used_p is not None else [""] * 4)
-            + ["" if left_raw is None else left_raw, int(left_active), int(flags.get("accel", False))])
+            + ["" if left_raw is None else left_raw, int(left_active), int(flags.get("accel", False))]
+            + [episode])
 
 
 class StopRequest(Exception):
@@ -88,7 +93,7 @@ def print_event(msg):
 
 class TeleopLoop:
     def __init__(self, s, leader, leader_model, rb5, reader, model, event=print_event, status=True, sleep=time.sleep,
-                 gripper=None):
+                 gripper=None, recorder=None):
         self.s, self.leader, self.leader_model = s, leader, leader_model
         self.rb5, self.reader, self.model = rb5, reader, model
         self.event, self.status, self.sleep = event, status, sleep
@@ -97,6 +102,7 @@ class TeleopLoop:
         self.target = self.rpy = None          # what is being sent (for the normal stop)
         self.clutch = Clutch()
         self.gripper = gripper
+        self.recorder = recorder
 
     def _measured_columns(self, q_meas, target):
         """Encoder joints, their TCP from the DH model (absolute about 2 mm off the controller, 17) and the
@@ -139,7 +145,8 @@ class TeleopLoop:
             f"{(' ' + self.s.mapping.left_button.upper()) if mapper.left_active else ''}  "
             f"target-start {np.round(mapper.target - tcp0[:3], 1)} mm  yaw {mapper.yaw:6.1f}  "
             f"J5 {singular_distance(q[4]):5.1f}  shoulder {self.model.shoulder_margin(q):5.0f} mm  "
-            f"grip {self._grip_text(grip)}  |  "
+            f"grip {self._grip_text(grip)}  "
+            f"{'' if self.recorder is None else '| ' + self.recorder.status_text() + '  '}|  "
             f"button fail {tool_rate:4.1f}%  leader fail {leader_rate:4.1f}%")
         sys.stdout.flush()
 
@@ -190,6 +197,8 @@ class TeleopLoop:
         warned = {"j5slow": False, "shslow": False, "elslow": False, "jlslow": False}
 
         t_start = next_t = time.monotonic()
+        if self.recorder is not None:
+            self.recorder.loop_t0 = t_start
         cycle = 0
         while True:
             t_cycle = time.monotonic()
@@ -319,6 +328,14 @@ class TeleopLoop:
             send_interval = None if last_send is None else t_send0 - last_send
             last_send = t_send0
 
+            # 6b. Episodes: keys, time limits, camera messages (after the send; never waits)
+            if self.recorder is not None:
+                rec_events, quit_ = self.recorder.cycle(q, tcp)
+                for e in rec_events:
+                    self.event(f"[{time.monotonic() - t_start:7.2f} s] {e}")
+                if quit_:
+                    raise StopRequest("session ended (q / Esc)")
+
             grip_cols, grip = self._grip_columns()
             self.rows.append(csv_row(
                 t=t_cycle - t_start, interval=interval, button_raw=button_raw, engaged=clutch.engaged,
@@ -331,7 +348,8 @@ class TeleopLoop:
                 dropped_yaw=abs(plan.dropped_yaw) if plan is not None and not late else 0.0, trigger=trigger,
                 grip=grip_cols,
                 measured=self._measured_columns(q_meas, mapper.target), used_p=used_p, used_j6=used_j6,
-                left_raw=left_raw, left_active=mapper.left_active))
+                left_raw=left_raw, left_active=mapper.left_active,
+                episode="" if self.recorder is None else self.recorder.column()))
 
             # 7. Status line
             if self.status and cycle % STATUS_EVERY == 0:

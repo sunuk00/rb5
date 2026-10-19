@@ -151,6 +151,15 @@ SCHEMA = {
     "logging": {
         "dir": _str(),
     },
+    "record": {                                       # demonstrations (python -m teleop --record, rec-3b)
+        "dir": _str(),                                # session folders go here
+        "task": _str(),                               # task text of the dataset (--task overrides)
+        "episode_time_s": _num(5.0, 600.0),           # an episode this long ends and is kept
+        "reset_time_s": _num(0.0, 600.0),             # 0 = the next episode starts only with ->
+        "front_serial": _str(),                       # D435 above the workspace
+        "wrist_serial": _str(),                       # D405 on the gripper body
+        "jpeg_quality": _num(50, 100, integer=True),
+    },
     "runtime": {
         "cpu_cores": _vec(2, 0, 1023, nullable=True),   # [first, last] CPU to pin the process to; null = no pinning
     },
@@ -297,6 +306,11 @@ def _check_relations(d, problems):
         problems.append(f"gripper: grasp_current ({g['grasp_current']}) must be at least goal_current ({g['goal_current']})")
     if g["port"] == d["leader"]["port"]:
         problems.append("gripper.port is the leader arm's port")
+    rec = d["record"]
+    if rec["front_serial"] == rec["wrist_serial"]:
+        problems.append("record: front_serial and wrist_serial are the same camera")
+    if not rec["task"].strip():
+        problems.append("record.task: empty")
     sv = d["servo"]
     if abs(sv["t1_s"] - sv["period_s"]) > 1e-9:
         problems.append(f"servo: t1_s ({sv['t1_s']}) must equal period_s ({sv['period_s']}) (06 / 10)")

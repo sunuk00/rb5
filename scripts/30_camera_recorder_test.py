@@ -95,7 +95,8 @@ def main():
         rec.start_episode(ep_dir)
         n, late, worst = loop_for(seconds, rec)
         t_stop = time.monotonic()
-        stats = rec.stop_episode(keep)
+        rec.stop_episode(keep)
+        stats = rec.wait_stopped()
         print(f"\nepisode {i} ({seconds:.0f} s, {'kept' if keep else 'discarded'}): loop {n} cycles, late {late}, "
               f"worst {worst:.1f} ms; stop took {(time.monotonic() - t_stop) * 1000:.0f} ms")
         print(f"  recorder: {stats}")
