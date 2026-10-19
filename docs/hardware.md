@@ -27,6 +27,10 @@ Decisions and measurements behind them are in `docs/decisions.md`.
 - Network: 10.0.2.100/24 on a USB Ethernet adapter (NetworkManager connection `rb5`).
 - CPU: Intel i7-13700H; cores 0-11 are the performance cores. The teleop pins itself to them
   (`runtime.cpu_cores`), which brought the planning time p99 from 8-9 ms to 5-6 ms.
+- GPU: NVIDIA RTX A1000 6GB Laptop (GA107, compute 8.6, 35 W power limit) next to the Intel iGPU.
+  Driver `nvidia-driver-595-open` 595.99.02 (reinstalled 2026-10-19), kernel 7.0.0-38, Secure Boot off.
+  Checked 2026-10-19 with PyTorch 2.11.0+cu130 (`rby1` env): CUDA available, fp32 matmul 3.0 TFLOPS,
+  ResNet18 training step (batch 16, 480x640, bf16) 205 ms, 1.6 GB.
 
 ## RB-Y1 leader arm
 - Two 7-joint arms with a handle (tool) each. Only the right arm is used for the RB5 teleop.
