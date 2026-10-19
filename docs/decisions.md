@@ -104,6 +104,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-19 — rec-3b: --record in the teleop (LeRobot keys, sessions, episodes.json, 120 s limit)](#2026-10-19--rec-3b---record-in-the-teleop-lerobot-keys-sessions-episodesjson-120-s-limit)
 - [2026-10-19 — rec-3c: spoken messages while recording (spd-say, as LeRobot)](#2026-10-19--rec-3c-spoken-messages-while-recording-spd-say-as-lerobot)
 - [2026-10-19 — rec-4a: converter (sessions -> LeRobotDataset, script 31)](#2026-10-19--rec-4a-converter-sessions---lerobotdataset-script-31)
+- [2026-10-19 — rec-4b: replay in Simulation through the teleop limits (TargetFollower, script 32); rbpodo in env lerobot](#2026-10-19--rec-4b-replay-in-simulation-through-the-teleop-limits-targetfollower-script-32-rbpodo-in-env-lerobot)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -2319,6 +2320,30 @@ read back with LeRobotDataset. Warnings shown: gripper never caught the trigger 
 **Rejected:** zero-order hold of the target (steps of up to one 20 ms cycle); the gripper command as
 the raw trigger before the catch (the gripper did not do that); appending sessions to an existing
 dataset (a full rebuild is reproducible and takes minutes).
+
+## 2026-10-19 — rec-4b: replay in Simulation through the teleop limits (TargetFollower, script 32); rbpodo in env lerobot
+
+**Decision:** `teleop/follow.py` `TargetFollower`: an absolute desired position (a dataset action, later
+a policy output) goes through `plan_step` (range, speed caps with the watches, joint speed,
+acceleration, lead) and yaw follow_base, as in the teleop, without the leader and the clutch.
+`scripts/32_replay_episode.py` (env lerobot, **Simulation only**) replays one episode: move_j to its
+first joints (typed yes), 50 Hz stream of the 30 Hz action interpolated linearly, then compares the
+replay's jnt_ref with the recorded joints at the same episode time. The gripper action is not sent.
+`rbpodo==0.16.14` added to env lerobot (cp312 wheel; user approved) so that the replay and the policy
+runner run where torch / LeRobot are; the teleop stays in env rb5.
+
+**Reason:** the replay checks that the action definition (rec-1) plays the motion back through the same
+safety pipeline a policy will use; the follower is the policy runner's core. One process for policy and
+robot is simpler than a policy server + robot client across two envs.
+
+**Rejected:** sending the actions straight to move_servo_l (no range / speed checks: a policy's output
+must go through them); a separate runner in env rb5 with the dataset exported to CSV (tests the export,
+not the dataset).
+
+**Checked (no robot):** 4 tests with the fake DH robot (reaches a target within the speed cap, stays
+inside the range, the tool turns with the azimuth, refuses yaw modes other than follow_base); the
+script loads episode 0 of local/sim_test (348 x 4 actions) and its interpolation. The Simulation run
+itself: by the user.
 
 ## PENDING
 

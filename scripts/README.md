@@ -54,6 +54,7 @@ default, Real with `--real` and typed confirmation; **leader** = writes torque t
 | 29 | `29_lerobot_dummy_dataset.py` | Dummy LeRobotDataset with the rec-1 format: write, discard, read back, ACT action chunk (env `lerobot`, rec-2) | - | test |
 | 30 | `30_camera_recorder_test.py` | Camera recorder process alone (teleop/cameras.py): episodes kept / discarded, fps, gaps, JPEG write time, MB/s, CPU, and a 50 Hz loop beside it (rec-3a) | - (cameras only) | tool |
 | 31 | `31_convert_to_lerobot.py` | Demonstration sessions (`--record`) -> one LeRobotDataset at 30 fps: kept episodes, still ones left out, optional pause cut, checks (env `lerobot`, rec-4a) | - (files only) | tool |
+| 32 | `32_replay_episode.py` | Replay one dataset episode's actions through the teleop limits (teleop/follow.py) and compare with the recorded joints (env `lerobot`, rec-4b) | RB5 (Sim only) | test |
 
 ## Usage per script
 
@@ -420,3 +421,15 @@ python scripts/31_convert_to_lerobot.py data/demos/real_* --cut-pauses 2.0      
 Always builds the dataset anew from the sessions. Action / state / image rules: the docstring and
 docs/decisions.md (rec-4a). Prints per episode: duration, clutch time, path, image time error, lost
 camera frames, gripper following, start vs ready pose; at the end the 30 -> 50 Hz resampling error.
+
+### 32 replay an episode (Simulation)
+Env `lerobot`: `conda activate lerobot`. **Moves the RB5 in Simulation mode** (Real is refused).
+```bash
+python scripts/32_replay_episode.py --repo-id local/sim_test --episode 0
+```
+Loads the episode's 30 Hz actions and states, switches to Simulation, moves to the episode's first
+joints with move_j (typed yes), then streams at 50 Hz: the action interpolated at the replay time
+through `teleop.follow.TargetFollower` (the teleop's per-cycle limits) -> move_servo_l; the last action
+is held for `--hold-s` (1 s). Prints: replay joints vs recorded joints at the same episode time,
+target vs desired (what the limits changed), tcp_ref vs target, the end position, limit flags. CSV in
+`data/replay/`. The gripper action is not sent.

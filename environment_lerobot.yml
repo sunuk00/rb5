@@ -14,3 +14,4 @@ dependencies:
   - pip
   - pip:
       - lerobot[training,intelrealsense,dataset-viz]==0.6.1   # pulls torch 2.11.0, pyrealsense2 2.56.5, rerun-sdk
+      - rbpodo==0.16.14         # RB5 API: replay (script 32) and later the policy runner (rec-4b, 2026-10-19)
