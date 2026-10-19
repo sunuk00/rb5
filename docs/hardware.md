@@ -53,6 +53,9 @@ Decisions and measurements behind them are in `docs/decisions.md`.
 - D435 (fixed camera), serial 943222070221, firmware 5.17.3.10; D405 (wrist camera), serial 130322273474,
   firmware 5.17.0.10. Both must be on USB 3 (`lsusb -t` 5000M): the D435 first came up as USB 2.1 (only
   640x480 @ 30 and 1280x720 @ 15 for color) until it was reconnected (2026-10-17).
+- Mounted (2026-10-19): D435 fixed above the workspace looking down (`front`); D405 on the gripper body
+  (`wrist`, turns with J6). Recording: `teleop/cameras.py` (own process, JPEG), script 30. Receive delay
+  (PC wall clock at arrival - camera global_time): D435 about 34 ms, D405 about 9.5 ms.
 - SDK: system librealsense 2.58.4 (Intel apt repository, tools and udev rules); Python `pyrealsense2`
   2.58.4 in `rb5`. The DKMS kernel module (1.3.33) is not built for kernel 7.0, but frame metadata
   (sensor timestamp, time of arrival) works.

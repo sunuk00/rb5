@@ -100,6 +100,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-17 — Open (step 3): demonstration recording rate 50 Hz vs 30 Hz](#2026-10-17--open-step-3-demonstration-recording-rate-50-hz-vs-30-hz)
 - [2026-10-19 — rec-1: demonstration format (30 Hz; action x, y, z, gripper; state 6 joints + gripper; keyboard episodes)](#2026-10-19--rec-1-demonstration-format-30-hz-action-x-y-z-gripper-state-6-joints--gripper-keyboard-episodes)
 - [2026-10-19 — rec-2: separate conda env lerobot (LeRobot 0.6.1, Python 3.12); dummy dataset with the rec-1 format](#2026-10-19--rec-2-separate-conda-env-lerobot-lerobot-061-python-312-dummy-dataset-with-the-rec-1-format)
+- [2026-10-19 — rec-3a: camera recorder in its own process (JPEG per frame + time CSV)](#2026-10-19--rec-3a-camera-recorder-in-its-own-process-jpeg-per-frame--time-csv)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -2186,15 +2187,16 @@ dataset rate and contents can be changed later without recording again.
 | action | `[x, y, z, gripper]`: the sent TCP target in base-frame mm (absolute) + the trigger command `open_frac` (0 = closed, 1 = open) | the exact values our safety pipeline (range, speed and joint caps, move_servo_l) executes; no model error, no delay estimate; the gripper thread applies the same grasp logic at run time | joint action (jnt_ref 60 ms ahead): needs move_servo_j and joint-space checks; deltas: drift; yaw: follows x, y with `follow_base` (rx, ry fixed), so it is redundant (kept in the raw log) |
 | state | 6 measured joints (`jnt_ang`) + gripper position normalized 0..1 = 7 | measured values; include the wrist pose; ALOHA style | measured TCP: DH model error (about 2 mm) and no wrist information. Gripper current / grasp flag, TCP, tcp_ref, jnt_ref: raw log only |
 | images | `front` = D435 fixed above the workspace looking down (position set); `wrist` = D405 on the gripper body; RGB 640x480 @ 30 | the ACT default; both cameras tested in cam-1 | depth: large, not needed now |
-| episodes | keyboard in the terminal (own thread): `s` start, `e` end as success, `d` discard, `h` back to home | the leader buttons are all in use (clutch, rotate, gripper trigger) | leader button combos |
-| between episodes | `h`: stop streaming, move to the ready pose with the existing move_j code, stream again | the same start pose for every episode | restart the program each time; by hand |
+| episodes | **changed 2026-10-19 (user): LeRobot's keys.** Recording / reset phases. → or `n`: end the episode (kept) / end the reset and start the next episode; ← or `r`: discard the episode being recorded, or in the reset the one just finished; Esc or `q`: end the session, **an episode in progress is discarded** (LeRobot keeps it). The first episode starts with → (not at launch). Episode limit 60 s (then ended and kept), reset without a time limit | the operator knows LeRobot's keys; the leader buttons are all in use | own `s` / `e` / `d` keys |
+| between episodes | **changed 2026-10-19 (user): no home move.** In the reset phase the operator moves the robot with the teleop to a start position of their own choice near the ready pose (about +/-10 cm), gripper open. The start joint pose of each episode is recorded | varied start poses make the policy less tied to one start; the run starts from the ready pose, so it must lie inside the spread; no new motion code | `h` key with move_j to the ready pose |
 | clutch released | kept in the dataset (robot still, action constant): the policy learns to wait. The raw log has the clutch state; the converter can cut released stretches longer than a set time (off by default) | user | always cut |
 | task text | one per dataset (e.g. "pick the block and place it in the box") | | |
 
 **Checks later:** the 30 Hz action stream interpolated to the 50 Hz servo loop must be smooth (rec-4,
 replay in Simulation); CPU, disk, USB and loop timing with two cameras + teleop + gripper (after the
 D405 is mounted). Real demonstrations start after the D405 is mounted: the camera set must not change
-inside a dataset. The `h` home move is motion code: its own plan and approval in rec-3.
+inside a dataset. The converter's clutch-pause cut also covers the still tail at an episode end (the
+operator lets go of the leader to press a key).
 
 ## 2026-10-19 — rec-2: separate conda env lerobot (LeRobot 0.6.1, Python 3.12); dummy dataset with the rec-1 format
 
@@ -2218,6 +2220,32 @@ are in 0.6); recording through `lerobot-record` with a robot plugin (decided ear
 - `lerobot-find-cameras realsense`: D435 943222070221 found (640x480 rgb8 30 fps default, USB 3.2). The
   D405 was not connected (being mounted).
 - CUDA available in the env (torch 2.11.0+cu130).
+
+## 2026-10-19 — rec-3a: camera recorder in its own process (JPEG per frame + time CSV)
+
+**Decision:** `teleop/cameras.py` runs the cameras in a separate process (multiprocessing, spawn): per
+camera a grab thread (streams all the time) and a writer thread (PIL JPEG quality 95). Episode files:
+`cam_<name>/<index>.jpg` + `cam_<name>.csv` (index, frame number, t_capture_s, t_arrival_s, cam_ts_ms,
+domain, write_ms). A discarded episode's camera files are deleted. Cameras: `front` = D435 943222070221
+(fixed, above the workspace), `wrist` = D405 130322273474 (gripper body), 640x480 RGB @ 30.
+
+**Reason:** a thread in the teleop process shares the GIL with the 50 Hz loop (grip-4 showed what that
+does to short timeouts); a process does not, and time.monotonic is the same clock in both. JPEG: raw
+frames would be about 55 MB/s for two cameras; the dataset video is lossy (AV1) anyway. t_capture_s
+subtracts the receive delay (camera global_time vs PC wall clock): D435 about 34 ms, D405 about 9.5 ms,
+so matching by arrival time would shift the cameras by about 24 ms against each other.
+
+**Rejected:** a thread in the teleop process; raw .npy frames; mp4 encoding while recording (more CPU,
+one lost frame cannot be found); LeRobot's camera classes (env lerobot, other pyrealsense2 version).
+
+**Checked (script 30, 2026-10-19, both cameras on USB 3.2):**
+- 2 x 20 s kept + 3 s discarded: 29.98 / 29.99 fps, interval max 33.4 ms, frame number gaps 0, queue
+  drops 0; JPEG write p50 3.5-4.2 ms, max 13 ms; front 69 kB / wrist 59 kB per frame, together 3.9 MB/s
+  (a 30 s episode about 115 MB, 50 episodes about 6 GB); discarded episode: no files left.
+- Camera process 36 % of one core. A 50 Hz loop in the main process meanwhile: late (> 5 ms) 0 of 2150
+  cycles, worst 0.3 ms.
+- Before (script 25, 20 s): both cameras together 30 fps, no missed frames, nearest frames 12-17 ms apart
+  (not synchronized).
 
 ## PENDING
 

@@ -52,6 +52,7 @@ default, Real with `--real` and typed confirmation; **leader** = writes torque t
 | 27 | `27_gripper_scan.py` | Read-only scan of the gripper bus (MX-106T on its U2D2): protocol, baud, model, firmware, settings, read time (grip-1) | - (gripper motor only) | tool |
 | 28 | `28_trigger_gripper.py` | Leader trigger (left by default) -> gripper alone (no RB5): released 0 closed, pulled 1000 open, catch at start, current-based position mode with a low force cap (grip-2; code in `teleop/gripper.py`, gripper thread, since grip-3a) | gripper (writes), leader arm (read only) | test |
 | 29 | `29_lerobot_dummy_dataset.py` | Dummy LeRobotDataset with the rec-1 format: write, discard, read back, ACT action chunk (env `lerobot`, rec-2) | - | test |
+| 30 | `30_camera_recorder_test.py` | Camera recorder process alone (teleop/cameras.py): episodes kept / discarded, fps, gaps, JPEG write time, MB/s, CPU, and a 50 Hz loop beside it (rec-3a) | - (cameras only) | tool |
 
 ## Usage per script
 
@@ -388,3 +389,15 @@ gripper, `front` / `wrist` 480x640 video) from synthetic values to `data/lerobot
 one more episode (clear_episode_buffer), reads it back and compares state, action and images with what
 was written, and loads an ACT action chunk (100 steps, padded at the episode end). Prints OK or the
 problems. No robot, no cameras.
+
+### 30 camera recorder test
+```bash
+python scripts/30_camera_recorder_test.py                              # front + wrist, 2 x 20 s kept, 1 x 3 s discarded
+python scripts/30_camera_recorder_test.py --seconds 60 --episodes 1
+python scripts/30_camera_recorder_test.py --camera front=943222070221   # one camera
+python scripts/30_camera_recorder_test.py --fake                        # synthetic frames, no cameras
+```
+Starts the camera process of `teleop/cameras.py` and records episodes the way the teleop will (the
+last one discarded: its files must be gone). Meanwhile this process runs a 50 Hz loop and counts late
+cycles (> 5 ms). Prints per episode and camera: frames, fps, frame interval, JPEG write time, size and
+MB/s; the camera process CPU. Files: `data/cameras/rec_<time>/episode_<n>/`.
