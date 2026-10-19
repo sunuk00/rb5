@@ -98,6 +98,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 **Demonstration recording**
 - [2026-10-17 — What jnt_ref is: the controller's joint reference, 60 ms behind the sent target](#2026-10-17--what-jnt_ref-is-the-controllers-joint-reference-60-ms-behind-the-sent-target)
 - [2026-10-17 — Open (step 3): demonstration recording rate 50 Hz vs 30 Hz](#2026-10-17--open-step-3-demonstration-recording-rate-50-hz-vs-30-hz)
+- [2026-10-19 — rec-1: demonstration format (30 Hz; action x, y, z, gripper; state 6 joints + gripper; keyboard episodes)](#2026-10-19--rec-1-demonstration-format-30-hz-action-x-y-z-gripper-state-6-joints--gripper-keyboard-episodes)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -1741,7 +1742,7 @@ state = jnt_ang (or jnt_ref).
 
 ## 2026-10-17 — Open (step 3): demonstration recording rate 50 Hz vs 30 Hz
 
-Candidates for the recording format step (not decided):
+Candidates for the recording format step. **Decided 2026-10-19: 30 Hz (see the rec-1 entry).**
 
 | | 50 Hz | 30 Hz |
 |---|---|---|
@@ -2169,6 +2170,31 @@ the 10.5 V supply); no read failures since the timeout change; grasp detection c
   supply is still needed.
 - Return delay 500 us -> 0 (motor setting, ask first) not done.
 
+## 2026-10-19 — rec-1: demonstration format (30 Hz; action x, y, z, gripper; state 6 joints + gripper; keyboard episodes)
+
+**Decision (user, rec-1):** the four recommendations below, plus the clutch state in the raw log and a
+converter option that cuts long clutch-released pauses (default: keep them).
+
+**Pipeline:** the teleop records raw data at the native rates (robot 50 Hz, cameras 30 fps), every
+sample stamped with the same monotonic clock. A converter builds the LeRobotDataset afterwards, so the
+dataset rate and contents can be changed later without recording again.
+
+| item | decision | reason | rejected |
+|---|---|---|---|
+| dataset rate | 30 Hz (robot data resampled by timestamp) | each 30 fps camera frame used once; the common LeRobot setting; smaller | 50 Hz (ALOHA): camera frames duplicated 1.7x, video resampled to 50 fps |
+| action | `[x, y, z, gripper]`: the sent TCP target in base-frame mm (absolute) + the trigger command `open_frac` (0 = closed, 1 = open) | the exact values our safety pipeline (range, speed and joint caps, move_servo_l) executes; no model error, no delay estimate; the gripper thread applies the same grasp logic at run time | joint action (jnt_ref 60 ms ahead): needs move_servo_j and joint-space checks; deltas: drift; yaw: follows x, y with `follow_base` (rx, ry fixed), so it is redundant (kept in the raw log) |
+| state | 6 measured joints (`jnt_ang`) + gripper position normalized 0..1 = 7 | measured values; include the wrist pose; ALOHA style | measured TCP: DH model error (about 2 mm) and no wrist information. Gripper current / grasp flag, TCP, tcp_ref, jnt_ref: raw log only |
+| images | `front` = D435 fixed above the workspace looking down (position set); `wrist` = D405 on the gripper body; RGB 640x480 @ 30 | the ACT default; both cameras tested in cam-1 | depth: large, not needed now |
+| episodes | keyboard in the terminal (own thread): `s` start, `e` end as success, `d` discard, `h` back to home | the leader buttons are all in use (clutch, rotate, gripper trigger) | leader button combos |
+| between episodes | `h`: stop streaming, move to the ready pose with the existing move_j code, stream again | the same start pose for every episode | restart the program each time; by hand |
+| clutch released | kept in the dataset (robot still, action constant): the policy learns to wait. The raw log has the clutch state; the converter can cut released stretches longer than a set time (off by default) | user | always cut |
+| task text | one per dataset (e.g. "pick the block and place it in the box") | | |
+
+**Checks later:** the 30 Hz action stream interpolated to the 50 Hz servo loop must be smooth (rec-4,
+replay in Simulation); CPU, disk, USB and loop timing with two cameras + teleop + gripper (after the
+D405 is mounted). Real demonstrations start after the D405 is mounted: the camera set must not change
+inside a dataset. The `h` home move is motion code: its own plan and approval in rec-3.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -2186,8 +2212,8 @@ the 10.5 V supply); no read failures since the timeout change; grasp detection c
     still an assumption, although the operation felt right.
   - **Collision detection sensitivity** with the lab (it is required ON before every Real run).
   - **RB5 joint speed specification** for this model, to replace our own caps (75 / 60 deg/s).
-  - **Demonstration recording for ACT / LeRobot:** format, rate (50 Hz like ALOHA), what to record
-    (joints, TCP, modes, gripper, cameras).
+  - **Demonstration recording for ACT / LeRobot:** format decided in rec-1 (2026-10-19). Next: rec-2
+    LeRobot env, rec-3 recording in the teleop, rec-4 converter + Simulation replay, rec-5 ACT trial.
   - **Windows** (only if needed):
     - environment.yml (evdev only on Linux)
     - CPU pinning and the FTDI latency check per OS
@@ -2195,7 +2221,6 @@ the 10.5 V supply); no read failures since the timeout change; grasp detection c
     - Python 3.11+ for the sleep resolution
   - **Optional, when the operator wants more speed:** sideways 400 mm/s, radial / vertical 300 mm/s.
     Each raise is a Real limit change and needs its own decision.
-  - **Recording rate 50 Hz vs 30 Hz** and the action definition: see the 2026-10-17 entries.
   - **Gripper (closed for now, 2026-10-19; see its entry):** 12 V supply; grip force eaten by compliance
     (goal that follows the position while grasping); thin objects not detected (finger pads); real finger
     contact position; return delay 0 (motor setting, ask first); when mounted on the flange: z_min, tool
