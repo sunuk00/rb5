@@ -110,6 +110,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-17 — Gripper: longer reply timeout on its port (thread switching); a bit faster (210 / 200)](#2026-10-17--gripper-longer-reply-timeout-on-its-port-thread-switching-a-bit-faster-210--200)
 - [2026-10-18 — Ready pose turned to azimuth -83 deg (workspace moved to the side)](#2026-10-18--ready-pose-turned-to-azimuth--83-deg-workspace-moved-to-the-side)
 - [2026-10-19 — Gripper Goal Current 150 -> 200 (faster start; grip force +33 %)](#2026-10-19--gripper-goal-current-150---200-faster-start-grip-force-33-)
+- [2026-10-19 — Ready pose = the user's pose with J6 set for the gripper camera](#2026-10-19--ready-pose--the-users-pose-with-j6-set-for-the-gripper-camera)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -2053,6 +2054,25 @@ cap (504 mA), so the cap (not profile acceleration 200) set the start. The felt 
 mode 5 the same value caps the gripping force, so it grows by a third: the user watches the printed
 gripper and says at once if it is too strong. Expected gain: tens of ms at the start; the top speed
 stays voltage-bound (12 V is still open).
+
+## 2026-10-19 — Ready pose = the user's pose with J6 set for the gripper camera
+
+**Request (user):** the robot was left with J6 where the camera (mounted on the gripper body) sees best;
+use that pose as the home. Read-only state: jnt_ref (84.898, 1.808, -116.764, 24.718, -90.463, -175.743),
+tcp_ref (67.2, -499.4, 146.2, rpy 89.7, -0.5, 179.2).
+
+**Decision (user, method 1):** `ready_pose.joints_deg` = that pose in sim.yaml and real.yaml. J5 -90.5
+makes the J6 axis vertical (within 0.5 deg) with the gripper hanging along it, so J6 turns the gripper
+and its camera about the vertical. DH TCP r 504, z 144, azimuth -82.3: room in 254, out 296, down 194, up
+321 mm; margins J5 89.5, shoulder 355 mm, elbow 63.2, J3 limit 48.2 deg; start checks pass (computed).
+From the 2026-10-18 pose the move turns J6 +130.7 deg (wrist warning) and takes about 27 s.
+
+**J6 during the teleop: kept as is (yaw follow_base).** The camera is on the gripper body, so it turns
+with J6 and always sees the gripper the same way; the teleop keeps the start tilt (J5 stays within about
+1 deg) and J6 moves by up to about 10 deg over a run, because J1 differs from the TCP azimuth by the
+110.7 mm shoulder offset (d4) and J6 makes up the difference (run 105154: correlation -0.94). Rejected:
+yaw tied to J1 (J6 fixed; only needed for a camera before J6) and a yaw fixed in the room (J6 would turn
+as much as J1).
 
 ## PENDING
 

@@ -109,14 +109,14 @@ tcp:
   expected_offset_mm: null      # not checked in Simulation
   offset_tolerance_mm: 1.0
 
-ready_pose:                     # 2026-10-18 (user: the workspace moved to the side): the 2026-10-16 pose turned by J1
-                                # only (-88.5 deg) to azimuth -83.3 deg, where the robot was left after the last runs
-                                # (that pose itself was at the inner / floor corner of the range, so not used as is).
-                                # Same shape, so the same margins: J5 87.5, shoulder 336 mm, elbow 60.4, J3 limit
-                                # 45.4 deg; DH TCP (52.9, -446.9, 152.3), r 450, z 152 (200 mm to r_min and the floor).
-                                # J6: the move picks the nearest equivalent angle (from J6 -303 it goes to -306.5).
-                                # Before: (173.650, 4.300, -119.566, 31.666, -87.544, 53.521), azimuth 5.3 deg
-  joints_deg: [85.116, 4.300, -119.566, 31.666, -87.544, 53.521]
+ready_pose:                     # 2026-10-19 (user): the pose the user set on the real RB5 (read from jnt_ref), with
+                                # J6 where the camera on the gripper body sees best and J5 -90.5, so the J6 axis is
+                                # vertical within 0.5 deg (tool rpy 89.7, -0.5, 179.2: the gripper hangs straight down).
+                                # DH TCP (67.2, -499.4, 144.3): r 504, z 144, azimuth -82.3; room in 254, out 296,
+                                # down 194, up 321 mm; margins J5 89.5, shoulder 355 mm, elbow 63.2, J3 limit 48.2 deg.
+                                # From the 2026-10-18 pose the move turns J6 +130.7 deg (wrist warning, typed yes).
+                                # Before: (85.116, 4.300, -119.566, 31.666, -87.544, 53.521) (2026-10-18, side workspace)
+  joints_deg: [84.898, 1.808, -116.764, 24.718, -90.463, -175.743]
   move_speed_deg_s: 50.0        # x speed bar 0.1 = 5 deg/s (was 30 = 3 deg/s; user 2026-10-12: a bit faster)
   tolerance_deg: 0.05
   wrist_warning_deg: 90.0
