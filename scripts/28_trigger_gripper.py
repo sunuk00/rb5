@@ -68,6 +68,7 @@ MIN_VOLTAGE = 10.0             # e-Manual operating range 10.0-14.8 V
 MAX_TEMPERATURE = 70           # C (motor shutdown at 80)
 MIN_RANGE = 50                 # ticks between open and closed (4.4 deg)
 CATCH_FRAC = 0.05              # follow the trigger once it points within 5 % of the range of the position
+SQUEEZE_TICKS = 150            # grasp: goal = stop point + this toward closed (same as configs/*.yaml)
 FAIL_STOP = 3
 
 
@@ -186,7 +187,7 @@ def main():
             raise SystemExit(e)
         command = GripCommand(closed, opened, held, CATCH_FRAC)
         worker = GripperWorker(gripper, command, PERIOD_S, GOAL_DEADBAND, MIN_VOLTAGE, MAX_TEMPERATURE, FAIL_STOP,
-                               low_voltage_stops=True)
+                               low_voltage_stops=True, squeeze_ticks=SQUEEZE_TICKS)
         need = command.frac_of(held) * TRIGGER_FULL
         print(f"\nrunning: {args.trigger} trigger 0 = closed, 1000 = open. Ctrl+C to stop.")
         print(f"catch: holding at {held}; move the {args.trigger} trigger to about {need:.0f} to start following\n")

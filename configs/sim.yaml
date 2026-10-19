@@ -135,6 +135,9 @@ gripper:                        # same as Simulation. MX-106T on its own U2D2 (g
   profile_acceleration: 200     # x 214.577 rev/min^2: 0 -> 48 rpm in about 0.07 s (was 100, 0.13 s; the current
                                 # while speeding up was 212-337 mA, below the 504 mA cap, so this limited the start)
   catch_frac: 0.05              # follow once the trigger points within 5 % of the gripper position (or passes it)
+  squeeze_ticks: 150            # stopped short of a closing goal by an object: goal = stop point + 150 ticks (13 deg),
+                                # so the grip force is the goal_current cap (a thin object stopped 17 ticks short only
+                                # drew 363 mA: 2026-10-19). Mode 5 takes goals past 4095 (e-Manual: +/-256 rev). 0 = off
   min_voltage: 10.0             # below: warning only during the teleop (turning the torque off drops the object)
   max_temperature: 70           # C; above: the gripper thread stops (the arm continues)
   fail_stop: 3                  # failed gripper reads in a row: the gripper thread stops (the arm continues)

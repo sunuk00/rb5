@@ -86,7 +86,7 @@ What happens:
 | **left** button held (with the right one) | rotate mode: radius and height stay; moving the hand left / right turns the RB5 base (J1), 100 mm = 30 deg (left = counterclockwise seen from above) |
 | right button released | the RB5 holds its pose; move the hand freely, press again to continue |
 | twist the handle | not used: the gripper turns with J1, RB5 J6 stays still |
-| **left** trigger | gripper: released (0) = closed, fully pulled (1000) = fully open, in proportion; independent of the clutch |
+| **left** trigger | gripper: released (0) = closed, fully pulled (1000) = fully open, in proportion; independent of the clutch. When an object stops the fingers it squeezes at the force cap (status `GRASP`) until the trigger opens back to the object |
 | right trigger | not used (logged when `gripper.trigger: right`) |
 
 Speeds: radial / vertical up to 250 mm/s, sideways (turning J1) up to 360 mm/s, joints J1 75 / others

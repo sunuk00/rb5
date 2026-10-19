@@ -142,6 +142,7 @@ SCHEMA = {
         "profile_velocity": _num(1, 210, integer=True),      # x 0.229 rpm; the motor's velocity limit is 210
         "profile_acceleration": _num(1, 1000, integer=True), # x 214.577 rev/min^2
         "catch_frac": _num(0.01, 0.5),
+        "squeeze_ticks": _num(0, 300, integer=True),         # grasp: goal this far past the stop point (0 = off)
         "min_voltage": _num(9.5, 14.8),
         "max_temperature": _num(30, 80, integer=True),
         "fail_stop": _num(1, 20, integer=True),

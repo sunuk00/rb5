@@ -13,15 +13,18 @@ CLOSED, OPEN = 3968, 2196   # docs/hardware.md (closed has the larger value)
 
 
 class FakeMotor:
-    """Moves toward the goal by `step` ticks per state read. Hooks: fail_state (count of failed state reads),
-    voltage, error, temperature, raise_on_state."""
+    """Moves toward the goal by `step` ticks per state read (velocity = the move, 0 when stopped). Hooks:
+    fail_state (count of failed state reads), voltage, error, temperature, raise_on_state, block_at (an
+    object: closing, i.e. increasing, stops there), delay (state reads after a goal change before the
+    position starts to follow; the profile, i.e. the position trajectory, starts at once)."""
 
     def __init__(self, position=CLOSED, step=100):
         self.id = 2
         self.regs = {g.OPERATING_MODE: 3, g.TORQUE_ENABLE: 0, g.HARDWARE_ERROR: 0, g.PRESENT_POSITION: position}
-        self.goal, self.step = position, step
+        self.goal, self.step, self.traj, self.delay, self.wait = position, step, position, 0, 0
         self.writes = []
         self.fail_state, self.voltage, self.temperature, self.raise_on_state = 0, 11.0, 30, None
+        self.block_at = None
         self.ended = False
 
     def read(self, item):
@@ -33,7 +36,7 @@ class FakeMotor:
         self.writes.append((item, value))
         self.regs[item] = value
         if item == g.GOAL_POSITION:
-            self.goal = value
+            self.goal, self.wait = value, self.delay
         return None
 
     def state(self):
@@ -42,10 +45,17 @@ class FakeMotor:
         if self.fail_state:
             self.fail_state -= 1
             return None
-        p = self.regs[g.PRESENT_POSITION]
-        p += max(-self.step, min(self.step, self.goal - p))
+        self.traj += max(-self.step, min(self.step, self.goal - self.traj))
+        p0 = self.regs[g.PRESENT_POSITION]
+        if self.wait:
+            self.wait -= 1
+            p = p0
+        else:
+            p = self.traj
+        if self.block_at is not None and p > self.block_at:
+            p = max(p0, self.block_at)
         self.regs[g.PRESENT_POSITION] = p
-        return (100.0, 0.0, p, self.voltage, self.temperature)
+        return (100.0, float(p - p0), p, self.voltage, self.temperature, self.traj)
 
     def end_state(self):
         self.ended = True
@@ -164,6 +174,77 @@ class TestGripperWorker(unittest.TestCase):
         w = g.GripperWorker(m, g.GripCommand(CLOSED, OPEN, CLOSED))
         self.assertEqual(w.finish(), (0, g.MODE_AT_END))
         self.assertEqual(w.rows, [])
+
+
+class TestGrasp(unittest.TestCase):
+    def goals(self, m):
+        return [v for item, v in m.writes if item == g.GOAL_POSITION]
+
+    def test_object_stops_the_fingers_then_squeeze(self):
+        m = FakeMotor(position=OPEN)
+        m.block_at = 3000                                          # an object
+        w = run_worker(m, [1.0] * 3 + [0.0] * 60, held=OPEN, squeeze_ticks=150)
+        self.assertEqual(self.goals(m), [CLOSED, 3150])            # trigger goal, then stop point + 150
+        self.assertEqual(w.rows[-1]["grasp"], 1)
+        self.assertEqual(w.rows[-1]["goal"], 3150)
+        self.assertIn("gripper: grasp at 3000 (968 ticks short), squeezing", w.events())
+
+    def test_empty_close_no_squeeze(self):
+        m = FakeMotor(position=OPEN)
+        w = run_worker(m, [1.0] * 3 + [0.0] * 60, held=OPEN, squeeze_ticks=150)
+        self.assertEqual(self.goals(m), [CLOSED])                  # reaches the goal: nothing past it
+        self.assertEqual(m.regs[g.PRESENT_POSITION], CLOSED)
+        self.assertFalse(any(r["grasp"] for r in w.rows))
+
+    def test_opening_the_trigger_releases(self):
+        m = FakeMotor(position=OPEN)
+        m.block_at = 3000
+        f_open = (2800 - CLOSED) / (OPEN - CLOSED)                 # trigger goal 2800: back past the object
+        w = run_worker(m, [1.0] * 3 + [0.0] * 60 + [f_open] * 40, held=OPEN, squeeze_ticks=150)
+        self.assertEqual(self.goals(m), [CLOSED, 3150, 2800])
+        self.assertEqual(m.regs[g.PRESENT_POSITION], 2800)
+        self.assertIn("gripper: grasp released", w.events())
+
+    def test_object_gone_closes_to_the_trigger_goal(self):
+        m = FakeMotor(position=OPEN)
+        m.block_at = 3000
+        w = g.GripperWorker(m, g.GripCommand(CLOSED, OPEN, OPEN), period_s=0.001, squeeze_ticks=150)
+        w.start()
+        for f in [1.0] * 3 + [0.0] * 60:
+            w.set(f)
+            time.sleep(0.003)
+        m.block_at = None                                          # the object slips out
+        for _ in range(60):
+            w.set(0.0)
+            time.sleep(0.003)
+        w.finish()
+        self.assertEqual(self.goals(m), [CLOSED, 3150, CLOSED])
+        self.assertEqual(m.regs[g.PRESENT_POSITION], CLOSED)
+        self.assertIn("gripper: grasp lost (closed past the object)", w.events())
+
+    def test_no_grasp_while_the_motor_is_starting(self):
+        m = FakeMotor(position=OPEN)
+        m.delay = 5                                                # 5 reads before it moves; the profile already runs
+        w = run_worker(m, [1.0] * 3 + [0.0] * 60, held=OPEN, squeeze_ticks=150)
+        self.assertEqual(self.goals(m), [CLOSED])
+        self.assertFalse(any(r["grasp"] for r in w.rows))
+
+    def test_no_grasp_without_a_profile_value(self):
+        class NoTrajectory(FakeMotor):                            # if 140 did not follow in mode 5: never squeeze
+            def state(self):
+                s = super().state()
+                return None if s is None else s[:5] + (0,)
+        m = NoTrajectory(position=OPEN)
+        m.block_at = 3000
+        w = run_worker(m, [1.0] * 3 + [0.0] * 60, held=OPEN, squeeze_ticks=150)
+        self.assertEqual(self.goals(m), [CLOSED])
+
+    def test_off_with_zero(self):
+        m = FakeMotor(position=OPEN)
+        m.block_at = 3000
+        w = run_worker(m, [1.0] * 3 + [0.0] * 60, held=OPEN)       # squeeze_ticks 0 (default)
+        self.assertEqual(self.goals(m), [CLOSED])
+        self.assertFalse(any(r["grasp"] for r in w.rows))
 
 
 class TestStartMotor(unittest.TestCase):

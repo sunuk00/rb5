@@ -111,6 +111,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-18 — Ready pose turned to azimuth -83 deg (workspace moved to the side)](#2026-10-18--ready-pose-turned-to-azimuth--83-deg-workspace-moved-to-the-side)
 - [2026-10-19 — Gripper Goal Current 150 -> 200 (faster start; grip force +33 %)](#2026-10-19--gripper-goal-current-150---200-faster-start-grip-force-33-)
 - [2026-10-19 — Ready pose = the user's pose with J6 set for the gripper camera](#2026-10-19--ready-pose--the-users-pose-with-j6-set-for-the-gripper-camera)
+- [2026-10-19 — Gripper grasp squeeze: goal past the stop point so the grip force is the Goal Current cap](#2026-10-19--gripper-grasp-squeeze-goal-past-the-stop-point-so-the-grip-force-is-the-goal-current-cap)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -2078,6 +2079,41 @@ with J6 and always sees the gripper the same way; the teleop keeps the start til
 110.7 mm shoulder offset (d4) and J6 makes up the difference (run 105154: correlation -0.94). Rejected:
 yaw tied to J1 (J6 fixed; only needed for a camera before J6) and a yaw fixed in the room (J6 would turn
 as much as J1).
+
+## 2026-10-19 — Gripper grasp squeeze: goal past the stop point so the grip force is the Goal Current cap
+
+**Problem (user, pick and place):** the grip is too weak, more than the speed. **Cause (Real 095845):**
+with the trigger released (goal 3968) a thin object stopped the fingers at 3951-3968, 17 ticks (1.5 deg)
+short. In mode 5 the current is the position error x the position gain (P gain 850, about 21 mA per tick
+here) and Goal Current only caps it, so the holding current was 363 mA (p50) against the 672 mA cap; that
+is why Goal Current 200 did not grip harder.
+
+**Decision (user, option A):** `GripperWorker` squeezes when an object stops the fingers: the goal
+written becomes the stop point + `gripper.squeeze_ticks` (150 ticks = 13 deg) toward closed, so the error
+is large and the current goes to the Goal Current cap (the configured force, 0.50 A at 150). It ends when
+the trigger goal opens back to the object (then it follows the trigger) or when the fingers close on to
+the squeeze goal (the object is gone; then it follows the trigger goal again). Without an object the
+fingers reach the goal and nothing changes (no constant squeezing of the empty printed fingers).
+Settings `gripper.squeeze_ticks` (0 = off, max 300); script 28 uses the same 150. Mode 5 takes goals past
+4095 (e-Manual: Goal Position +/-1,048,575 in modes 4 and 5, position limits not used, Present Position
+reset to one turn only when switching to mode 3 or on reboot).
+
+**Detection:** stopped (|velocity| < 1 rpm) for 3 cycles, the motor's profile finished (Position
+Trajectory 140 within 2 ticks of the goal written) and the position at least 8 ticks behind it. A first
+rule with the goal alone, replayed on 095845 / 143135, fired at the start of moves (the motor starts about
+40 ms later and accelerates, so it looks stopped short) and while following a slow trigger. The e-Manual
+calls 140 the "desired position trajectory from profile" and says mode 5 computes its current from the
+desired trajectory, but does not state outright that 140 is updated in mode 5: if it is not, condition
+(profile finished) fails and the gripper simply never squeezes (test). It is logged
+(`position_trajectory`, worker CSV) to check on the hardware. The state tuple has a 6th value (140).
+
+**Rejected:** closed_ticks set inside the real closed position (the empty fingers would press at the cap
+whenever the trigger is released); a higher position P gain (a motor setting, changes every motion).
+Friction pads on the fingers: recommended in addition (mechanical, user).
+
+**Checked:** 83 tests pass (object -> squeeze, empty close -> none, trigger opened -> release, object
+gone -> back to the trigger goal, no squeeze while the motor is starting, none without a profile value,
+off with 0). Not run on the hardware yet (the motor did not answer the read-only check: supply off).
 
 ## PENDING
 

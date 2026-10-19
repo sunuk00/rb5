@@ -26,9 +26,10 @@ STATUS_EVERY = 25
 CLEAR_LINE = "\r\x1b[2K"
 
 # trigger_raw: the trigger value (bits 16-31) of the gripper's handle (gripper.trigger), blank on a failed read.
-# grip_*: the latest gripper thread row (blank without a gripper); grip_age_ms = how old that row is.
+# grip_*: the latest gripper thread row (blank without a gripper); grip_age_ms = how old that row is; grip_goal is
+# the goal written (while grip_grasp = 1: the stop point + gripper.squeeze_ticks).
 GRIP_COLUMNS = ["grip_open_frac", "grip_following", "grip_goal", "grip_position", "grip_current_mA", "grip_voltage_V",
-                "grip_hw_error", "grip_age_ms", "grip_stopped"]
+                "grip_hw_error", "grip_age_ms", "grip_stopped", "grip_grasp"]
 
 CSV_HEADER = (["t_s", "cycle_interval_ms", "button_raw", "clutch_engaged"]
               + [f"leader_q{i}_deg" for i in range(7)] + [f"leader_{a}_mm" for a in "xyz"]
@@ -115,7 +116,7 @@ class TeleopLoop:
         age = time.monotonic() - self.gripper.t0 - g["t_s"]
         return ([fmt(g["open_frac"], "{:.3f}"), g["following"], g["goal"], fmt(g["position"]), fmt(g["current_mA"]),
                  fmt(g["voltage_V"], "{:.1f}"), fmt(g["hardware_error"]), f"{age * 1000:.1f}",
-                 int(not self.gripper.is_alive())], g)
+                 int(not self.gripper.is_alive()), g.get("grasp", "")], g)
 
     def _grip_text(self, g):
         """Status line part: off / STOPPED / how far open the gripper is and its current."""
@@ -127,7 +128,8 @@ class TeleopLoop:
             return "-"
         gs = self.s.gripper
         opened = 100.0 * (g["position"] - gs.closed_ticks) / (gs.open_ticks - gs.closed_ticks)
-        return f"{'' if g['following'] else 'catch '}open {opened:3.0f}% {abs(g['current_mA']):4.0f} mA"
+        return (f"{'' if g['following'] else 'catch '}{'GRASP ' if g.get('grasp') else ''}open {opened:3.0f}% "
+                f"{abs(g['current_mA']):4.0f} mA")
 
     def _status_line(self, clutch, mapper, grip, tcp0, q, leader_fail_total, leader_reads):
         tool_rate = 100.0 * clutch.failures / max(clutch.reads, 1)

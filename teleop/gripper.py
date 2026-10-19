@@ -28,6 +28,17 @@ MAX_MOVE_ON_MODE_CHANGE = 20   # ticks: the position must not change when the mo
 # loop is planning in between, the reply was already there but timed out (Real 20261017_143135: 3 in a row,
 # the gripper thread stopped). Read-only test with the planning load: 2859 / 3001 failed, +6 or +12 ms: 0.
 REPLY_TIMEOUT_EXTRA_MS = 10.0
+# Grasp squeeze (GripperWorker): in mode 5 the current is the position error x the position gain, capped by Goal
+# Current; a thin object stops the fingers only a few ticks short of the goal, so the cap was never reached
+# (Real 20261019_095845: 17 ticks short, 363 mA with a 672 mA cap). When the gripper stops short of a closing
+# goal, the goal moves squeeze_ticks past the stop point, so the grip force is the Goal Current cap.
+# Detection uses the motor's own profile (Position Trajectory, 140): an object holds the position back while
+# the profile has already reached the goal. Comparing with the goal alone fired at the start of every move
+# (the motor starts about 40 ms later and accelerates) and while following a slow trigger (replay of 095845).
+GRASP_SHORT_TICKS = 8          # position this far behind the profile (settled error without an object: 0-4)
+GRASP_PROFILE_DONE_TICKS = 2   # the profile is within this of the goal written (its move is finished)
+GRASP_STALL_RPM = 1.0          # |velocity| below this counts as stopped
+GRASP_STALL_CYCLES = 3         # all of the above for this many cycles in a row (60 ms at 50 Hz)
 
 # MX-106(2.0) control table (address, size)
 TORQUE_ENABLE = (64, 1)
@@ -101,12 +112,12 @@ class Motor:
         return None
 
     def state(self):
-        """(current mA, velocity rpm, position ticks, voltage V, temperature C) or None."""
+        """(current mA, velocity rpm, position ticks, voltage V, temperature C, position trajectory ticks) or None."""
         data, result, _ = self.ph.readTxRx(self.port, self.id, *STATE_BLOCK)
         if result != self.ok or len(data) < STATE_BLOCK[1]:
             return None
         word = lambda o, n: signed(int.from_bytes(bytes(data[o:o + n]), "little"), n)
-        return (word(0, 2) * CURRENT_UNIT_MA, word(2, 4) * 0.229, word(6, 4), word(18, 2) / 10.0, data[20])
+        return (word(0, 2) * CURRENT_UNIT_MA, word(2, 4) * 0.229, word(6, 4), word(18, 2) / 10.0, data[20], word(14, 4))
 
     def reset_port(self):
         """After an interrupted transaction (Ctrl+C in the middle of a read or write) dynamixel_sdk keeps
@@ -224,18 +235,24 @@ class GripperWorker(threading.Thread):
     a temperature above max_temperature, fail_stop failed state reads in a row or any error (e.g. the
     U2D2 disconnected). Input voltage below min_voltage stops it too if low_voltage_stops, otherwise
     gives a warning event once per drop (teleop: turning the torque off would drop the object).
+    Grasp (squeeze_ticks > 0): stopped short of a closing goal (an object) -> the goal written is the stop
+    point + squeeze_ticks toward closed, until the trigger goal opens back to the object or the gripper
+    gets there (the object is gone). Without an object the fingers reach the goal and nothing changes.
     finish(): stop the thread, then torque off and operating mode 3 (Motor.end_state)."""
 
     ROW_HEADER = ["t_s", "open_frac", "frac_age_ms", "following", "goal", "goal_written", "position", "current_mA",
-                  "velocity_rpm", "voltage_V", "temperature_C", "hardware_error", "work_ms"]
+                  "velocity_rpm", "voltage_V", "temperature_C", "hardware_error", "work_ms", "grasp", "position_trajectory"]
 
     def __init__(self, motor, command, period_s=0.02, deadband=2, min_voltage=10.0, max_temperature=70,
-                 fail_stop=3, low_voltage_stops=True):
+                 fail_stop=3, low_voltage_stops=True, squeeze_ticks=0):
         super().__init__(daemon=True)
         self.motor, self.command = motor, command
         self.period_s, self.deadband, self.fail_stop = period_s, deadband, fail_stop
         self.min_voltage, self.max_temperature = min_voltage, max_temperature
         self.low_voltage_stops = low_voltage_stops
+        self.squeeze_ticks = squeeze_ticks
+        self.pos = self.vel = self.traj = None   # from the last state read
+        self.stalled, self.grasp_at = 0, None
         self.lock = threading.Lock()
         self.stop_event = threading.Event()
         self.frac, self.frac_t = None, None
@@ -266,6 +283,30 @@ class GripperWorker(threading.Thread):
         with self.lock:
             self.pending.append(text)
 
+    def _grasp_goal(self, goal):
+        """The goal to write: the trigger goal, or while grasping the stop point + squeeze_ticks toward closed."""
+        c = self.command
+        if not self.squeeze_ticks or not c.following or self.pos is None:
+            self.stalled, self.grasp_at = 0, None
+            return goal
+        d = 1 if c.closed > c.opened else -1   # direction of closing in ticks
+        if self.grasp_at is not None:
+            opened_back = (goal - self.grasp_at) * d <= 0                              # trigger at or past the object
+            gone = (self.pos - self.grasp_at) * d >= self.squeeze_ticks - GRASP_SHORT_TICKS   # closed on: no object
+            if not (opened_back or gone):
+                return self.grasp_at + d * self.squeeze_ticks
+            self.grasp_at, self.stalled = None, 0
+            self._event("gripper: grasp released" if opened_back else "gripper: grasp lost (closed past the object)")
+        stopped_short = (self.traj is not None and abs(self.traj - self.written) <= GRASP_PROFILE_DONE_TICKS
+                         and (self.traj - self.pos) * d >= GRASP_SHORT_TICKS and (goal - self.pos) * d >= GRASP_SHORT_TICKS
+                         and abs(self.vel) < GRASP_STALL_RPM)
+        self.stalled = self.stalled + 1 if stopped_short else 0
+        if self.stalled >= GRASP_STALL_CYCLES:
+            self.grasp_at = self.pos
+            self._event(f"gripper: grasp at {self.pos} ({abs(goal - self.pos)} ticks short), squeezing")
+            return self.grasp_at + d * self.squeeze_ticks
+        return goal
+
     def run(self):
         fails, low = 0, False
         next_t = time.monotonic()
@@ -277,6 +318,7 @@ class GripperWorker(threading.Thread):
                 goal, event = self.command.update(frac)
                 if event:
                     self._event(event)
+                goal = self._grasp_goal(goal)
                 write = abs(goal - self.written) >= self.deadband
                 if write:
                     e = self.motor.write(GOAL_POSITION, goal)
@@ -287,11 +329,13 @@ class GripperWorker(threading.Thread):
                 s = self.motor.state()
                 err = self.motor.read(HARDWARE_ERROR)
                 fails = 0 if s is not None else fails + 1
+                if s is not None:
+                    self.pos, self.vel, self.traj = s[2], s[1], s[5]
                 row = dict(zip(self.ROW_HEADER, [
                     t_start - self.t0, frac, None if frac_t is None else (t_start - frac_t) * 1000.0,
                     int(self.command.following), goal, int(write)]
                     + (list(s[2:3]) + [s[0], s[1], s[3], s[4]] if s else [None] * 5)
-                    + [err, (time.monotonic() - t_start) * 1000.0]))
+                    + [err, (time.monotonic() - t_start) * 1000.0, int(self.grasp_at is not None), s[5] if s else None]))
                 with self.lock:
                     self.rows.append(row)
                     self.last = row

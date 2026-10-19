@@ -253,7 +253,8 @@ def main():
             refuse("gripper start", [e, f"read back: torque {t_back}, operating mode {m_back}"])
         command = GripCommand(g.closed_ticks, g.open_ticks, held, g.catch_frac)
         worker = GripperWorker(motor, command, s.servo.period_s, GRIPPER_DEADBAND, g.min_voltage, g.max_temperature,
-                               g.fail_stop, low_voltage_stops=False)   # teleop: low voltage is a warning (user, grip-3)
+                               g.fail_stop, low_voltage_stops=False,   # teleop: low voltage is a warning (user, grip-3)
+                               squeeze_ticks=g.squeeze_ticks)
         worker.start()
         print(f"Gripper: holding at {held}; move the {g.trigger} trigger to about "
               f"{command.frac_of(held) * g.trigger_full:.0f} to start following.")
