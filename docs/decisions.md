@@ -113,6 +113,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-19 — Ready pose = the user's pose with J6 set for the gripper camera](#2026-10-19--ready-pose--the-users-pose-with-j6-set-for-the-gripper-camera)
 - [2026-10-19 — Gripper grasp squeeze: goal past the stop point so the grip force is the Goal Current cap](#2026-10-19--gripper-grasp-squeeze-goal-past-the-stop-point-so-the-grip-force-is-the-goal-current-cap)
 - [2026-10-19 — Gripper: Goal Current 250 only while grasping; squeeze 150 -> 60 ticks](#2026-10-19--gripper-goal-current-250-only-while-grasping-squeeze-150---60-ticks)
+- [2026-10-19 — Gripper closed for now (grip-5): state and known limits](#2026-10-19--gripper-closed-for-now-grip-5-state-and-known-limits)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -2141,6 +2142,33 @@ ended and the goal went back to 3968. The supply still dipped to 9.5 V at the st
 **Checked:** 84 tests pass (the cap switches 150 -> 250 -> 150 around a grasp, written before the goal;
 settings relation).
 
+## 2026-10-19 — Gripper closed for now (grip-5): state and known limits
+
+**Decision (user):** stop tuning the gripper; LeRobot setup comes first. Reopen when a problem shows up.
+
+**State (configs/*.yaml, script 28 the same):** MX-106(2.0) on its own U2D2 (FT62AJAX), mode 5, left
+trigger 0 = closed (3968) .. 1000 = open (2196), catch at start, gripper thread at 50 Hz with a 10 ms longer
+reply timeout, profile velocity 210 / acceleration 200, Goal Current 150 (0.50 A) while moving, grasp
+detection (motor profile 140 reached, position 8+ ticks behind, stopped 60 ms) -> Goal Current 250 (0.84 A)
+and goal = stop point + 60 ticks until the trigger opens back or the object is gone. Torque off and mode 3
+at the end. Arm teleop continues if the gripper thread stops.
+
+**Measured:** trigger -> motion about 40 ms; full stroke (156 deg) about 0.7 s (top speed 42 rpm, set by
+the 10.5 V supply); no read failures since the timeout change; grasp detection correct in the runs so far
+(no false detections at move starts).
+
+**Known limits (not fixed):**
+- Grip force under squeeze is eaten by finger / object compliance: Real 105914, the fingers went 46 ticks
+  further, leaving 14 ticks of error, about 300 mA instead of the 840 mA cap. Fix options when needed: a
+  larger squeeze (about 130) or a goal that follows the position while grasping (preferred).
+- Very small or thin objects stop the fingers only 2-4 ticks short: not detected, about 90 mA (Real
+  105557). Finger pads (thickness, friction) are the simplest fix.
+- The fingers can close to about 4098 (130 ticks past the hand-measured 3968) when an object slips; the
+  real contact position is not measured.
+- Supply 10.5 V at rest, dips to 9.5-9.7 V at the start of moves (the motor's minimum is 9.5 V): a 12 V
+  supply is still needed.
+- Return delay 500 us -> 0 (motor setting, ask first) not done.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -2168,6 +2196,7 @@ settings relation).
   - **Optional, when the operator wants more speed:** sideways 400 mm/s, radial / vertical 300 mm/s.
     Each raise is a Real limit change and needs its own decision.
   - **Recording rate 50 Hz vs 30 Hz** and the action definition: see the 2026-10-17 entries.
-  - **Gripper (after grip-3b):** supply 12 V (10.2 V while gripping); return delay 500 us -> 0 (motor
-    setting, ask first); first teleop runs with the gripper: loop timing with and without it (script 24);
-    when the gripper is mounted on the flange: z_min, tool mass, TCP offset (ask first).
+  - **Gripper (closed for now, 2026-10-19; see its entry):** 12 V supply; grip force eaten by compliance
+    (goal that follows the position while grasping); thin objects not detected (finger pads); real finger
+    contact position; return delay 0 (motor setting, ask first); when mounted on the flange: z_min, tool
+    mass, TCP offset (ask first).
