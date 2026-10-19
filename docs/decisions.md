@@ -106,6 +106,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-19 — rec-4a: converter (sessions -> LeRobotDataset, script 31)](#2026-10-19--rec-4a-converter-sessions---lerobotdataset-script-31)
 - [2026-10-19 — rec-4b: replay in Simulation through the teleop limits (TargetFollower, script 32); rbpodo in env lerobot](#2026-10-19--rec-4b-replay-in-simulation-through-the-teleop-limits-targetfollower-script-32-rbpodo-in-env-lerobot)
 - [2026-10-19 — Real pilot 141929: the D405 dropped off USB; camera stall detection; converter coverage check, --cameras](#2026-10-19--real-pilot-141929-the-d405-dropped-off-usb-camera-stall-detection-converter-coverage-check---cameras)
+- [2026-10-19 — rec-5: ACT trial training on the pilot (front only): the flow works; inference 17 ms GPU](#2026-10-19--rec-5-act-trial-training-on-the-pilot-front-only-the-flow-works-inference-17-ms-gpu)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -2389,6 +2390,33 @@ silently: episodes 1-5 have no wrist frames after that point and nothing was rep
 none). Front only: 6 episodes, 4794 frames (2.7 min) -> `local/pilot_front` (37 MB) for the rec-5 flow
 test. Conversion took 176 s (JPEG decoding + AV1 encoding of real images, about 1.1 x real time per
 camera; the 0.3 x of rec-2 was synthetic images): 50 episodes x 30 s x 2 cameras about 55 min.
+
+## 2026-10-19 — rec-5: ACT trial training on the pilot (front only): the flow works; inference 17 ms GPU
+
+**Run:** `lerobot-train --policy.type=act --policy.device=cuda --policy.push_to_hub=false
+--dataset.repo_id=local/pilot_front --batch_size=8 --steps=2000 --save_freq=1000 --wandb.enable=false`
+(ACT defaults: chunk 100, ResNet18 ImageNet weights, VAE, lr 1e-5; 52 M parameters). Data:
+`local/pilot_front` = Real pilot 141929, 6 episodes, front camera only, 4794 frames.
+
+**Training:** 2000 steps in 10.5 min, 0.307 s per step (data loading 0.002 s: the GPU is the limit),
+GPU memory 2.1 GB, about 3.3 epochs. Loss 10.47 (step 100) -> 1.15 (step 2000), L1 0.64 -> 0.20, KL 0.98
+-> 0.10, still falling. Checkpoints at 1000 and 2000, about 600 MB each (model + optimizer state).
+
+**Offline check (script 33, last checkpoint, 200 frames of the training data):** predicted position vs
+the recorded action p50 / p90: +1 step 28 / 63 mm, +30 steps 30 / 71 mm, +99 steps 42 / 100 mm;
+gripper +1 step 0.04 / 0.20. Underfit after 2000 steps on 6 episodes, as expected; it shows that loading,
+normalization, chunk prediction and unnormalization work end to end. Not for the robot.
+
+**Inference time (batch 1, the whole chunk of 100):** GPU 17.3 ms p50 (18.4 max) with one camera, CPU
+132 ms p50; GPU with two 480x640 cameras (untrained ACT, model only) 32.5 ms p50 (33.8 max); GPU memory
+0.5 GB.
+
+**Consequences for the policy runner (rec-6, to plan):** one inference (about 33 ms with both cameras)
+is longer than a 20 ms servo cycle, so it must run outside the servo loop (its own process, as the
+cameras), with the servo loop interpolating the latest chunk and never waiting. A chunk covers 3.3 s, so
+a new chunk every few hundred ms is enough; inference every 30 Hz step (temporal ensembling) would use
+the GPU all the time with two cameras. Full training estimate with both cameras: to be measured (the
+ResNet part doubles; roughly 0.5 s per step -> 50 k steps about 7 h).
 
 ## PENDING
 

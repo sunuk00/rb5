@@ -55,6 +55,7 @@ default, Real with `--real` and typed confirmation; **leader** = writes torque t
 | 30 | `30_camera_recorder_test.py` | Camera recorder process alone (teleop/cameras.py): episodes kept / discarded, fps, gaps, JPEG write time, MB/s, CPU, and a 50 Hz loop beside it (rec-3a) | - (cameras only) | tool |
 | 31 | `31_convert_to_lerobot.py` | Demonstration sessions (`--record`) -> one LeRobotDataset at 30 fps: kept episodes, still ones left out, optional pause cut, checks (env `lerobot`, rec-4a) | - (files only) | tool |
 | 32 | `32_replay_episode.py` | Replay one dataset episode's actions through the teleop limits (teleop/follow.py) and compare with the recorded joints (env `lerobot`, rec-4b) | RB5 (Sim only) | test |
+| 33 | `33_policy_check.py` | A trained policy offline: predicted chunks vs recorded actions, inference time GPU / CPU (env `lerobot`, rec-5) | - | tool |
 
 ## Usage per script
 
@@ -436,3 +437,13 @@ through `teleop.follow.TargetFollower` (the teleop's per-cycle limits) -> move_s
 is held for `--hold-s` (1 s). Prints: replay joints vs recorded joints at the same episode time,
 target vs desired (what the limits changed), tcp_ref vs target, the end position, limit flags. CSV in
 `data/replay/`. The gripper action is not sent.
+
+### 33 policy check (offline)
+Env `lerobot`. No robot.
+```bash
+python scripts/33_policy_check.py data/train/<run>/checkpoints/last/pretrained_model --repo-id local/pilot_front --two-cameras
+```
+Loads the policy and its normalization from the checkpoint; on frames spread over the dataset compares
+the predicted chunk with the recorded actions (+1, +10, +30, +99 steps; training data, so it shows the
+pipeline and the fit, not robot performance); times one inference (batch 1) on the GPU and the CPU;
+`--two-cameras` also times an untrained ACT with two 480x640 cameras.
