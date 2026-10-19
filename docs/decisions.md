@@ -2345,6 +2345,24 @@ inside the range, the tool turns with the azimuth, refuses yaw modes other than 
 script loads episode 0 of local/sim_test (348 x 4 actions) and its interpolation. The Simulation run
 itself: by the user.
 
+**Simulation runs (user, 2026-10-19, local/sim_test):**
+
+| | episode 0 (11.6 s) | episode 1 (7.5 s) |
+|---|---|---|
+| late cycles | 0 | 0 |
+| end: tcp_ref vs last action | 0.00 mm | 0.00 mm |
+| joints replay vs recording, max (J1..J4) | 2.2 / 1.4 / 1.6 / 1.6 deg | 0.1 / 1.6 / 2.0 / 1.5 deg |
+| mean joint error, as is -> after the best time shift | 0.16-0.22 -> 0.04-0.07 deg (replay 30-60 ms later) | 0.02-0.33 -> 0.01-0.08 deg (40 ms later) |
+| target vs desired p95 / max | 21 / 22 mm | 10 / 10 mm |
+| limit flags (cycles) | accel 239, speed 216, range 1 | accel 156, speed 127, range 1 |
+
+The path is reproduced; the difference is mostly a delay of 30-60 ms. Cause: the 30 Hz action,
+interpolated linearly, has its velocity changes bunched at the 30 Hz samples; at those points the
+acceleration limit trims the step, and while the motion is at the speed cap (the recording moved
+there) the target cannot catch up, so it falls behind by up to 22 mm until the motion slows down.
+Accepted for now (the limits stay; the end position is exact). If a policy's motion turns out too
+sluggish: a smoother interpolation (e.g. cubic) between the 30 Hz actions.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
