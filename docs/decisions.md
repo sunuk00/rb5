@@ -112,6 +112,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-19 — Gripper Goal Current 150 -> 200 (faster start; grip force +33 %)](#2026-10-19--gripper-goal-current-150---200-faster-start-grip-force-33-)
 - [2026-10-19 — Ready pose = the user's pose with J6 set for the gripper camera](#2026-10-19--ready-pose--the-users-pose-with-j6-set-for-the-gripper-camera)
 - [2026-10-19 — Gripper grasp squeeze: goal past the stop point so the grip force is the Goal Current cap](#2026-10-19--gripper-grasp-squeeze-goal-past-the-stop-point-so-the-grip-force-is-the-goal-current-cap)
+- [2026-10-19 — Gripper: Goal Current 250 only while grasping; squeeze 150 -> 60 ticks](#2026-10-19--gripper-goal-current-250-only-while-grasping-squeeze-150---60-ticks)
 
 **Repository structure (2026-10-14)**
 - [2026-10-14 — Leader arm URDF committed under assets/](#2026-10-14--leader-arm-urdf-committed-under-assets)
@@ -2114,6 +2115,31 @@ Friction pads on the fingers: recommended in addition (mechanical, user).
 **Checked:** 83 tests pass (object -> squeeze, empty close -> none, trigger opened -> release, object
 gone -> back to the trigger goal, no squeeze while the motor is starting, none without a profile value,
 off with 0). Not run on the hardware yet (the motor did not answer the read-only check: supply off).
+
+## 2026-10-19 — Gripper: Goal Current 250 only while grasping; squeeze 150 -> 60 ticks
+
+**First teleop run with the squeeze (Real 20261019_103804):** Position Trajectory (140) is updated in
+mode 5 (while moving it leads the position by about 23 ticks, at rest it equals the goal). One grasp in the
+run, detected correctly; no false detections at the starts of moves, none missed. The object stopped the
+fingers at 3949 (19 ticks short) already at 437-457 mA; the squeeze raised it to the cap (501-504 mA). So
+the weak grip is mainly the 0.50 A cap itself (and friction). When the object slipped, the fingers closed
+to 4098, 130 ticks past the hand-measured closed position (3968 is not a mechanical end), then the grasp
+ended and the goal went back to 3968. The supply still dipped to 9.5 V at the start of moves at 150.
+
+**Decision (user, A + B):**
+- A: `gripper.grasp_current` 250 (0.84 A): `GripperWorker` writes Goal Current 250 when a grasp starts and
+  goal_current (150) when it ends, before the goal of that cycle. Moves keep the 150 cap, so the start
+  current spikes (which dipped the supply) stay as they were; holding draws a steady current (supply
+  model from the logs: about 10.5 - 0.25 V/A, so about 10.3 V at 0.84 A). Settings: at least goal_current,
+  at most 300. Worker CSV column `goal_current`.
+- B: `squeeze_ticks` 150 -> 60: still far above what reaches the cap (about 22 mA per tick, so 60 ticks
+  ask for over 1 A), and an object that slips lets the fingers close 60 ticks instead of 150 before the
+  grasp ends (then the cap goes back to 150 too).
+- Script 28 uses the same values (`--current` at most the grasp current).
+- 12 V supply and friction pads stay open (hardware, user).
+
+**Checked:** 84 tests pass (the cap switches 150 -> 250 -> 150 around a grasp, written before the goal;
+settings relation).
 
 ## PENDING
 

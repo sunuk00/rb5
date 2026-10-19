@@ -70,7 +70,9 @@ Decisions and measurements behind them are in `docs/decisions.md`.
   from the single-turn wrap (4095). Settings (grip-2): mode 5, Goal Current 150 (0.50 A), profile
   velocity 200 (45.8 rpm), acceleration 100: full stroke about 0.7 s; holding an object at 0.50 A, 10.2 V.
   Since 2026-10-17 (teleop): velocity 210 (= the motor's Velocity Limit), acceleration 200; Goal Current 200 was
-  tried on 2026-10-19 and reverted to 150 (no faster stroke, supply dips to 9.5 V). Measured top
+  tried on 2026-10-19 and reverted to 150 (no faster stroke, supply dips to 9.5 V).
+  While grasping an object (detected): Goal Current 250 (0.84 A), squeeze 60 ticks past the stop point.
+  The fingers can close to about 4098 (130 ticks past 3968) when nothing is between them. Measured top
   speed at 10.5 V only about 42 rpm (12 V would allow more). The gripper port waits 10 ms longer for
   replies than dynamixel_sdk's default (thread switching, decisions 2026-10-17).
 - Leader arm control: **left** trigger, released 0 = closed, fully pulled 1000 = fully open (user, 2026-10-17).

@@ -237,7 +237,8 @@ def main():
         print("\nGripper writes (moves in Simulation too):")
         print(f"  torque off, operating mode {MODE_AT_END} -> 5 (current-based position; {MODE_AT_END} again at the end)")
         print(f"  profile velocity {g.profile_velocity} ({g.profile_velocity * 0.229:.1f} rpm), profile acceleration "
-              f"{g.profile_acceleration}, goal current {g.goal_current} ({g.goal_current * CURRENT_UNIT_MA:.0f} mA, force cap)")
+              f"{g.profile_acceleration}, goal current {g.goal_current} ({g.goal_current * CURRENT_UNIT_MA:.0f} mA, force cap; "
+              f"{g.grasp_current} = {g.grasp_current * CURRENT_UNIT_MA:.0f} mA while grasping an object)")
         print(f"  goal position {pos} (present position, no jump), torque on")
         print("Keep fingers out of the gripper. At the end the gripper torque goes off: put any held object down "
               "before stopping.")
@@ -254,7 +255,8 @@ def main():
         command = GripCommand(g.closed_ticks, g.open_ticks, held, g.catch_frac)
         worker = GripperWorker(motor, command, s.servo.period_s, GRIPPER_DEADBAND, g.min_voltage, g.max_temperature,
                                g.fail_stop, low_voltage_stops=False,   # teleop: low voltage is a warning (user, grip-3)
-                               squeeze_ticks=g.squeeze_ticks)
+                               squeeze_ticks=g.squeeze_ticks, goal_current=g.goal_current,
+                               grasp_current=g.grasp_current)
         worker.start()
         print(f"Gripper: holding at {held}; move the {g.trigger} trigger to about "
               f"{command.frac_of(held) * g.trigger_full:.0f} to start following.")

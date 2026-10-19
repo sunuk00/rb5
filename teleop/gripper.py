@@ -238,19 +238,25 @@ class GripperWorker(threading.Thread):
     Grasp (squeeze_ticks > 0): stopped short of a closing goal (an object) -> the goal written is the stop
     point + squeeze_ticks toward closed, until the trigger goal opens back to the object or the gripper
     gets there (the object is gone). Without an object the fingers reach the goal and nothing changes.
+    With grasp_current (and goal_current, the value start_motor wrote), Goal Current is grasp_current while
+    grasping and goal_current otherwise, written before the goal of that cycle: a stronger hold without the
+    higher cap during moves (the supply dipped to 9.5 V when the moves started at a higher cap).
     finish(): stop the thread, then torque off and operating mode 3 (Motor.end_state)."""
 
     ROW_HEADER = ["t_s", "open_frac", "frac_age_ms", "following", "goal", "goal_written", "position", "current_mA",
-                  "velocity_rpm", "voltage_V", "temperature_C", "hardware_error", "work_ms", "grasp", "position_trajectory"]
+                  "velocity_rpm", "voltage_V", "temperature_C", "hardware_error", "work_ms", "grasp", "position_trajectory",
+                  "goal_current"]
 
     def __init__(self, motor, command, period_s=0.02, deadband=2, min_voltage=10.0, max_temperature=70,
-                 fail_stop=3, low_voltage_stops=True, squeeze_ticks=0):
+                 fail_stop=3, low_voltage_stops=True, squeeze_ticks=0, goal_current=None, grasp_current=None):
         super().__init__(daemon=True)
         self.motor, self.command = motor, command
         self.period_s, self.deadband, self.fail_stop = period_s, deadband, fail_stop
         self.min_voltage, self.max_temperature = min_voltage, max_temperature
         self.low_voltage_stops = low_voltage_stops
         self.squeeze_ticks = squeeze_ticks
+        self.goal_current, self.grasp_current = goal_current, grasp_current
+        self.cap = goal_current           # Goal Current last written (start_motor wrote goal_current)
         self.pos = self.vel = self.traj = None   # from the last state read
         self.stalled, self.grasp_at = 0, None
         self.lock = threading.Lock()
@@ -303,9 +309,23 @@ class GripperWorker(threading.Thread):
         self.stalled = self.stalled + 1 if stopped_short else 0
         if self.stalled >= GRASP_STALL_CYCLES:
             self.grasp_at = self.pos
-            self._event(f"gripper: grasp at {self.pos} ({abs(goal - self.pos)} ticks short), squeezing")
+            cap = self.grasp_current if self.grasp_current is not None else self.goal_current
+            self._event(f"gripper: grasp at {self.pos} ({abs(goal - self.pos)} ticks short), squeezing"
+                        + ("" if cap is None else f" at {cap * CURRENT_UNIT_MA:.0f} mA"))
             return self.grasp_at + d * self.squeeze_ticks
         return goal
+
+    def _set_cap(self):
+        """Goal Current: grasp_current while grasping, goal_current otherwise (written only on a change)."""
+        if self.grasp_current is None or self.goal_current is None:
+            return
+        want = self.grasp_current if self.grasp_at is not None else self.goal_current
+        if want != self.cap:
+            e = self.motor.write(GOAL_CURRENT, want)
+            if e:
+                self._event(f"gripper: {e}")
+            else:
+                self.cap = want
 
     def run(self):
         fails, low = 0, False
@@ -319,6 +339,7 @@ class GripperWorker(threading.Thread):
                 if event:
                     self._event(event)
                 goal = self._grasp_goal(goal)
+                self._set_cap()
                 write = abs(goal - self.written) >= self.deadband
                 if write:
                     e = self.motor.write(GOAL_POSITION, goal)
@@ -335,7 +356,8 @@ class GripperWorker(threading.Thread):
                     t_start - self.t0, frac, None if frac_t is None else (t_start - frac_t) * 1000.0,
                     int(self.command.following), goal, int(write)]
                     + (list(s[2:3]) + [s[0], s[1], s[3], s[4]] if s else [None] * 5)
-                    + [err, (time.monotonic() - t_start) * 1000.0, int(self.grasp_at is not None), s[5] if s else None]))
+                    + [err, (time.monotonic() - t_start) * 1000.0, int(self.grasp_at is not None), s[5] if s else None,
+                       self.cap]))
                 with self.lock:
                     self.rows.append(row)
                     self.last = row

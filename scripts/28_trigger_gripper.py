@@ -68,7 +68,8 @@ MIN_VOLTAGE = 10.0             # e-Manual operating range 10.0-14.8 V
 MAX_TEMPERATURE = 70           # C (motor shutdown at 80)
 MIN_RANGE = 50                 # ticks between open and closed (4.4 deg)
 CATCH_FRAC = 0.05              # follow the trigger once it points within 5 % of the range of the position
-SQUEEZE_TICKS = 150            # grasp: goal = stop point + this toward closed (same as configs/*.yaml)
+SQUEEZE_TICKS = 60             # grasp: goal = stop point + this toward closed (same as configs/*.yaml)
+GRASP_CURRENT = 250            # x 3.36 mA = 0.84 A Goal Current while grasping (same as configs/*.yaml)
 FAIL_STOP = 3
 
 
@@ -105,8 +106,8 @@ def main():
     parser.add_argument("--current", type=int, default=CURRENT_DEFAULT,
                         help=f"goal current = force cap, x 3.36 mA (default {CURRENT_DEFAULT}, max {CURRENT_MAX})")
     args = parser.parse_args()
-    if not 1 <= args.current <= CURRENT_MAX:
-        raise SystemExit(f"--current must be 1..{CURRENT_MAX} ({CURRENT_MAX * CURRENT_UNIT_MA / 1000:.2f} A)")
+    if not 1 <= args.current <= min(CURRENT_MAX, GRASP_CURRENT):
+        raise SystemExit(f"--current must be 1..{min(CURRENT_MAX, GRASP_CURRENT)} (at most the grasp current {GRASP_CURRENT})")
     if (args.closed is None) != (args.open is None):
         raise SystemExit("give both --closed and --open, or neither")
 
@@ -174,7 +175,8 @@ def main():
         print(f"  operating mode         {mode_at_start} -> {MODE_CURRENT_POSITION} (current-based position; {MODE_AT_END} at the end)")
         print(f"  profile velocity       {gripper.read(PROFILE_VEL)} -> {PROFILE_VELOCITY} ({PROFILE_VELOCITY * 0.229:.1f} rpm)")
         print(f"  profile acceleration   {gripper.read(PROFILE_ACC)} -> {PROFILE_ACCELERATION}")
-        print(f"  goal current           {gripper.read(GOAL_CURRENT)} -> {args.current} ({args.current * CURRENT_UNIT_MA:.0f} mA, force cap)")
+        print(f"  goal current           {gripper.read(GOAL_CURRENT)} -> {args.current} ({args.current * CURRENT_UNIT_MA:.0f} mA, force cap; "
+              f"{GRASP_CURRENT} = {GRASP_CURRENT * CURRENT_UNIT_MA:.0f} mA while grasping an object)")
         print(f"  goal position          -> {pos} (present position, no jump)")
         print("  torque enable          -> 1")
         print("Keep fingers and objects out of the gripper.")
@@ -187,7 +189,8 @@ def main():
             raise SystemExit(e)
         command = GripCommand(closed, opened, held, CATCH_FRAC)
         worker = GripperWorker(gripper, command, PERIOD_S, GOAL_DEADBAND, MIN_VOLTAGE, MAX_TEMPERATURE, FAIL_STOP,
-                               low_voltage_stops=True, squeeze_ticks=SQUEEZE_TICKS)
+                               low_voltage_stops=True, squeeze_ticks=SQUEEZE_TICKS, goal_current=args.current,
+                               grasp_current=GRASP_CURRENT)
         need = command.frac_of(held) * TRIGGER_FULL
         print(f"\nrunning: {args.trigger} trigger 0 = closed, 1000 = open. Ctrl+C to stop.")
         print(f"catch: holding at {held}; move the {args.trigger} trigger to about {need:.0f} to start following\n")

@@ -118,6 +118,8 @@ class TestSettings(unittest.TestCase):
         self.assert_problem(d, "at least 50 ticks apart")
         d = raw(SIM); d["gripper"]["port"] = d["leader"]["port"]
         self.assert_problem(d, "gripper.port is the leader arm's port")
+        d = raw(SIM); d["gripper"]["grasp_current"] = d["gripper"]["goal_current"] - 1
+        self.assert_problem(d, "grasp_current")
         d = raw(SIM); d["gripper"]["goal_current"] = 400
         self.assert_problem(d, "goal_current")
         d = raw(SIM); d["servo"]["t1_s"] = 0.01

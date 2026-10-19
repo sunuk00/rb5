@@ -222,6 +222,18 @@ class TestGrasp(unittest.TestCase):
         self.assertEqual(m.regs[g.PRESENT_POSITION], CLOSED)
         self.assertIn("gripper: grasp lost (closed past the object)", w.events())
 
+    def test_grasp_current_only_while_grasping(self):
+        m = FakeMotor(position=OPEN)
+        m.block_at = 3000
+        f_open = (2800 - CLOSED) / (OPEN - CLOSED)
+        w = run_worker(m, [1.0] * 3 + [0.0] * 60 + [f_open] * 40, held=OPEN, squeeze_ticks=60,
+                       goal_current=150, grasp_current=250)
+        order = [(item, v) for item, v in m.writes if item in (g.GOAL_CURRENT, g.GOAL_POSITION)]
+        self.assertEqual(order, [(g.GOAL_POSITION, CLOSED), (g.GOAL_CURRENT, 250), (g.GOAL_POSITION, 3060),
+                                 (g.GOAL_CURRENT, 150), (g.GOAL_POSITION, 2800)])   # the cap before the goal
+        self.assertEqual(max(r["goal_current"] for r in w.rows if r["grasp"]), 250)
+        self.assertEqual(w.rows[-1]["goal_current"], 150)
+
     def test_no_grasp_while_the_motor_is_starting(self):
         m = FakeMotor(position=OPEN)
         m.delay = 5                                                # 5 reads before it moves; the profile already runs
