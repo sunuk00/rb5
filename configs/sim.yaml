@@ -128,8 +128,8 @@ gripper:                        # same as Simulation. MX-106T on its own U2D2 (g
   trigger_full: 1000.0          # trigger 0 (released) = closed, 1000 (fully pulled) = fully open, in proportion
   closed_ticks: 3968            # measured by hand (grip-2, docs/hardware.md)
   open_ticks: 2196
-  goal_current: 200             # x 3.36 mA = 0.67 A force cap (2026-10-19, user: faster start; was 150 = 0.50 A).
-                                # In mode 5 it caps the gripping force AND the acceleration: the start was at the cap
+  goal_current: 150             # x 3.36 mA = 0.50 A force cap (grip-2). 200 (2026-10-19) gave no faster stroke and
+                                # dips to 9.5 V at the start of moves (the motor's minimum): back to 150 until 12 V
   profile_velocity: 210         # x 0.229 rpm = 48.1 rpm = the motor's Velocity Limit (was 200; user 2026-10-17: a bit
                                 # faster). At 10.5 V the motor reaches only about 42 rpm: 12 V is the bigger gain
   profile_acceleration: 200     # x 214.577 rev/min^2: 0 -> 48 rpm in about 0.07 s (was 100, 0.13 s; the current

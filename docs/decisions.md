@@ -2055,6 +2055,11 @@ mode 5 the same value caps the gripping force, so it grows by a third: the user 
 gripper and says at once if it is too strong. Expected gain: tens of ms at the start; the top speed
 stays voltage-bound (12 V is still open).
 
+**Result and revert (Real 20261019_095845, user approved):** full strokes 90 % at 640-660 ms, end 700-720
+ms, start 40 ms: the same as at 150, so no measurable gain; the supply dipped to 9.5 V (the motor's minimum
+input voltage; 2.7 s below 10 V) against 9.8-9.9 V at 150. Back to 150 in configs/*.yaml and script 28.
+The user's finding from pick and place: the grip force itself is too weak, more than the speed.
+
 ## 2026-10-19 — Ready pose = the user's pose with J6 set for the gripper camera
 
 **Request (user):** the robot was left with J6 where the camera (mounted on the gripper body) sees best;
