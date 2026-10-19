@@ -2277,7 +2277,7 @@ writing the robot CSV per episode during the loop (file writes inside the 20 ms 
 **Known limit:** the robot CSV is written at the session end (as before); a hard crash of the process
 loses the robot data of that session (episodes.json and the camera files are on disk already).
 
-**Checked:** 100 tests (episodes: keys incl. a pseudo terminal, phases, time limit, discard in the reset,
+**Checked:** 102 tests (episodes: keys incl. a pseudo terminal, phases, time limit, discard in the reset,
 camera error, quit; loop: `episode` column, q ends the loop). Loop timing without the robot (the real
 loop with the fake leader / robot of the tests, real 50 Hz sleep, 60 s, 3 episodes kept): without
 cameras late 0, interval p99 20.16 ms; with both cameras recording late 0, interval p99 20.14 ms.
