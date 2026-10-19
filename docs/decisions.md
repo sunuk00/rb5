@@ -103,6 +103,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-19 — rec-3a: camera recorder in its own process (JPEG per frame + time CSV)](#2026-10-19--rec-3a-camera-recorder-in-its-own-process-jpeg-per-frame--time-csv)
 - [2026-10-19 — rec-3b: --record in the teleop (LeRobot keys, sessions, episodes.json, 120 s limit)](#2026-10-19--rec-3b---record-in-the-teleop-lerobot-keys-sessions-episodesjson-120-s-limit)
 - [2026-10-19 — rec-3c: spoken messages while recording (spd-say, as LeRobot)](#2026-10-19--rec-3c-spoken-messages-while-recording-spd-say-as-lerobot)
+- [2026-10-19 — rec-4a: converter (sessions -> LeRobotDataset, script 31)](#2026-10-19--rec-4a-converter-sessions---lerobotdataset-script-31)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -2293,6 +2294,31 @@ still playing (`spd-say -C`). Without spd-say: a note at start, no sound.
 **Reason:** LeRobot's lerobot-record speaks the same way (`log_say` -> `spd-say` on Linux); the
 operator's eyes stay on the robot. A camera error is the message that matters most. The loop only puts
 text in a queue.
+
+## 2026-10-19 — rec-4a: converter (sessions -> LeRobotDataset, script 31)
+
+**Decision:** `scripts/31_convert_to_lerobot.py` (env lerobot) builds one LeRobotDataset anew from the
+given session folders (raw files untouched; no appending). 30 fps grid from each kept episode's start:
+- action x, y, z: the sent target interpolated linearly at the grid times (send time = cycle start +
+  work_ms); gripper: trigger / trigger_full while the gripper thread follows, else (before the catch)
+  the position it holds, 0 = closed .. 1 = open (the policy's command then means what the gripper did)
+- state: joints at their read time (cycle start + leader_read_ms - state_age_ms): jnt_ang in Real,
+  **jnt_ref in Simulation** (jnt_ang there is the physical robot, not the simulated one); gripper
+  position 0..1 at its read time (- grip_age_ms)
+- images: nearest frame by capture time
+- left out: discarded attempts; still episodes (clutch < 1 s or target path < 30 mm; `--keep-still`);
+  `--cut-pauses S` (default off) removes clutch-released stretches > S s with an unchanged gripper
+  command (seamless: the robot stands still there), keeping their first step
+
+**Checked:** 7 tests on a synthetic session (values at their times, Simulation joints, gripper before /
+after the catch, nearest frames, still episodes, pause cut). The Sim session sim_20261019_134705: 2
+episodes kept (the still attempt 3 left out), image time error max 6.4 / 14.9 ms, resampling error of
+the action 30 -> 50 Hz p50 0.00 / p99 0.43 / max 1.89 mm, dataset 7 MB for 19 s (raw JPEG about 60 MB);
+read back with LeRobotDataset. Warnings shown: gripper never caught the trigger in that session.
+
+**Rejected:** zero-order hold of the target (steps of up to one 20 ms cycle); the gripper command as
+the raw trigger before the catch (the gripper did not do that); appending sessions to an existing
+dataset (a full rebuild is reproducible and takes minutes).
 
 ## PENDING
 

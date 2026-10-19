@@ -53,6 +53,7 @@ default, Real with `--real` and typed confirmation; **leader** = writes torque t
 | 28 | `28_trigger_gripper.py` | Leader trigger (left by default) -> gripper alone (no RB5): released 0 closed, pulled 1000 open, catch at start, current-based position mode with a low force cap (grip-2; code in `teleop/gripper.py`, gripper thread, since grip-3a) | gripper (writes), leader arm (read only) | test |
 | 29 | `29_lerobot_dummy_dataset.py` | Dummy LeRobotDataset with the rec-1 format: write, discard, read back, ACT action chunk (env `lerobot`, rec-2) | - | test |
 | 30 | `30_camera_recorder_test.py` | Camera recorder process alone (teleop/cameras.py): episodes kept / discarded, fps, gaps, JPEG write time, MB/s, CPU, and a 50 Hz loop beside it (rec-3a) | - (cameras only) | tool |
+| 31 | `31_convert_to_lerobot.py` | Demonstration sessions (`--record`) -> one LeRobotDataset at 30 fps: kept episodes, still ones left out, optional pause cut, checks (env `lerobot`, rec-4a) | - (files only) | tool |
 
 ## Usage per script
 
@@ -401,3 +402,21 @@ Starts the camera process of `teleop/cameras.py` and records episodes the way th
 last one discarded: its files must be gone). Meanwhile this process runs a 50 Hz loop and counts late
 cycles (> 5 ms). Prints per episode and camera: frames, fps, frame interval, JPEG write time, size and
 MB/s; the camera process CPU. Files: `data/cameras/rec_<time>/episode_<n>/`.
+
+### 31 convert to LeRobot
+Env `lerobot`: `conda activate lerobot`.
+```bash
+python scripts/31_convert_to_lerobot.py data/demos/sim_20261019_134705 --check-only     # report only
+python scripts/31_convert_to_lerobot.py data/demos/real_* --repo-id local/rb5_pick_place --overwrite
+python scripts/31_convert_to_lerobot.py data/demos/real_* --cut-pauses 2.0               # cut pauses > 2 s
+```
+| option | default | meaning |
+|---|---|---|
+| `--repo-id` | `local/rb5_demos` | dataset name; output `data/lerobot/<name>` (`--root` elsewhere) |
+| `--cut-pauses S` | 0 (off) | remove clutch-released stretches longer than S s with an unchanged gripper command |
+| `--min-clutch-s`, `--min-path-mm` | 1.0, 30 | episodes below either are still: left out (`--keep-still` keeps them) |
+| `--check-only` | | print the report, write nothing |
+
+Always builds the dataset anew from the sessions. Action / state / image rules: the docstring and
+docs/decisions.md (rec-4a). Prints per episode: duration, clutch time, path, image time error, lost
+camera frames, gripper following, start vs ready pose; at the end the 30 -> 50 Hz resampling error.
