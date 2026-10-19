@@ -84,6 +84,21 @@ class TestCameraRecorder(unittest.TestCase):
         self.assertFalse(ep.exists())
 
 
+class TestStall(unittest.TestCase):
+    def test_a_camera_that_stops_is_reported(self):
+        rec = CameraRecorder([("front", "1"), ("wrist", "stall@10")], width=64, height=48, fake=True)
+        self.addCleanup(rec.close)
+        self.assertEqual(rec.open(), [])
+        errors, end = [], time.monotonic() + 5.0
+        while not errors and time.monotonic() < end:
+            errors += rec.poll_errors()
+            time.sleep(0.05)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("wrist: no frames for 1 s", errors[0])
+        time.sleep(1.5)
+        self.assertEqual(rec.poll_errors(), [])   # reported once
+
+
 class TestOpenFailure(unittest.TestCase):
     def test_missing_camera_is_reported(self):
         rec = CameraRecorder([("front", "no-such-serial")], fake=False)

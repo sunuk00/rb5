@@ -105,6 +105,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-19 — rec-3c: spoken messages while recording (spd-say, as LeRobot)](#2026-10-19--rec-3c-spoken-messages-while-recording-spd-say-as-lerobot)
 - [2026-10-19 — rec-4a: converter (sessions -> LeRobotDataset, script 31)](#2026-10-19--rec-4a-converter-sessions---lerobotdataset-script-31)
 - [2026-10-19 — rec-4b: replay in Simulation through the teleop limits (TargetFollower, script 32); rbpodo in env lerobot](#2026-10-19--rec-4b-replay-in-simulation-through-the-teleop-limits-targetfollower-script-32-rbpodo-in-env-lerobot)
+- [2026-10-19 — Real pilot 141929: the D405 dropped off USB; camera stall detection; converter coverage check, --cameras](#2026-10-19--real-pilot-141929-the-d405-dropped-off-usb-camera-stall-detection-converter-coverage-check---cameras)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -2362,6 +2363,32 @@ acceleration limit trims the step, and while the motion is at the speed cap (the
 there) the target cannot catch up, so it falls behind by up to 22 mm until the motion slows down.
 Accepted for now (the limits stay; the end position is exact). If a policy's motion turns out too
 sluggish: a smoother interpolation (e.g. cubic) between the 30 Hz actions.
+
+## 2026-10-19 — Real pilot 141929: the D405 dropped off USB; camera stall detection; converter coverage check, --cameras
+
+**Pilot (user, Real, `--record`, task "test01"):** 238 s, 6 episodes kept (19-36 s). Loop: late 0, interval
+p99 20.23 ms, joint speed and range limits 0 %. Gripper trigger used 0..1000, following 100 %, a grasp
+detected in episode 5. Front camera: 1 frame lost. Start poses 60-175 mm from the ready pose. Leader
+tool reads failed 1.1 % (longest run 11 cycles at 39 s; earlier runs 0.5-0.9 %). TCP down to z 14 mm
+(range.z_min_mm is still -50).
+
+**Problem:** at 14:20:52 (19.5 s into episode 1) the kernel logged a USB disconnect of the D405; it came
+back at once but as a USB 2 device (480M), so its pipeline only timed out. `_grab` skipped timeouts
+silently: episodes 1-5 have no wrist frames after that point and nothing was reported.
+
+**Decisions (user approved):**
+- `teleop/cameras.py`: no frame for `STALL_S` = 1 s -> a camera error (once); the recorder then discards
+  the episode being recorded, blocks new ones and says "Camera error".
+- Converter: an episode whose frames of a camera do not cover it (no frames, start or end missing by more
+  than 0.2 s, a gap over 0.2 s) is left out with the reason. `--cameras front` makes a front-only dataset
+  (tests only; the rec-1 format has both).
+- Hardware (user): D405 cable strain relief, a good USB 3 cable, fewer extensions / hubs; check with
+  `lsusb -t` (5000M) and script 30 while moving the gripper.
+
+**Result on the pilot:** both cameras: only episode 0 (the others left out: wrist frames end at 19.5 s /
+none). Front only: 6 episodes, 4794 frames (2.7 min) -> `local/pilot_front` (37 MB) for the rec-5 flow
+test. Conversion took 176 s (JPEG decoding + AV1 encoding of real images, about 1.1 x real time per
+camera; the 0.3 x of rec-2 was synthetic images): 50 episodes x 30 s x 2 cameras about 55 min.
 
 ## PENDING
 

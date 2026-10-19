@@ -5,6 +5,7 @@ Run in the `lerobot` conda env:
     python scripts/31_convert_to_lerobot.py data/demos/real_20261020_100000 [more sessions ...]
     python scripts/31_convert_to_lerobot.py data/demos/real_* --repo-id local/rb5_pick_place --cut-pauses 2.0
     python scripts/31_convert_to_lerobot.py data/demos/sim_20261019_134705 --check-only
+    python scripts/31_convert_to_lerobot.py data/demos/real_20261019_141929 --cameras front --repo-id local/pilot_front
 
 The dataset is always built anew from the sessions (raw files stay as they are). Output:
 data/lerobot/<name of the repo id>/ (--overwrite replaces it).
@@ -19,7 +20,8 @@ Format (docs/decisions.md rec-1), 30 fps on a time grid from each kept episode's
 - observation.images.front / .wrist: the frame whose capture time (t_capture_s) is nearest to the
   grid time (the cameras run at 30 fps but are not synchronized with the grid: up to half a frame)
 
-Episodes left out (reported): discarded ones; still ones (clutch engaged < --min-clutch-s or target path <
+Episodes left out (reported): discarded ones; ones whose camera frames do not cover them (none, or a
+gap / missing start or end of more than 0.2 s); still ones (clutch engaged < --min-clutch-s or target path <
 --min-path-mm; --keep-still keeps them); --cut-pauses S removes stretches where the clutch was released
 for more than S seconds and the gripper command did not change (the robot stands still there, so the
 cut is seamless; the still tail before the operator's key press is such a stretch).
@@ -46,14 +48,15 @@ CAMERAS = ["front", "wrist"]
 STATE_NAMES = ["j1_deg", "j2_deg", "j3_deg", "j4_deg", "j5_deg", "j6_deg", "gripper_pos"]
 ACTION_NAMES = ["x_mm", "y_mm", "z_mm", "gripper_open"]
 IMAGE_DT_WARN_MS = 25.0   # nearest frame further than this from the grid time (half a frame is 16.7 ms)
+CAMERA_GAP_S = 0.2        # a camera without frames this long inside an episode: the episode is left out
 
 
-def features():
+def features(cameras=CAMERAS):
     return {
         "observation.state": {"dtype": "float32", "shape": (7,), "names": STATE_NAMES},
         "action": {"dtype": "float32", "shape": (4,), "names": ACTION_NAMES},
         **{f"observation.images.{c}": {"dtype": "video", "shape": (H, W, 3), "names": ["height", "width", "channels"],
-                                       "info": {"is_depth_map": False}} for c in CAMERAS},
+                                       "info": {"is_depth_map": False}} for c in cameras},
     }
 
 
@@ -155,13 +158,17 @@ def episode_frames(s, a, args, report):
         return None
 
     cams = {}
-    for c in CAMERAS:
+    for c in args.cameras:
         d = s.folder / a["dir"]
         with open(d / f"cam_{c}.csv") as f:
             crow = list(csv.DictReader(f))
         cams[c] = (np.array([float(x["t_capture_s"]) for x in crow]),
                    [d / f"cam_{c}" / f"{int(x['index']):06d}.jpg" for x in crow])
-    t_last = min(t_end, *(cams[c][0][-1] for c in CAMERAS))
+        problem = camera_gap(cams[c][0], t_start, t_end)
+        if problem:   # e.g. the D405 that dropped off USB in real-pilot 141929
+            report.append(f"LEFT OUT: {c} camera {problem}")
+            return None
+    t_last = min(t_end, *(cams[c][0][-1] for c in args.cameras))
     t_grid = t_start + np.arange(int(np.floor((t_last - t_start) * FPS)) + 1) / FPS
 
     act = np.stack([interp(t_grid, s.t_send, s.target[:, k]) for k in range(3)]
@@ -174,7 +181,7 @@ def episode_frames(s, a, args, report):
         report.append(f"cut {np.sum(~keep) / FPS:4.1f} s of pauses")
 
     nearest, dt_max = {}, 0.0
-    for c in CAMERAS:
+    for c in args.cameras:
         tc, _ = cams[c]
         k = np.clip(np.searchsorted(tc, t_grid), 1, len(tc) - 1)
         k = np.where(np.abs(tc[k - 1] - t_grid) <= np.abs(tc[k] - t_grid), k - 1, k)
@@ -196,12 +203,27 @@ def episode_frames(s, a, args, report):
     for i in np.where(keep)[0]:
         fr = {"observation.state": state[i].astype(np.float32), "action": act[i].astype(np.float32),
               "task": a["task"]}
-        for c in CAMERAS:
+        for c in args.cameras:
             fr[f"observation.images.{c}"] = cams[c][1][nearest[c][i]]   # loaded when written
         frames.append(fr)
     report.append(f"{len(frames)} frames")
     resample_err = action_resample_error(s, rows, t_grid, act)
     return frames, resample_err
+
+
+def camera_gap(t, t_start, t_end):
+    """Text when the frames do not cover the episode (none, late start, early end, a gap), else None."""
+    if len(t) == 0:
+        return "has no frames"
+    if t[0] > t_start + CAMERA_GAP_S:
+        return f"starts {t[0] - t_start:.1f} s late"
+    if t[-1] < t_end - CAMERA_GAP_S:
+        return f"frames end at {t[-1] - t_start:.1f} s of {t_end - t_start:.1f} s"
+    gaps = np.diff(t)
+    if len(gaps) and gaps.max() > CAMERA_GAP_S:
+        k = int(np.argmax(gaps))
+        return f"has a {gaps[k]:.1f} s gap at {t[k] - t_start:.1f} s"
+    return None
 
 
 def action_resample_error(s, rows, t_grid, act):
@@ -223,7 +245,15 @@ def main():
     ap.add_argument("--min-path-mm", type=float, default=30.0)
     ap.add_argument("--keep-still", action="store_true", help="keep episodes without motion")
     ap.add_argument("--check-only", action="store_true", help="report only, write nothing")
+    ap.add_argument("--cameras", default=",".join(CAMERAS),
+                    help="cameras in the dataset, e.g. front (tests only: real datasets use both)")
     args = ap.parse_args()
+    args.cameras = [c.strip() for c in args.cameras.split(",") if c.strip()]
+    unknown = set(args.cameras) - set(CAMERAS)
+    if unknown or not args.cameras:
+        raise SystemExit(f"--cameras: use names from {CAMERAS}")
+    if args.cameras != CAMERAS:
+        print(f"Cameras: {', '.join(args.cameras)} only (a test dataset; the rec-1 format has {', '.join(CAMERAS)})")
 
     root = Path(args.root) if args.root else ROOT / "data" / "lerobot" / args.repo_id.split("/")[-1]
     episodes, errors, sources = [], [], set()
@@ -258,11 +288,11 @@ def main():
         if not args.overwrite:
             raise SystemExit(f"{root} exists; --overwrite replaces it")
         shutil.rmtree(root)
-    ds = LeRobotDataset.create(repo_id=args.repo_id, fps=FPS, features=features(), root=root,
+    ds = LeRobotDataset.create(repo_id=args.repo_id, fps=FPS, features=features(args.cameras), root=root,
                                robot_type="rb5_850", use_videos=True)
     for i, frames in enumerate(episodes):
         for fr in frames:
-            for c in CAMERAS:
+            for c in args.cameras:
                 key = f"observation.images.{c}"
                 fr[key] = np.asarray(Image.open(fr[key]).convert("RGB"))
             ds.add_frame(fr)

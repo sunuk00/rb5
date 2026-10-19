@@ -33,16 +33,23 @@ import numpy as np
 CAMERA_HEADER = ["index", "frame_number", "t_capture_s", "t_arrival_s", "cam_ts_ms", "domain", "write_ms"]
 READY_TIMEOUT_S = 15.0       # pipelines of two cameras start in about 2-3 s
 WRITE_QUEUE = 30             # frames per camera waiting for the writer (1 s at 30 fps)
+STALL_S = 1.0                # no frame for this long = camera error (real-pilot 141929: the D405 dropped off
+                             # USB and came back as USB 2; its pipeline only timed out, nothing was reported)
 
 
 class FakeCamera:
-    """Synthetic frames at the given rate (tests, runs without cameras)."""
+    """Synthetic frames at the given rate (tests, runs without cameras). A serial "stall@N" stops delivering
+    frames after N frames (read() then times out like a disconnected camera)."""
 
     def __init__(self, serial, width, height, fps):
         self.width, self.height, self.period = width, height, 1.0 / fps
         self.n, self.next_t = 0, time.monotonic()
+        self.stall_after = int(serial.split("@")[1]) if str(serial).startswith("stall@") else None
 
     def read(self):
+        if self.stall_after is not None and self.n >= self.stall_after:
+            time.sleep(0.1)
+            return None
         self.next_t += self.period
         delay = self.next_t - time.monotonic()
         if delay > 0:
@@ -109,6 +116,7 @@ class _Episode:
 
 def _grab(cam, name, frames_q, recording, stats, stop, errors):
     last_fn = None
+    last_frame_t, stalled = time.monotonic(), False
     while not stop.is_set():
         try:
             got = cam.read()
@@ -116,7 +124,11 @@ def _grab(cam, name, frames_q, recording, stats, stop, errors):
             errors.put(f"{name}: {e}")
             return
         if got is None:
+            if not stalled and time.monotonic() - last_frame_t > STALL_S:
+                stalled = True   # reported once; a camera that comes back does not clear the error
+                errors.put(f"{name}: no frames for {STALL_S:.0f} s (USB disconnected? check lsusb -t)")
             continue
+        last_frame_t = time.monotonic()
         img, fn, cam_ts, domain, mono, wall_ms = got
         if recording.is_set():
             if last_fn is not None and fn - last_fn > 1:

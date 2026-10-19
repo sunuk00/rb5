@@ -417,8 +417,11 @@ python scripts/31_convert_to_lerobot.py data/demos/real_* --cut-pauses 2.0      
 | `--cut-pauses S` | 0 (off) | remove clutch-released stretches longer than S s with an unchanged gripper command |
 | `--min-clutch-s`, `--min-path-mm` | 1.0, 30 | episodes below either are still: left out (`--keep-still` keeps them) |
 | `--check-only` | | print the report, write nothing |
+| `--cameras` | `front,wrist` | e.g. `front` for a test dataset without the wrist camera |
 
-Always builds the dataset anew from the sessions. Action / state / image rules: the docstring and
+Always builds the dataset anew from the sessions. Episodes whose camera frames do not cover them
+(none, a gap or missing start / end over 0.2 s) are left out with the reason. About 1.1 x real time per
+camera (JPEG decoding + AV1 encoding). Action / state / image rules: the docstring and
 docs/decisions.md (rec-4a). Prints per episode: duration, clutch time, path, image time error, lost
 camera frames, gripper following, start vs ready pose; at the end the 30 -> 50 Hz resampling error.
 

@@ -74,7 +74,7 @@ def make_session(folder, real=True, follow_from=0, clutch_off=(), cam_offset_ms=
 
 
 def args(**kw):
-    d = dict(min_clutch_s=1.0, min_path_mm=30.0, keep_still=False, cut_pauses=0.0)
+    d = dict(min_clutch_s=1.0, min_path_mm=30.0, keep_still=False, cut_pauses=0.0, cameras=list(cv.CAMERAS))
     d.update(kw)
     return types.SimpleNamespace(**d)
 
@@ -162,6 +162,29 @@ class TestConvert(unittest.TestCase):
         self.assertTrue(any(x.startswith("cut") for x in report))
         _, (short, _), _ = self.convert(cut_pauses=5.0)   # the pause is shorter: nothing cut
         self.assertEqual(len(short), len(all_frames))
+
+    def test_camera_that_stopped_leaves_the_episode_out(self):
+        meta = make_session(self.dir)
+        a = meta["attempts"][0]
+        path = self.dir / "episode_000" / "cam_wrist.csv"
+        lines = path.read_text().splitlines()
+        path.write_text("\n".join(lines[:100]) + "\n")   # frames end after about 3.3 s of 6 s
+        _, out, report = self.convert()
+        self.assertIsNone(out)
+        self.assertIn("LEFT OUT: wrist camera frames end at", report[-1])
+        _, out, _ = self.convert(cameras=["front"])        # front only: kept
+        self.assertIsNotNone(out)
+        self.assertNotIn("observation.images.wrist", out[0][0])
+        path.write_text(lines[0] + "\n")                   # no frames at all
+        _, out, report = self.convert()
+        self.assertIn("has no frames", report[-1])
+        self.assertGreater(a["t_end"], a["t_start"])
+
+    def test_camera_gap(self):
+        t = np.arange(0, 6, 1 / 30)
+        self.assertIsNone(cv.camera_gap(t, 0.0, 5.9))
+        self.assertIn("gap", cv.camera_gap(np.r_[t[:50], t[60:]], 0.0, 5.9))
+        self.assertIn("late", cv.camera_gap(t[30:], 0.0, 5.9))
 
     def test_fill_blanks(self):
         x = cv.fill(np.array([np.nan, 1.0, np.nan, 3.0, np.nan]))
