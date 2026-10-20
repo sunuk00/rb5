@@ -111,6 +111,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-21 — cam-2a: fixed camera exposure candidates measured (script 34)](#2026-10-21--cam-2a-fixed-camera-exposure-candidates-measured-script-34)
 - [2026-10-21 — cam-2b: fixed camera settings in the teleop; brightness check at start](#2026-10-21--cam-2b-fixed-camera-settings-in-the-teleop-brightness-check-at-start)
 - [2026-10-21 — range.z_min_mm -50 -> 19 mm for the mounted gripper](#2026-10-21--rangez_min_mm--50---19-mm-for-the-mounted-gripper)
+- [2026-10-21 — rec-6 policy runner: decisions (two processes, temporal ensembling by time, 100 % speed, keyboard toggle)](#2026-10-21--rec-6-policy-runner-decisions-two-processes-temporal-ensembling-by-time-100--speed-keyboard-toggle)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -2500,6 +2501,30 @@ below the floor). Measured at one place only: grasps in the pilot at r 667-693 h
 table there is not higher. The floor is a software limit (not safety rated) and does not protect the box
 walls; tool mass and TCP offset on the controller are still 0 kg / provisional.
 
+## 2026-10-21 — rec-6 policy runner: decisions (two processes, temporal ensembling by time, 100 % speed, keyboard toggle)
+
+**Decisions (user):**
+1. **Two processes:** a policy process (both cameras opened with `teleop/cameras.py`'s fixed settings, ACT
+   on the GPU) and the servo process (RB5 at 50 Hz, gripper thread). The servo loop never waits for the
+   policy.
+2. **Inference every 30 Hz step with temporal ensembling** (not the recommended new chunk every 0.2 s
+   without ensembling). One inference with both cameras is 32.5 ms p50 / 33.8 ms max, about one 33.3 ms
+   step, so not every step can be met: the ensembling is done by time in the servo process (every chunk
+   carries its observation time; at time t the actions of all recent chunks that cover t are averaged with
+   ACT's weights exp(-0.01 i), oldest first), so a late or skipped inference only means one chunk fewer.
+   LeRobot's ACTTemporalEnsembler (one inference per step, synchronous) is not used. The GPU is busy
+   nearly all the time: inference time and laptop GPU throttling to be measured in rec-6b.
+3. **Speed caps 100 %** of the teleop (not the recommended 50 %).
+4. **Keyboard toggle** for running / holding (not the recommended leader-button deadman): space = hold at
+   once, start = a key after a typed yes showing the target and current pose. With 3, the policy moves at
+   demonstration speed with nobody holding a button: hold on a stale chunk (0.5 s; 3 s -> stop), on a target
+   over 100 mm from the current one, after 60 s; emergency stop within reach. Real runs need their own
+   plan and approval; the speed can be revisited then.
+5. **dynamixel-sdk 4.1.0 installed in env lerobot** (the gripper thread of `teleop/gripper.py`).
+
+**Steps:** 6a structure with a fake policy and robot (no hardware); 6b real ACT + cameras + Simulation
+(timing, chunk age, GPU); 6c gripper and the key controls in Simulation.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -2525,12 +2550,8 @@ walls; tool mass and TCP offset on the controller are still 0 kg / provisional.
     - Real collection: rules in docs/data_rules.md (2026-10-21); fixed camera settings done (cam-2b; the policy
       runner must open the cameras with the same code) and z_min 19 mm (2026-10-21). Left: the hardware
       items above.
-    - **rec-6 policy runner (planned, not approved yet):** policy process (cameras + ACT on the GPU, a new
-      chunk every 0.2 s) and servo process (50 Hz, chunk interpolated by time, TargetFollower, never waits);
-      policy speed scale 0.5; stale chunk 0.5 s -> hold, 3 s -> stop; target over 100 mm away -> hold;
-      Real only while the leader right button is held (deadman, read only); dynamixel-sdk in env lerobot.
-      Steps: 6a structure with a fake policy and robot, 6b real ACT + cameras + Simulation, 6c gripper and
-      deadman. Open questions for the user: the five points of the rec-6 plan.
+    - **rec-6 policy runner:** decided 2026-10-21 (see its entry): two processes, temporal ensembling by time,
+      100 % speed, keyboard toggle (space = hold). Next: 6a (structure, fake policy and robot).
   - **Windows** (only if needed):
     - environment.yml (evdev only on Linux)
     - CPU pinning and the FTDI latency check per OS
