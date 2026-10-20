@@ -281,6 +281,7 @@ class TestGripper(unittest.TestCase):
         gs = runner.s.gripper
         frac = (worker.row["position"] - gs.closed_ticks) / (gs.open_ticks - gs.closed_ticks)
         self.assertAlmostEqual(client.published[-1][1][6], float(np.clip(frac, 0, 1)))   # state: gripper position
+        self.assertEqual(runner.rows[-1][IX["grip_pos"]], f"{client.published[-1][1][6]:.3f}")   # logged as published
 
     def test_catch_one_follows_at_once(self):
         from teleop.gripper import GripCommand

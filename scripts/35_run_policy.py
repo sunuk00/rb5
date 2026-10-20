@@ -115,13 +115,16 @@ def main():
         raise SystemExit("Cancelled.")
 
     # 2. Gripper (read only here), robot (Simulation) and the ready pose
-    motor = worker = None
+    motor = worker = grip_info = None   # grip_info: the gripper part of the run's JSON (None: off)
     if s.gripper.enabled and not args.no_gripper:
         motor, problems = open_gripper(s.gripper, s.leader.required_latency_timer_ms)
         if problems:
             client.close()
             raise SystemExit("NOT STARTING - gripper (--no-gripper runs without it):\n  " + "\n  ".join(problems))
-        print(f"Gripper: position {motor.read(PRESENT_POSITION)} (closed {s.gripper.closed_ticks}, open {s.gripper.open_ticks})")
+        grip_info = {"closed_ticks": s.gripper.closed_ticks, "open_ticks": s.gripper.open_ticks,
+                     "position_at_check": motor.read(PRESENT_POSITION)}
+        print(f"Gripper: position {grip_info['position_at_check']} (closed {s.gripper.closed_ticks}, "
+              f"open {s.gripper.open_ticks})")
     else:
         print("Gripper: off" + (" (--no-gripper)" if args.no_gripper else " (gripper.enabled is false)"))
 
@@ -186,12 +189,15 @@ def main():
             close_all()
             raise SystemExit("NOT STARTING - gripper start:\n  " + "\n  ".join(problems))
         print(f"Gripper: holding at {held}")
+        grip_info.update(position_at_start=pos, held_ticks=held)
 
     # 3. First chunks (the policy sees the robot at the ready pose)
     grip0 = 0.0
     if worker is not None:
         # the worker owns the bus now: the held position is the gripper's position (converter's 0..1 rule)
         grip0 = float(np.clip((held - s.gripper.closed_ticks) / (s.gripper.open_ticks - s.gripper.closed_ticks), 0, 1))
+    if grip_info is not None:
+        grip_info["start_frac"] = round(grip0, 3)   # the first observation's gripper state
     client.publish(time.monotonic(), list(q0) + [grip0])
     first, t_end = [], time.monotonic() + 5.0
     while not first and time.monotonic() < t_end:
@@ -242,6 +248,8 @@ def main():
             t_back, m_back = worker.finish()
             print(f"Gripper: {worker.stop_reason or 'running until the end'}; read back: torque {t_back}, "
                   f"operating mode {m_back}")
+            grip_info.update(stop_reason=worker.stop_reason, read_back_torque=t_back, read_back_mode=m_back,
+                             read_back_ok=t_back == 0 and m_back == MODE_AT_END)
             if t_back != 0 or m_back != MODE_AT_END:
                 print(f"WARNING: the gripper is NOT in torque 0 / mode {MODE_AT_END}: run scripts/28 or DYNAMIXEL Wizard")
         close_all()
@@ -254,8 +262,9 @@ def main():
     with open(out / f"{stem}.csv", "w", newline="") as f:
         csv.writer(f).writerows([RUN_HEADER] + runner.rows)
     (out / f"{stem}.json").write_text(json.dumps({"checkpoint": str(ckpt), "task": task, "cameras": cam_info,
-                                                  "stop": stop_text, "error": None if error is None else str(error)},
-                                                 indent=1))
+                                                  "gripper": grip_info, "stop": stop_text,
+                                                  "error": None if error is None else str(error)},
+                                                 indent=1, default=int))
     ix = {h: i for i, h in enumerate(RUN_HEADER)}
     col = lambda k: np.array([float(x[ix[k]]) for x in runner.rows if x[ix[k]] != ""])   # noqa: E731
     if runner.rows:
@@ -269,6 +278,9 @@ def main():
               f"interval max {col('cycle_interval_ms').max():.1f} ms; chunk age p50 / max {np.percentile(age, 50):.0f} / "
               f"{age.max():.0f} ms; inference p50 / p95 / max {np.percentile(inf, 50):.0f} / {np.percentile(inf, 95):.0f} / "
               f"{inf.max():.0f} ms")
+        if grip_info is not None:
+            grip, act = col("grip_pos"), col("grip_action")
+            print(f"gripper position {grip.min():.2f} .. {grip.max():.2f} (action {act.min():.2f} .. {act.max():.2f})")
     print(f"saved {(out / stem).relative_to(ROOT)}.csv / .json")
 
 

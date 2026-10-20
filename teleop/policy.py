@@ -349,7 +349,8 @@ RUN_HEADER = (["t_s", "cycle_interval_ms", "late", "stale_state", "state_age_ms"
                "chunks_used", "chunk_age_ms", "infer_ms", "chunk_n"]
               + [f"desired_{a}" for a in "xyz"] + ["grip_action"] + [f"target_{a}" for a in "xyz"]
               + [f"tcp_ref_{a}" for a in "xyz"] + ["yaw_deg"] + [f"q{i}" for i in range(6)] + ["flags"]
-              + ["late_before_plan", "work_ms", "plan_ms"])   # work: cycle start -> send done
+              + ["late_before_plan", "work_ms", "plan_ms"]    # work: cycle start -> send done
+              + ["grip_pos"])                                # gripper position 0..1 given to the policy (rec-6c)
 
 
 class StopRequest(Exception):
@@ -479,7 +480,8 @@ class PolicyRunner:
             t_work = self.clock() - now
             # 5. state for the next observation (Real: encoders, Simulation: jnt_ref, as the converter)
             joints = self.reader.measured() if self.real else q
-            self.client.publish(now - age, list(joints) + [self._grip_frac()])
+            grip = self._grip_frac()
+            self.client.publish(now - age, list(joints) + [grip])
             infer_ms, n = self.last_infer
             self.rows.append(tuple(
                 [f"{t:.4f}", "" if interval is None else f"{interval * 1000:.3f}", int(late), int(stale),
@@ -489,7 +491,7 @@ class PolicyRunner:
                 + ([f"{v:.3f}" for v in action] if action is not None else [""] * 4)
                 + [f"{v:.3f}" for v in self.follower.target] + [f"{v:.3f}" for v in tcp[:3]]
                 + [f"{self.follower.yaw:.3f}"] + [f"{v:.3f}" for v in q] + [" ".join(flags)]
-                + [int(late_early), f"{t_work * 1000:.2f}", f"{t_plan * 1000:.2f}"]))
+                + [int(late_early), f"{t_work * 1000:.2f}", f"{t_plan * 1000:.2f}", f"{grip:.3f}"]))
             # 6. next cycle (as the teleop: after an overrun wait a full period)
             next_t += period
             delay = next_t - self.clock()
