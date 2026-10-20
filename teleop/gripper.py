@@ -12,6 +12,7 @@ its current (the gripping force) is capped by Goal Current. In mode 5 the motor'
 (48, 52) are NOT used (e-Manual), so the measured open / closed positions are the only position limits.
 Addresses and units: ROBOTIS e-Manual, MX-106T/R(2.0) control table.
 """
+import os
 import threading
 import time
 
@@ -397,3 +398,63 @@ class GripperWorker(threading.Thread):
         if self.is_alive():
             self.join(1.0)
         return self.motor.end_state()
+
+
+# ---------- start sequence shared by the teleop and the policy runner (rec-6c) ----------
+
+GRIPPER_DEADBAND = 2   # ticks: the gripper goal is written when it changes by this much (scripts/28)
+
+
+def open_gripper(g, required_latency_ms):
+    """Open the gripper U2D2 and run the read-only checks. Returns (motor, problems); motor is None on problems."""
+    from .leader import read_latency_timer
+    from .settings import GRIPPER_MIN_RANGE
+    if not os.path.exists(g.port):
+        return None, [f"port {g.port} does not exist (U2D2 USB cable? gripper.port in the settings)"]
+    latency = read_latency_timer(g.port)
+    if latency != required_latency_ms:
+        return None, [f"gripper FTDI latency_timer {latency} ms (need {required_latency_ms}; udev rule, docs/teleop_guide.md)"]
+    motor = Motor(g.port)
+    problems = motor.open()
+    if not problems:
+        problems = check_motor(motor, g.min_voltage)
+    if not problems:
+        vlimit = motor.read(VELOCITY_LIMIT)
+        if vlimit is None or g.profile_velocity > vlimit:
+            problems.append(f"gripper.profile_velocity {g.profile_velocity} is above the motor's velocity limit {vlimit}")
+        pos = motor.read(PRESENT_POSITION)
+        lo, hi = min(g.closed_ticks, g.open_ticks), max(g.closed_ticks, g.open_ticks)
+        if pos is None or not lo - GRIPPER_MIN_RANGE <= pos <= hi + GRIPPER_MIN_RANGE:
+            problems.append(f"the gripper is at {pos}, outside closed_ticks / open_ticks {lo}..{hi}: wrong motor "
+                            "or the settings no longer match the gripper (scripts/28 measures them)")
+    if problems:
+        motor.close()
+        return None, problems
+    return motor, []
+
+
+def start_lines(g, pos):
+    """What the start writes do, for the screen before the typed yes."""
+    return [f"  torque off, operating mode {MODE_AT_END} -> 5 (current-based position; {MODE_AT_END} again at the end)",
+            f"  profile velocity {g.profile_velocity} ({g.profile_velocity * 0.229:.1f} rpm), profile acceleration "
+            f"{g.profile_acceleration}, goal current {g.goal_current} ({g.goal_current * CURRENT_UNIT_MA:.0f} mA, force cap; "
+            f"{g.grasp_current} = {g.grasp_current * CURRENT_UNIT_MA:.0f} mA while grasping an object)",
+            f"  goal position {pos} (present position, no jump), torque on",
+            "Keep fingers out of the gripper. At the end the gripper torque goes off: put any held object down "
+            "before stopping."]
+
+
+def start_worker(motor, g, pos, period_s, catch_frac):
+    """The start writes (start_motor) and a started GripperWorker. Returns (worker, command, held, problems);
+    on problems the torque was turned off (end_state) and worker is None. catch_frac: the teleop's (a trigger
+    must come near the gripper first); the policy runner passes 1.0 (it follows at once)."""
+    held, e = start_motor(motor, pos, g.goal_current, g.profile_velocity, g.profile_acceleration)
+    if e:
+        t_back, m_back = motor.end_state()
+        return None, None, None, [e, f"read back: torque {t_back}, operating mode {m_back}"]
+    command = GripCommand(g.closed_ticks, g.open_ticks, held, catch_frac)
+    worker = GripperWorker(motor, command, period_s, GRIPPER_DEADBAND, g.min_voltage, g.max_temperature,
+                           g.fail_stop, low_voltage_stops=False,   # low voltage is a warning (user, grip-3)
+                           squeeze_ticks=g.squeeze_ticks, goal_current=g.goal_current, grasp_current=g.grasp_current)
+    worker.start()
+    return worker, command, held, []

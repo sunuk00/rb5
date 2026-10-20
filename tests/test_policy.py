@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 from teleop.follow import TargetFollower  # noqa: E402
 from teleop.kinematics import RB5Model  # noqa: E402
 from teleop.policy import RUN_HEADER, ChunkBuffer, PolicyClient, PolicyRunner, StopRequest, parse_policy_keys  # noqa: E402
-from test_loop import D, OFFSET, FakeRB5, FakeReader, settings  # noqa: E402
+from test_loop import D, OFFSET, FakeRB5, FakeReader, FakeWorker, settings  # noqa: E402
 
 FPS = 30
 IX = {h: i for i, h in enumerate(RUN_HEADER)}
@@ -262,6 +262,34 @@ class TestPolicyRunner(unittest.TestCase):
         run_for(runner, 1)
         self.assertTrue(any("time limit 2 s" in e for e in events))
         self.assertAlmostEqual(runner.run_time, 2.0, delta=0.05)
+
+
+class TestGripper(unittest.TestCase):
+    def test_gripper_follows_only_while_running(self):
+        clock = SimClock()
+        p0 = FakeRB5(D, RB5Model(OFFSET)).pose()[:3]
+        acts = line_actions(p0, [0.0, 0.0, 20.0], 5.0)
+        acts[:, 3] = np.linspace(1.0, 0.0, len(acts))                     # closes over 5 s
+        runner, _, _, client, _ = make(clock, acts, Keys({20: ["run"], 60: ["hold"], 90: ["quit"]}))
+        worker = FakeWorker()
+        runner.gripper = worker
+        run_for(runner, 1)
+        self.assertEqual(len(worker.fracs), 40)                            # cycles 20..59: running
+        t_run = np.array([float(r[IX["t_s"]]) for r in runner.rows[19:59]])
+        want = np.interp(t_run, np.arange(len(acts)) / FPS, acts[:, 3])
+        np.testing.assert_allclose(worker.fracs, want, atol=0.02)          # the policy's gripper action
+        gs = runner.s.gripper
+        frac = (worker.row["position"] - gs.closed_ticks) / (gs.open_ticks - gs.closed_ticks)
+        self.assertAlmostEqual(client.published[-1][1][6], float(np.clip(frac, 0, 1)))   # state: gripper position
+
+    def test_catch_one_follows_at_once(self):
+        from teleop.gripper import GripCommand
+        cmd = GripCommand(3968, 2196, held=2200, catch_frac=1.0)          # open, the policy asks to close
+        goal, event = cmd.update(0.0)
+        self.assertEqual(goal, 3968)
+        self.assertIn("following", event)
+        teleop_cmd = GripCommand(3968, 2196, held=2200, catch_frac=0.05)
+        self.assertEqual(teleop_cmd.update(0.0)[0], 2200)                   # the teleop's catch holds
 
 
 class TestStateLikeTheConverter(unittest.TestCase):

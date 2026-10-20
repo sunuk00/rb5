@@ -115,6 +115,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-21 — rec-6a: policy runner structure (teleop/policy.py) with a fake policy and robot](#2026-10-21--rec-6a-policy-runner-structure-teleoppolicypy-with-a-fake-policy-and-robot)
 - [2026-10-21 — rec-6b: train/run observations match; inference 33 ms on the GPU power limit; GC freeze; ACT runner script](#2026-10-21--rec-6b-trainrun-observations-match-inference-33-ms-on-the-gpu-power-limit-gc-freeze-act-runner-script)
 - [2026-10-21 — rec-6b fixes after the first Simulation runs: late check right before the send; servo and policy on separate cores](#2026-10-21--rec-6b-fixes-after-the-first-simulation-runs-late-check-right-before-the-send-servo-and-policy-on-separate-cores)
+- [2026-10-21 — rec-6c: gripper in the policy runner (shared start code, no catch)](#2026-10-21--rec-6c-gripper-in-the-policy-runner-shared-start-code-no-catch)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -2621,6 +2622,27 @@ cycle-start intervals stayed 20 ms; the check measures the gap between sends, as
 but the start; the pilot policy again moved tens of mm near the ready pose (x 46..67, y -558..-499, z
 113..146), as expected. The structure is ready for a real policy; next 6c (gripper).
 
+## 2026-10-21 — rec-6c: gripper in the policy runner (shared start code, no catch)
+
+**What:** the gripper start code moved from `teleop/__main__.py` to `teleop/gripper.py` so the teleop and the
+policy runner use the same code: `open_gripper` (read-only checks), `start_lines` (what the writes do, shown
+before the typed yes), `start_worker` (start_motor, GripCommand, GripperWorker; torque off again on a failed
+start), `GRIPPER_DEADBAND`. The teleop behaves as before. Script 35: the read-only checks before anything
+moves (refused if they fail; `--no-gripper` runs without it), the start writes after a typed yes at the ready
+pose, the first observation with the gripper position, `PolicyRunner(gripper=worker)`, and at the end (after
+the robot stopped) `worker.finish()` with the torque / mode read back.
+
+**No catch for the policy (catch_frac 1.0):** the teleop's catch waits until the trigger comes within 5 % of
+the gripper position (a human trigger must not make the gripper jump). A policy that keeps asking for 0.2
+while the gripper is open would never be caught and the gripper would never move; the dataset's gripper
+action is what the gripper did (the converter uses the held position before a catch), so the runner follows
+it at once. It is sent only while running (after g) and not on a late cycle.
+
+**Checked:** tests (the runner sends the policy's gripper action only while running, the state carries the
+gripper position with the converter's 0..1 rule; catch 1.0 follows at once while the teleop's 0.05 holds);
+all tests pass. The read-only check on the lab gripper: the motor did not answer (model None), as when its
+supply was off before: to repeat with the power on. The Simulation run with the gripper: by the user.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -2648,7 +2670,7 @@ but the start; the pilot policy again moved tens of mm near the ready pose (x 46
       items above.
     - **rec-6 policy runner:** decided 2026-10-21 (see its entry): two processes, temporal ensembling by time,
       100 % speed, keyboard toggle (space = hold). 6a done; 6b code done (script 35, Simulation run by the
-      user: 043648 clean after the core split). Next: 6c (gripper).
+      user: 043648 clean after the core split); 6c code done (gripper, Simulation run by the user next).
   - **Windows** (only if needed):
     - environment.yml (evdev only on Linux)
     - CPU pinning and the FTDI latency check per OS

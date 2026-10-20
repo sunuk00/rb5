@@ -473,5 +473,8 @@ Opens the cameras the policy expects (its config.json) in the policy process wit
 settings and checks the brightness; Simulation mode and the teleop's checks; move_j to the ready pose
 (typed yes); shows the first action's distance from the TCP (typed yes); then the loop: **g** = run,
 **space** = hold, **q** = quit. Holds on a chunk older than 0.5 s, an action over 100 mm from the target,
-the time limit; stops when no chunk came for 3 s. The gripper is not moved yet (rec-6c). Log:
+the time limit; stops when no chunk came for 3 s. The gripper (rec-6c): read-only checks before anything
+moves, start writes after a typed yes at the ready pose; it follows the policy's gripper action at once while
+running (no catch); torque off / mode 3 at the end. **The real gripper moves in Simulation too**
+(`--no-gripper` runs without it). Log:
 `data/policy/run_sim_<time>.csv` (+ .json) and a summary (late cycles, chunk age, inference time).

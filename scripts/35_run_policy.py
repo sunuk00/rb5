@@ -1,6 +1,8 @@
 """rec-6b: run a trained ACT policy on the RB5 in SIMULATION (teleop/policy.py). Real is refused for now.
 
-MOVES THE RB5 (Simulation mode). The gripper is not moved (its action is logged; rec-6c adds it).
+MOVES THE RB5 (Simulation mode) AND THE GRIPPER (the real gripper moves in Simulation too, as in the
+teleop; --no-gripper runs without it). The gripper follows the policy's gripper action at once while
+running (no catch: the dataset's gripper action is what the gripper did).
 
 Run in the `lerobot` conda env:
     conda activate lerobot
@@ -10,7 +12,8 @@ Steps:
   1. settings (configs/sim.yaml); the cameras the policy expects (its config.json), opened in the policy
      process with the recording's fixed exposure / gain / white balance (read back) and the start
      brightness check (typed yes when outside record.brightness_ref +/- tolerance)
-  2. Simulation mode and the teleop's checks; move_j to the ready pose after a typed yes
+  2. gripper read-only checks (before anything moves); Simulation mode and the teleop's checks; move_j to
+     the ready pose after a typed yes; the gripper start writes after a typed yes (rec-6c)
   3. the first chunks: the first action's distance from the current TCP is shown; typed yes
   4. the 50 Hz loop (PolicyRunner): keys in this terminal: g = run, space = hold, q = quit. Holds on a chunk
      older than 0.5 s, an action over 100 mm from the target, the time limit; stops when no chunk came
@@ -37,6 +40,7 @@ from teleop import preflight  # noqa: E402
 from teleop.cameras import brightness_problems  # noqa: E402
 from teleop.episodes import KeyReader  # noqa: E402
 from teleop.follow import TargetFollower  # noqa: E402
+from teleop.gripper import MODE_AT_END, PRESENT_POSITION, open_gripper, start_lines, start_worker  # noqa: E402
 from teleop.kinematics import RB5Model  # noqa: E402
 from teleop.policy import RUN_HEADER, PolicyClient, PolicyRunner, StopRequest, parse_policy_keys, policy_inputs  # noqa: E402
 from teleop.safety import Watch  # noqa: E402
@@ -60,6 +64,7 @@ def main():
     ap.add_argument("--servo-cores", default="0-5", help="CPU cores of this (servo) process, first-last")
     ap.add_argument("--policy-cores", default="6-11", help="CPU cores of the policy process, first-last")
     ap.add_argument("--torch-threads", type=int, default=4, help="PyTorch CPU threads in the policy process")
+    ap.add_argument("--no-gripper", action="store_true", help="without the gripper (its action is only logged)")
     ap.add_argument("--real", action="store_true", help=argparse.SUPPRESS)
     args = ap.parse_args()
     if args.real:
@@ -109,7 +114,22 @@ def main():
         client.close()
         raise SystemExit("Cancelled.")
 
-    # 2. Robot (Simulation) and the ready pose
+    # 2. Gripper (read only here), robot (Simulation) and the ready pose
+    motor = worker = None
+    if s.gripper.enabled and not args.no_gripper:
+        motor, problems = open_gripper(s.gripper, s.leader.required_latency_timer_ms)
+        if problems:
+            client.close()
+            raise SystemExit("NOT STARTING - gripper (--no-gripper runs without it):\n  " + "\n  ".join(problems))
+        print(f"Gripper: position {motor.read(PRESENT_POSITION)} (closed {s.gripper.closed_ticks}, open {s.gripper.open_ticks})")
+    else:
+        print("Gripper: off" + (" (--no-gripper)" if args.no_gripper else " (gripper.enabled is false)"))
+
+    def close_all():
+        client.close()
+        if motor is not None:
+            motor.close()
+
     from teleop.rb5 import RB5
     rb5 = RB5(s.robot.ip, s.servo)
     rb5.set_mode(False, s.robot.speed_bar)
@@ -118,7 +138,7 @@ def main():
     if not reached:
         problems.append("Simulation mode not reached within 3 s")
     if problems:
-        client.close()
+        close_all()
         raise SystemExit("NOT STARTING - robot:\n  " + "\n  ".join(problems))
     offset, _ = rb5.tcp_offset()
     model, watch = RB5Model(offset), Watch(s.safety)
@@ -126,18 +146,18 @@ def main():
     plan = preflight.plan_ready_move(q_now, s.ready_pose.joints_deg, s.safety.joint_limit_deg, s.ready_pose,
                                      s.robot.speed_bar)
     if plan["problems"]:
-        client.close()
+        close_all()
         raise SystemExit("NOT STARTING - ready pose:\n  " + "\n  ".join(plan["problems"]))
     if not plan["skip"]:
         print(f"\nMove to the ready pose with move_j (Simulation, about {plan['expected_s']:.0f} s):")
         print(f"  current {q_now}\n  target  {plan['target']}\n  change  {plan['change']}")
         if not ask("Type yes to move: "):
-            client.close()
+            close_all()
             raise SystemExit("Cancelled.")
         finished, took = rb5.move_j(plan["target"], plan["speed"], plan["acc"], plan["timeout_s"])
         q_after = np.array(rb5.sdata().jnt_ref, dtype=float)
         if not finished or rb5.error_text() or np.abs(q_after - plan["target"]).max() > s.ready_pose.tolerance_deg:
-            client.close()
+            close_all()
             raise SystemExit(f"ready pose move failed: finished {finished}, errors {rb5.error_text() or 'none'}")
     reader = rb5.state_reader()
     reader.start()
@@ -146,18 +166,40 @@ def main():
     problems, _ = preflight.check_start_pose(tcp0, q0, model, watch, s)
     if problems:
         reader.stop()
-        client.close()
+        close_all()
         raise SystemExit("NOT STARTING - start pose:\n  " + "\n  ".join(problems))
 
+    if motor is not None:
+        g = s.gripper
+        pos = motor.read(PRESENT_POSITION)
+        print("\nGripper writes (the real gripper moves, also in Simulation):")
+        for line in start_lines(g, pos):
+            print(line)
+        print("  the gripper follows the policy at once while running (g), no catch")
+        if not ask("Type yes to start the gripper: "):
+            reader.stop()
+            close_all()
+            raise SystemExit("Cancelled.")
+        worker, _, held, problems = start_worker(motor, g, pos, s.servo.period_s, catch_frac=1.0)
+        if problems:
+            reader.stop()
+            close_all()
+            raise SystemExit("NOT STARTING - gripper start:\n  " + "\n  ".join(problems))
+        print(f"Gripper: holding at {held}")
+
     # 3. First chunks (the policy sees the robot at the ready pose)
-    client.publish(time.monotonic(), list(q0) + [0.0])
+    grip0 = 0.0
+    if worker is not None:
+        # the worker owns the bus now: the held position is the gripper's position (converter's 0..1 rule)
+        grip0 = float(np.clip((held - s.gripper.closed_ticks) / (s.gripper.open_ticks - s.gripper.closed_ticks), 0, 1))
+    client.publish(time.monotonic(), list(q0) + [grip0])
     first, t_end = [], time.monotonic() + 5.0
     while not first and time.monotonic() < t_end:
         first = client.poll()
         time.sleep(0.05)
     if not first:
         reader.stop()
-        client.close()
+        close_all()
         raise SystemExit("no chunk from the policy within 5 s")
     a0 = first[-1][1][0]
     print(f"\nStart TCP {tcp0[:3]} mm. The policy's first action {a0[:3]} mm, gripper {a0[3]:.2f}: "
@@ -165,14 +207,14 @@ def main():
     print(f"Keys here: g = run, space = hold, q = quit. Speed caps 100 % of the teleop; time limit {args.time_limit:.0f} s.")
     if not ask("Type yes to start the loop (Simulation; the policy moves only after g): "):
         reader.stop()
-        client.close()
+        close_all()
         raise SystemExit("Cancelled.")
 
     # 4. Loop
     keys = KeyReader(parse=parse_policy_keys)
     follower = TargetFollower(s, model, tcp0)
-    runner = PolicyRunner(s, rb5, reader, follower, client, keys, real=False, time_limit_s=args.time_limit,
-                          event=lambda m: print(m, flush=True))
+    runner = PolicyRunner(s, rb5, reader, follower, client, keys, gripper=worker, real=False,
+                          time_limit_s=args.time_limit, event=lambda m: print(m, flush=True))
     for sig in (signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, to_keyboard_interrupt)
     error = stop_text = None
@@ -196,7 +238,13 @@ def main():
         else:
             rb5.emergency_stop()
         reader.stop()
-        client.close()
+        if worker is not None:
+            t_back, m_back = worker.finish()
+            print(f"Gripper: {worker.stop_reason or 'running until the end'}; read back: torque {t_back}, "
+                  f"operating mode {m_back}")
+            if t_back != 0 or m_back != MODE_AT_END:
+                print(f"WARNING: the gripper is NOT in torque 0 / mode {MODE_AT_END}: run scripts/28 or DYNAMIXEL Wizard")
+        close_all()
     print(f"Error: {error}" if error else f"Stopped: {stop_text}")
 
     # 5. Log and summary
