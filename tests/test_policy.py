@@ -198,6 +198,44 @@ class TestPolicyRunner(unittest.TestCase):
         self.assertGreater(z[115] - z[80], 1.0)                         # running again
         self.assertTrue(any("HOLD: space key" in e for e in events))
 
+    def test_slow_plan_is_late_and_not_applied(self):
+        """A plan that takes 35 ms makes the send late: that cycle keeps the old target (as the teleop)."""
+        clock = SimClock()
+        p0 = FakeRB5(D, RB5Model(OFFSET)).pose()[:3]
+        acts = line_actions(p0, [0.0, 0.0, 30.0], 5.0)
+        runner, _, follower, _, events = make(clock, acts, Keys({20: ["run"], 80: ["quit"]}))
+        plan, calls = follower.plan, {"n": 0}
+
+        def slow_plan(*a):
+            calls["n"] += 1
+            if calls["n"] == 30:
+                clock.t += 0.035
+            return plan(*a)
+        follower.plan = slow_plan
+        run_for(runner, 1)
+        late = [i for i, r in enumerate(runner.rows) if r[IX["late"]] == 1]
+        self.assertEqual(len(late), 1)
+        i = late[0]
+        self.assertEqual(runner.rows[i][IX["target_z"]], runner.rows[i - 1][IX["target_z"]])   # frozen
+        self.assertGreater(float(runner.rows[i][IX["plan_ms"]]), 34.0)
+        self.assertTrue(any("late:" in e for e in events))
+
+    def test_three_late_cycles_stop(self):
+        clock = SimClock()
+        p0 = FakeRB5(D, RB5Model(OFFSET)).pose()[:3]
+        acts = line_actions(p0, [0.0, 0.0, 30.0], 5.0)
+        runner, _, follower, _, _ = make(clock, acts, Keys({20: ["run"], 200: ["quit"]}))
+        plan, calls = follower.plan, {"n": 0}
+
+        def slow_plan(*a):
+            calls["n"] += 1
+            if calls["n"] >= 10:
+                clock.t += 0.035
+            return plan(*a)
+        follower.plan = slow_plan
+        with self.assertRaises(RuntimeError):
+            runner.run()
+
     def test_run_refused_before_the_first_chunk(self):
         clock = SimClock()
         p0 = FakeRB5(D, RB5Model(OFFSET)).pose()[:3]

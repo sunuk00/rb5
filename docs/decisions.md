@@ -114,6 +114,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-21 — rec-6 policy runner: decisions (two processes, temporal ensembling by time, 100 % speed, keyboard toggle)](#2026-10-21--rec-6-policy-runner-decisions-two-processes-temporal-ensembling-by-time-100--speed-keyboard-toggle)
 - [2026-10-21 — rec-6a: policy runner structure (teleop/policy.py) with a fake policy and robot](#2026-10-21--rec-6a-policy-runner-structure-teleoppolicypy-with-a-fake-policy-and-robot)
 - [2026-10-21 — rec-6b: train/run observations match; inference 33 ms on the GPU power limit; GC freeze; ACT runner script](#2026-10-21--rec-6b-trainrun-observations-match-inference-33-ms-on-the-gpu-power-limit-gc-freeze-act-runner-script)
+- [2026-10-21 — rec-6b fixes after the first Simulation runs: late check right before the send; servo and policy on separate cores](#2026-10-21--rec-6b-fixes-after-the-first-simulation-runs-late-check-right-before-the-send-servo-and-policy-on-separate-cores)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -2586,6 +2587,30 @@ with real images it may differ, and over 100 mm the runner holds (the script sho
 Simulation mode and the teleop's checks; move_j to the ready pose (yes); the first chunk's distance (yes); the
 PolicyRunner with keys g / space / q; log data/policy/run_sim_<time>.csv + .json. Not run yet (moves the
 Simulation robot: the user runs it).
+
+## 2026-10-21 — rec-6b fixes after the first Simulation runs: late check right before the send; servo and policy on separate cores
+
+**Simulation runs (user, pilot checkpoint, front camera, 2 x 30 s running):** the structure worked (holds only
+by the time limit; chunk age 102-104 ms p50, about 82 chunks ensembled; the robot moved some tens of mm near
+the ready pose, no block reached: the pilot policy is undertrained, expected). Two problems: (1) while
+running, the cycle interval reached 40-48 ms 22 and 15 times (a cycle's work over 20 ms, then a full period's
+wait), and inference was p95 54-60 ms (offline 34 ms); (2) the runner counted those as late 0-1 times: it
+checked the gap only before planning, not right before the send as the teleop does (the difference noted in
+6a).
+
+**Fixes (user approved):**
+1. `TargetFollower.plan()` / `apply()` (step = both). `PolicyRunner` checks the gap before planning and again
+   right before the send; a late cycle keeps the old target (the plan is not applied), 3 in a row stop.
+2. Script 35 pins the servo process to cores 0-5 and the policy process to 6-11 (physical performance cores
+   0-2 / 3-5 of the i7-13700H), PyTorch CPU threads 4 (`--servo-cores`, `--policy-cores`, `--torch-threads`;
+   spec `cpu_cores`, `torch_threads`).
+3. CSV columns `late_before_plan`, `work_ms`, `plan_ms`; script 35 prints work / plan times.
+
+**Checked (real cameras + the pilot ACT + the fake robot, 30 s running):** unpinned with PyTorch on all
+cores: work 26-37 ms per cycle even before running, stopped after 19 cycles (3 late in a row). Pinned: late 2
+in 30 s (not consecutive), work p50 / p99 / max 4.1 / 9.2 / 20.6 ms (the fake robot's send costs a few ms
+the real one does not), plan p99 3.0 ms, inference p50 / p95 / max 17.8 / 18.7 / 34.4 ms (one camera), chunk age
+p50 / max 85 / 123 ms. Tests: a 35 ms plan is late and not applied; three in a row stop.
 
 ## PENDING
 

@@ -22,7 +22,10 @@ current target, or the run reached time_limit_s; stops when no chunk has arrived
 Policies inside the process (spec dicts, so they can be pickled):
   {"kind": "replay", "actions": (N, 4) list, "fps": 30, "delay_s": 0.0}  dataset actions as chunks from
       the run start (tests, structure checks); delay_s simulates the inference time
-  {"kind": "act", "checkpoint": path, "device": "cuda", "task": text}     a trained ACT (rec-6b)
+  {"kind": "act", "checkpoint": path, "device": "cuda", "task": text,
+   "torch_threads": 4}                                                    a trained ACT (rec-6b)
+Any spec may have "cpu_cores": [first, last]: the policy process pins itself there (the servo process
+pins itself to other cores: they must not compete, rec-6b Simulation runs).
 
 Observation tensors for ACT are made by observation_batch(), the same steps as LeRobot's
 prepare_observation_for_inference: image HWC uint8 RGB (the cameras stream rgb8, the recording saved the
@@ -34,6 +37,7 @@ import gc
 import json
 from pathlib import Path
 import multiprocessing as mp
+import os
 import queue
 import threading
 import time
@@ -160,6 +164,7 @@ class ACTChunkPolicy:
         from lerobot.policies.act.modeling_act import ACTPolicy
         from lerobot.policies.factory import make_pre_post_processors
         self.torch = torch
+        torch.set_num_threads(int(spec.get("torch_threads", 4)))   # by default PyTorch uses every core
         self.device = spec.get("device", "cuda")
         self.task = spec.get("task", "")
         self.policy = ACTPolicy.from_pretrained(spec["checkpoint"])
@@ -196,6 +201,9 @@ def make_policy(spec):
 def _policy_main(spec, cameras, fake_cameras, fps, state, out_q, cmd_q, reply_q):
     """cameras: list of (name, serial, settings or None). Sends ("ready", info) or ("error", text) first."""
     from .cameras import FakeCamera, RealSenseCamera
+    if spec.get("cpu_cores"):
+        first, last = spec["cpu_cores"]
+        os.sched_setaffinity(0, set(range(int(first), int(last) + 1)))
     cls = FakeCamera if fake_cameras else RealSenseCamera
     stop = threading.Event()
     opened, readers = [], {}
@@ -340,7 +348,8 @@ def parse_policy_keys(data):
 RUN_HEADER = (["t_s", "cycle_interval_ms", "late", "stale_state", "state_age_ms", "running", "hold_reason",
                "chunks_used", "chunk_age_ms", "infer_ms", "chunk_n"]
               + [f"desired_{a}" for a in "xyz"] + ["grip_action"] + [f"target_{a}" for a in "xyz"]
-              + [f"tcp_ref_{a}" for a in "xyz"] + ["yaw_deg"] + [f"q{i}" for i in range(6)] + ["flags"])
+              + [f"tcp_ref_{a}" for a in "xyz"] + ["yaw_deg"] + [f"q{i}" for i in range(6)] + ["flags"]
+              + ["late_before_plan", "work_ms", "plan_ms"])   # work: cycle start -> send done
 
 
 class StopRequest(Exception):
@@ -440,18 +449,25 @@ class PolicyRunner:
                                              f"from the target (> {self.max_jump_mm:.0f})", t)
                 elif self.run_time >= self.time_limit_s:
                     hold_reason = self._hold(f"time limit {self.time_limit_s:.0f} s", t)
-            gap = None if last_send is None else self.clock() - last_send
-            late = gap is not None and gap > sf.max_gap_s
-            late_run = late_run + 1 if late else 0
-            if late_run >= sf.max_late_cycles:
-                raise RuntimeError(f"{sf.max_late_cycles} late cycles in a row")
-            # 4. follow (limits) or hold
-            flags = {}
-            if self.running and not late and not stale:
-                plan = self.follower.step(action[:3], tcp, q)
+            late_early = last_send is not None and self.clock() - last_send > sf.max_gap_s
+            # 4. plan (limits); applied only if the send is still on time (as the teleop: check right before it)
+            flags, plan, t_plan = {}, None, 0.0
+            if self.running and not late_early and not stale:
+                t_plan0 = self.clock()
+                plan = self.follower.plan(action[:3], tcp, q)
+                t_plan = self.clock() - t_plan0
                 if plan.stop:
                     raise StopRequest(plan.stop)
                 flags = {k: v for k, v in plan.flags.items() if v}
+            gap = None if last_send is None else self.clock() - last_send
+            late = late_early or (gap is not None and gap > sf.max_gap_s)
+            late_run = late_run + 1 if late else 0
+            if late_run >= sf.max_late_cycles:
+                raise RuntimeError(f"{sf.max_late_cycles} late cycles in a row")
+            if late:
+                self.event(f"[{t:7.2f} s] late: {gap * 1000:.0f} ms since the last send, target frozen")
+            if plan is not None and not late:
+                self.follower.apply(plan)
                 if self.gripper is not None:
                     self.gripper.set(float(np.clip(action[3], 0.0, 1.0)))
                 self.run_time += period
@@ -460,6 +476,7 @@ class PolicyRunner:
             send_t = self.clock()
             self.rb5.send_servo(self.follower.target, self.follower.rpy)
             last_send = send_t
+            t_work = self.clock() - now
             # 5. state for the next observation (Real: encoders, Simulation: jnt_ref, as the converter)
             joints = self.reader.measured() if self.real else q
             self.client.publish(now - age, list(joints) + [self._grip_frac()])
@@ -471,7 +488,8 @@ class PolicyRunner:
                  "" if n is None else n]
                 + ([f"{v:.3f}" for v in action] if action is not None else [""] * 4)
                 + [f"{v:.3f}" for v in self.follower.target] + [f"{v:.3f}" for v in tcp[:3]]
-                + [f"{self.follower.yaw:.3f}"] + [f"{v:.3f}" for v in q] + [" ".join(flags)]))
+                + [f"{self.follower.yaw:.3f}"] + [f"{v:.3f}" for v in q] + [" ".join(flags)]
+                + [int(late_early), f"{t_work * 1000:.2f}", f"{t_plan * 1000:.2f}"]))
             # 6. next cycle (as the teleop: after an overrun wait a full period)
             next_t += period
             delay = next_t - self.clock()

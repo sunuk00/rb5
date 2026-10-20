@@ -28,21 +28,27 @@ class TargetFollower:
         self.yaw = 0.0                          # tool yaw relative to the start rz [deg]
         self.prev_step = np.zeros(3)
 
-    def step(self, desired, tcp, q):
-        """One cycle toward the desired position. Returns the plan (target, flags, margins, stop, ...);
-        the new target and rpy are applied unless plan.stop is set (then the caller stops)."""
+    def plan(self, desired, tcp, q):
+        """One cycle toward the desired position, not applied yet: the plan (target, yaw, flags, margins,
+        stop, ...). The caller applies it with apply() unless the cycle is late or plan.stop is set."""
         yaw_tcp = wrap_deg(tcp[5] - self.rpy0[2])
-        plan = plan_step(self.target, np.asarray(desired, dtype=float), np.asarray(tcp[:3], dtype=float), q,
+        return plan_step(self.target, np.asarray(desired, dtype=float), np.asarray(tcp[:3], dtype=float), q,
                          self.model, self.cyl,
                          {"target": self.yaw, "desired": 0.0, "tcp": yaw_tcp, "base_az0": self.az0},
                          self.lim, self.watch, self.prev_step)
-        if plan.stop:
-            return plan
+
+    def apply(self, plan):
         new = np.array(plan.target, dtype=float)
         self.prev_step = new - self.target
         self.target = new
         self.yaw = plan.yaw
         self.rpy[2] = wrap_deg(self.rpy0[2] + self.yaw)
+
+    def step(self, desired, tcp, q):
+        """plan() and apply() in one (applied unless plan.stop is set; then the caller stops)."""
+        plan = self.plan(desired, tcp, q)
+        if not plan.stop:
+            self.apply(plan)
         return plan
 
     def hold(self):

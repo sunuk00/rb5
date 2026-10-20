@@ -467,6 +467,7 @@ white balance back on at the end (a replug does too). Exposure units: D435 RGB 0
 Env `lerobot`: `conda activate lerobot`. **Moves the RB5 in Simulation mode** (Real is refused).
 ```bash
 python scripts/35_run_policy.py data/train/<run>/checkpoints/last/pretrained_model [--time-limit 60]
+python scripts/35_run_policy.py <checkpoint> --servo-cores 0-5 --policy-cores 6-11 --torch-threads 4   # the defaults
 ```
 Opens the cameras the policy expects (its config.json) in the policy process with the recording's fixed
 settings and checks the brightness; Simulation mode and the teleop's checks; move_j to the ready pose

@@ -22,6 +22,7 @@ import argparse
 import csv
 import gc
 import json
+import os
 import signal
 import sys
 import time
@@ -56,6 +57,9 @@ def main():
     ap.add_argument("--config", default=str(ROOT / "configs" / "sim.yaml"))
     ap.add_argument("--task", help="task text (default record.task)")
     ap.add_argument("--time-limit", type=float, default=60.0, help="seconds of running, then hold")
+    ap.add_argument("--servo-cores", default="0-5", help="CPU cores of this (servo) process, first-last")
+    ap.add_argument("--policy-cores", default="6-11", help="CPU cores of the policy process, first-last")
+    ap.add_argument("--torch-threads", type=int, default=4, help="PyTorch CPU threads in the policy process")
     ap.add_argument("--real", action="store_true", help=argparse.SUPPRESS)
     args = ap.parse_args()
     if args.real:
@@ -67,6 +71,13 @@ def main():
         raise SystemExit(f"settings: {e}")
     task = args.task or s.record.task
     ckpt = Path(args.checkpoint)
+    # Servo and policy on separate performance cores (cpu0-11 on the i7-13700H): in the first Simulation runs
+    # PyTorch used every core and the servo loop overran 15-22 times in 30 s (rec-6b)
+    servo_cores = [int(v) for v in args.servo_cores.split("-")]
+    policy_cores = [int(v) for v in args.policy_cores.split("-")]
+    os.sched_setaffinity(0, set(range(servo_cores[0], servo_cores[-1] + 1)))
+    print(f"CPU cores: servo {sorted(os.sched_getaffinity(0))}, policy {policy_cores[0]}-{policy_cores[-1]} "
+          f"({args.torch_threads} PyTorch threads)")
 
     # 1. Policy process with the cameras the policy expects
     names, state_len = policy_inputs(ckpt)
@@ -80,7 +91,8 @@ def main():
         raise SystemExit(f"NOT STARTING - the policy expects cameras {names} / state {state_len} (known: {list(fixed)}, 7)")
     cams = [(n, fixed[n][0], fixed[n][1]) for n in names]
     print(f"Policy {ckpt} (cameras {names}), task '{task}'. Loading (model on the GPU, cameras) ...")
-    client = PolicyClient({"kind": "act", "checkpoint": str(ckpt), "device": "cuda", "task": task}, cams)
+    client = PolicyClient({"kind": "act", "checkpoint": str(ckpt), "device": "cuda", "task": task,
+                           "cpu_cores": policy_cores, "torch_threads": args.torch_threads}, cams)
     problems = client.open(timeout=120.0)
     if problems:
         client.close()
@@ -201,6 +213,10 @@ def main():
     if runner.rows:
         run = col("running").astype(bool)
         age, inf = col("chunk_age_ms"), col("infer_ms")
+        work, plan_ms = col("work_ms"), col("plan_ms")
+        print(f"work p50 / p99 / max {np.percentile(work, 50):.1f} / {np.percentile(work, 99):.1f} / {work.max():.1f} ms; "
+              f"plan while running p99 / max {np.percentile(plan_ms[run], 99) if run.any() else 0:.1f} / "
+              f"{plan_ms.max():.1f} ms")
         print(f"{len(runner.rows)} cycles ({run.sum() * s.servo.period_s:.1f} s running), late {int(col('late').sum())}, "
               f"interval max {col('cycle_interval_ms').max():.1f} ms; chunk age p50 / max {np.percentile(age, 50):.0f} / "
               f"{age.max():.0f} ms; inference p50 / p95 / max {np.percentile(inf, 50):.0f} / {np.percentile(inf, 95):.0f} / "
