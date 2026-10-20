@@ -116,6 +116,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-21 — rec-6b: train/run observations match; inference 33 ms on the GPU power limit; GC freeze; ACT runner script](#2026-10-21--rec-6b-trainrun-observations-match-inference-33-ms-on-the-gpu-power-limit-gc-freeze-act-runner-script)
 - [2026-10-21 — rec-6b fixes after the first Simulation runs: late check right before the send; servo and policy on separate cores](#2026-10-21--rec-6b-fixes-after-the-first-simulation-runs-late-check-right-before-the-send-servo-and-policy-on-separate-cores)
 - [2026-10-21 — rec-6c: gripper in the policy runner (shared start code, no catch)](#2026-10-21--rec-6c-gripper-in-the-policy-runner-shared-start-code-no-catch)
+- [2026-10-21 — p1: first round of the whole pipeline with the current setup; every step typed by the user](#2026-10-21--p1-first-round-of-the-whole-pipeline-with-the-current-setup-every-step-typed-by-the-user)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -2660,6 +2661,27 @@ asking for the same point. The gripper followed the action (0.85-0.86) at once: 
 late cycle, inference p50 / p95 17.7 / 19.3 ms, work max 10.0 ms, plan max 6.2 ms. rec-6 is done in
 Simulation. For Real (separate plan): the first action may be tens of mm away and is reached at the full
 speed cap; consider a lower cap or a smaller jump limit for the first second.
+
+## 2026-10-21 — p1: first round of the whole pipeline with the current setup; every step typed by the user
+
+**Decision (user):** leave the real setup (D435 position, table marks) for later and go through
+collect -> train -> run now with the current setup, improving the pipeline from what each round shows.
+Every step is a command the user types; the commands are in `docs/pipeline_guide.md`.
+
+**Round 1 (`p1`):** one Real session with both cameras, 15 kept episodes (data_rules.md way of
+demonstrating, task "pick the green block and place it in the box") -> `local/p1` -> ACT with both cameras,
+20000 steps, batch 8 -> script 33 offline check -> script 35 Simulation run. A practice dataset: not part of
+the 50 of data_rules.md (the front camera will move, which changes the scene).
+
+**Why these numbers:** 6 episodes / 2000 steps left the pilot policy at 28 mm (+1 step). 15 episodes give
+several block positions (does the policy follow the block?); about 11000 frames at batch 8 make 20000
+steps about 15 epochs, enough to tell too little data from too little training. Time to be measured
+(two cameras, the pilot was 0.31 s per step with one).
+
+**Known weak point to watch:** at the ready pose the arm hides the block from the front camera, so the
+block position must come from the wrist camera. If round 1 shows it, it is the reason to move the D435.
+
+**Not yet tried end to end:** both cameras through convert -> train -> run (the pilot was front only).
 
 ## PENDING
 
