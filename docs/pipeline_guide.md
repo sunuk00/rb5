@@ -11,6 +11,20 @@ Replace `NAME` with the dataset name of the round (round 1: `p1`).
 | 4 offline check | lerobot | no |
 | 5 Simulation run | lerobot | the Simulation robot and the real gripper |
 
+Where the files go (`data/` is not committed):
+
+| folder | what | made by |
+|---|---|---|
+| `data/demos/real_<time>/` | one collection session: episodes (camera JPEGs), teleop.csv, gripper.csv, episodes.json | step 1 |
+| `data/teleop/` | the teleop's own run log (every run, also without `--record`) | step 1 |
+| `data/lerobot/NAME/` | the LeRobot dataset (parquet + AV1 videos) | step 2 |
+| `data/train/act_NAME_<time>/` | training output: checkpoints, train_config.json | step 3 |
+| `data/policy/` | Simulation run logs (CSV + JSON) | step 5 |
+| `data/archive/` | old test outputs (scripts 04-21, camera tests, earlier sessions and runs), moved 2026-10-21 | - |
+
+Kept in place for the tests and for comparison: the pilot session `data/demos/real_20261019_141929`, its
+dataset `data/lerobot/pilot_front` and checkpoint `data/train/act_pilot_front_20261019_143936`.
+
 The task text is the same in every step. (ACT does not use it, but the dataset and the run log record it.)
 
 ## 1. Collect (Real teleop, both cameras)
