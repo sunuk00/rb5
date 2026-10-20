@@ -158,6 +158,15 @@ SCHEMA = {
         "reset_time_s": _num(0.0, 600.0),             # 0 = the next episode starts only with ->
         "front_serial": _str(),                       # D435 above the workspace
         "wrist_serial": _str(),                       # D405 on the gripper body
+        # fixed camera settings (cam-2b): auto exposure and auto white balance off
+        "front_exposure_us": _num(100.0, 100000.0),
+        "front_gain": _num(0, 248, integer=True),
+        "front_white_balance_k": _num(2800, 6500, integer=True),
+        "wrist_exposure_us": _num(100.0, 100000.0),
+        "wrist_gain": _num(0, 248, integer=True),
+        "wrist_white_balance_k": _num(2800, 6500, integer=True),
+        "brightness_ref": _num(10.0, 245.0),          # mean pixel value (0-255) when the values were chosen
+        "brightness_tolerance": _num(0.01, 0.5),      # start check: outside ref x (1 +/- this) -> typed yes
         "jpeg_quality": _num(50, 100, integer=True),
         "sounds": _bool(),                            # spoken messages (spd-say), as LeRobot
     },

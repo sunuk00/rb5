@@ -160,6 +160,16 @@ record:                         # demonstrations: python -m teleop --record [--t
   reset_time_s: 0.0             # 0 = the next episode starts only with -> (no automatic start)
   front_serial: "943222070221"  # D435, fixed above the workspace
   wrist_serial: "130322273474"  # D405, on the gripper body
+  # Fixed camera settings (cam-2b, user 2026-10-21; measured with script 34 in the lab lighting): exposures are
+  # multiples of 1/120 s (60 Hz lights do not flicker); gains match the auto brightness (about 114)
+  front_exposure_us: 16667.0    # D435 (fixed camera): 8.3 ms was too dark even at the maximum gain
+  front_gain: 76
+  front_white_balance_k: 4600
+  wrist_exposure_us: 8333.0     # D405 moves with the gripper: short exposure, blur about 2 mm at 250 mm/s
+  wrist_gain: 61
+  wrist_white_balance_k: 4600
+  brightness_ref: 114.0         # mean pixel value with these settings in the reference lighting
+  brightness_tolerance: 0.15    # start: a camera outside 114 +/- 15 % (97..131) asks for a typed yes
   jpeg_quality: 95
   sounds: true                  # spoken "Recording episode 3", "Episode saved", ... (spd-say, as LeRobot)
 

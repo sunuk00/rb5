@@ -202,6 +202,15 @@ class TestEpisodeRecorder(unittest.TestCase):
         self.assertFalse(self.rec.recording)
         self.assertIn("camera problem", events[-1])
 
+    def test_camera_info_in_episodes_json(self):
+        info = {"front": {"serial": "1", "settings": {"exposure_us": 16667.0, "gain": 76, "white_balance_k": 4600},
+                          "brightness": 113.2, "brightness_ref": 114.0, "brightness_ok": True}}
+        rec = EpisodeRecorder(Path(self.tmp.name) / "s2", "pick", 120.0, 0.0, self.keys, self.cams,
+                              clock=self.clock, camera_info=info)
+        rec.cycle(Q, TCP)
+        data = json.loads((Path(self.tmp.name) / "s2" / "episodes.json").read_text())
+        self.assertEqual(data["cameras"], info)
+
     def test_spoken_messages(self):
         self.step("next")
         self.step("next")

@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from teleop.cameras import CAMERA_HEADER, CameraRecorder  # noqa: E402
+from teleop.cameras import CAMERA_HEADER, CameraRecorder, brightness_problems  # noqa: E402
 
 CAMS = [("front", "1"), ("wrist", "2")]
 
@@ -97,6 +97,35 @@ class TestStall(unittest.TestCase):
         self.assertIn("wrist: no frames for 1 s", errors[0])
         time.sleep(1.5)
         self.assertEqual(rec.poll_errors(), [])   # reported once
+
+
+class TestSettingsAndBrightness(unittest.TestCase):
+    SET = {"exposure_us": 8333.0, "gain": 61, "white_balance_k": 4600}
+
+    def test_settings_and_brightness_reported(self):
+        rec = CameraRecorder([("front", "bright@114", self.SET), ("wrist", "bright@80")], width=64, height=48, fake=True)
+        self.addCleanup(rec.close)
+        self.assertEqual(rec.open(), [])
+        self.assertEqual(rec.info["front"]["settings"], self.SET)
+        self.assertIsNone(rec.info["wrist"]["settings"])          # no settings: auto
+        self.assertAlmostEqual(rec.info["front"]["brightness"], 114.0)
+        problems = brightness_problems(rec.info, 114.0, 0.15)
+        self.assertEqual(len(problems), 1)
+        self.assertTrue(problems[0].startswith("wrist: mean brightness 80.0 outside 97..131"))
+        self.assertTrue(rec.info["front"]["brightness_ok"])
+        self.assertFalse(rec.info["wrist"]["brightness_ok"])
+
+    def test_settings_read_back_mismatch_refuses(self):
+        rec = CameraRecorder([("front", "badsettings", self.SET)], width=64, height=48, fake=True)
+        problems = rec.open()
+        rec.close()
+        self.assertEqual(len(problems), 1)
+        self.assertIn("front (badsettings): settings read back", problems[0])
+
+    def test_brightness_limits(self):
+        info = {"a": {"brightness": 97.0}, "b": {"brightness": 131.0}, "c": {"brightness": 96.8}, "d": {"brightness": None}}
+        problems = brightness_problems(info, 114.0, 0.15)
+        self.assertEqual([p.split(":")[0] for p in problems], ["c", "d"])
 
 
 class TestOpenFailure(unittest.TestCase):

@@ -9,6 +9,7 @@ Usage (env rb5):
     python scripts/30_camera_recorder_test.py --seconds 60 --episodes 1
     python scripts/30_camera_recorder_test.py --camera front=943222070221   # one camera
     python scripts/30_camera_recorder_test.py --fake                   # synthetic frames, no cameras
+    python scripts/30_camera_recorder_test.py --auto                   # auto exposure (default: fixed values)
 
 Output: data/cameras/rec_<time>/episode_<n>/ (cam_<name>/*.jpg, cam_<name>.csv), summary printed.
 """
@@ -23,7 +24,8 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from teleop.cameras import CameraRecorder  # noqa: E402
+from teleop.cameras import CameraRecorder, brightness_problems  # noqa: E402
+from teleop.settings import load_settings  # noqa: E402
 
 CAMERAS = {"front": "943222070221", "wrist": "130322273474"}   # D435 above the workspace, D405 on the gripper
 PERIOD = 0.02          # the teleop loop
@@ -75,8 +77,15 @@ def main():
     ap.add_argument("--seconds", type=float, default=20.0)
     ap.add_argument("--quality", type=int, default=95, help="JPEG quality")
     ap.add_argument("--fake", action="store_true", help="synthetic frames instead of the cameras")
+    ap.add_argument("--auto", action="store_true",
+                    help="auto exposure / white balance (default: the fixed values of configs/sim.yaml record)")
     args = ap.parse_args()
     cams = ([tuple(c.split("=", 1)) for c in args.camera] if args.camera else list(CAMERAS.items()))
+    r = load_settings(ROOT / "configs" / "sim.yaml")[0].record
+    fixed = {"front": {"exposure_us": r.front_exposure_us, "gain": r.front_gain, "white_balance_k": r.front_white_balance_k},
+             "wrist": {"exposure_us": r.wrist_exposure_us, "gain": r.wrist_gain, "white_balance_k": r.wrist_white_balance_k}}
+    if not args.auto:
+        cams = [(n, sn, fixed[n]) if n in fixed else (n, sn) for n, sn in cams]
 
     out = ROOT / "data" / "cameras" / f"rec_{datetime.now():%Y%m%d_%H%M%S}"
     rec = CameraRecorder(cams, quality=args.quality, fake=args.fake)
@@ -84,7 +93,11 @@ def main():
     problems = rec.open()
     if problems:
         raise SystemExit("; ".join(problems))
-    print(f"camera process ready in {time.monotonic() - t0:.1f} s: {', '.join(f'{n}={s}' for n, s in cams)}")
+    print(f"camera process ready in {time.monotonic() - t0:.1f} s")
+    for name, c in rec.info.items():
+        print(f"  {name} {c['serial']}: settings {c['settings'] or 'auto'}, mean brightness {c['brightness']}")
+    for p in brightness_problems(rec.info, r.brightness_ref, r.brightness_tolerance):
+        print(f"  WARNING: {p}")
 
     n, late, worst = loop_for(3.0, rec)
     print(f"no episode, 3 s: loop {n} cycles, late {late}, worst {worst:.1f} ms")
@@ -101,7 +114,7 @@ def main():
               f"worst {worst:.1f} ms; stop took {(time.monotonic() - t_stop) * 1000:.0f} ms")
         print(f"  recorder: {stats}")
         if keep:
-            for name, _ in cams:
+            for name, *_ in cams:
                 print("  " + summarize(ep_dir, name, seconds))
         else:
             left = list(ep_dir.glob("cam_*")) if ep_dir.exists() else []

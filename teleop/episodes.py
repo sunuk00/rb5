@@ -10,7 +10,8 @@ Between episodes (reset) the operator moves the robot with the teleop to the nex
 places the objects; nothing moves by itself.
 
 Files in the session folder (data/demos/<mode>_<time>/):
-    episodes.json                every attempt: number, status (recording / kept / discarded), reason, times,
+    episodes.json                the cameras at the start (fixed settings read back, brightness vs reference);
+                                 every attempt: number, status (recording / kept / discarded), reason, times,
                                  start joints and TCP, camera frames; rewritten at every change
     episode_<attempt>/cam_*      camera files (teleop/cameras.py); deleted for a discarded attempt
     teleop.csv                   the loop CSV; column `episode` = attempt number while recording, else blank
@@ -143,10 +144,11 @@ class EpisodeRecorder:
     """
 
     def __init__(self, folder, task, episode_time_s, reset_time_s, keys, cameras=None, clock=time.monotonic,
-                 say=lambda text: None):
+                 say=lambda text: None, camera_info=None):
         self.folder, self.task = Path(folder), task
         self.episode_time_s, self.reset_time_s = episode_time_s, reset_time_s
         self.keys, self.cameras, self.clock, self.say = keys, cameras, clock, say
+        self.camera_info = camera_info   # per camera: serial, settings read back, brightness vs its reference
         self.folder.mkdir(parents=True, exist_ok=True)
         self.attempts = []          # dicts, written to episodes.json
         self.current = None         # attempt being recorded
@@ -281,7 +283,7 @@ class EpisodeRecorder:
         data = {"task": self.task, "episode_time_s": self.episode_time_s, "reset_time_s": self.reset_time_s,
                 "time": "t_start / t_end: time.monotonic() [s], the same clock as the camera t_capture_s; "
                         "loop_t0: time.monotonic() at the CSV t_s = 0",
-                "loop_t0": self.loop_t0, "attempts": self.attempts}
+                "loop_t0": self.loop_t0, "cameras": self.camera_info, "attempts": self.attempts}
         tmp = self.folder / "episodes.json.tmp"
         tmp.write_text(json.dumps(data, indent=1))
         tmp.replace(self.folder / "episodes.json")

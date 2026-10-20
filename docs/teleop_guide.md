@@ -110,7 +110,10 @@ python -m teleop --real --record --task "pick the block and place it in the box"
 python -m teleop --record --no-cameras                      # robot data only (trying the keys)
 ```
 - The cameras (`record.front_serial` D435, `record.wrist_serial` D405) start before anything moves; a
-  missing camera refuses the start. Settings: the `record` section (task, 120 s episode limit, no
+  missing camera refuses the start. Their exposure, gain and white balance are fixed (`record.front_*`,
+  `record.wrist_*`) and read back (a mismatch refuses the start). The mean brightness of each camera is
+  checked against `record.brightness_ref` +/- `brightness_tolerance` (114 +/- 15 %): outside it, a typed
+  yes is needed (fix the lighting first, docs/data_rules.md). Settings: the `record` section (task, 120 s episode limit, no
   automatic start).
 - Keys, in the terminal running the teleop (as LeRobot's `lerobot-record`):
 

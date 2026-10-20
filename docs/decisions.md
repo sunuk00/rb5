@@ -109,6 +109,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-19 — rec-5: ACT trial training on the pilot (front only): the flow works; inference 17 ms GPU](#2026-10-19--rec-5-act-trial-training-on-the-pilot-front-only-the-flow-works-inference-17-ms-gpu)
 - [2026-10-21 — Data rules for the first ACT dataset (docs/data_rules.md)](#2026-10-21--data-rules-for-the-first-act-dataset-docsdata_rulesmd)
 - [2026-10-21 — cam-2a: fixed camera exposure candidates measured (script 34)](#2026-10-21--cam-2a-fixed-camera-exposure-candidates-measured-script-34)
+- [2026-10-21 — cam-2b: fixed camera settings in the teleop; brightness check at start](#2026-10-21--cam-2b-fixed-camera-settings-in-the-teleop-brightness-check-at-start)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -2460,6 +2461,27 @@ Exposures are multiples of 1/120 s (60 Hz mains: no flicker). The D435 does not 
 with any tested white balance (green is low: slight magenta); the D405 is neutral at 4600 K. Values to
 choose: next entry (cam-2b).
 
+## 2026-10-21 — cam-2b: fixed camera settings in the teleop; brightness check at start
+
+**Decision (user):** front D435 16.7 ms / gain 76 / 4600 K, wrist D405 8.3 ms / gain 61 / 4600 K (script 34,
+2026-10-21), in `record.front_*` / `record.wrist_*` (sim.yaml = real.yaml). `teleop/cameras.py` switches
+auto exposure and auto white balance off and sets these values every time it opens a camera, reads them
+back (a mismatch refuses the start, before anything moves), then measures each camera's mean brightness
+(10 frames after 1 s). Outside `brightness_ref` 114 +/- `brightness_tolerance` 15 % (97..131): a warning and
+a typed yes (user); no -> the teleop stops. episodes.json `cameras`: serial, settings as read back,
+brightness, reference, tolerance, ok, and whether a typed yes accepted it. Script 30 uses the same values
+(`--auto` for auto). Same-lighting item added to the data collection checklist (docs/data_rules.md).
+
+**Reason:** the options are not stored in the camera (a replug returns to auto), so they must be applied
+and checked at every open; with fixed exposure the image brightness follows the room lighting, so a
+changed lighting must be noticed before recording.
+
+**Checked:** tests (fake cameras: settings reported, read-back mismatch refuses, brightness limits,
+episodes.json). Real cameras (script 30): read back front exposure 16.7 ms (167 x 0.1 ms) / gain 76 /
+4600 K, wrist 8.333 ms / 61 / 4600 K; brightness 114.6 / 114.8. 10 s recording: 29.98 / 29.89 fps, front 0
+gaps, wrist 1 missed frame (the D405 cable is not fixed yet); JPEG 82 / 69 kB per frame (higher gain, more
+noise: 4.5 MB/s together, was 3.9). The options stay set after the program ends until a replug.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -2482,8 +2504,8 @@ choose: next entry (cam-2b).
     - Hardware before the real collection (user): D405 cable strain relief and USB 3 (it is on USB 2
       since the pilot; check `lsusb -t` 5000M and script 30 while moving the gripper); D435 position
       (the arm covers about 2/3 of its view); `range.z_min_mm` for the mounted gripper (the pilot went to z 14).
-    - Real collection: rules in docs/data_rules.md (2026-10-21). Still to do first: fixed camera exposure
-      and white balance (values + code, recording and policy runner), z_min.
+    - Real collection: rules in docs/data_rules.md (2026-10-21); fixed camera settings done (cam-2b; the policy
+      runner must open the cameras with the same code). Still to do first: z_min.
     - **rec-6 policy runner (planned, not approved yet):** policy process (cameras + ACT on the GPU, a new
       chunk every 0.2 s) and servo process (50 Hz, chunk interpolated by time, TargetFollower, never waits);
       policy speed scale 0.5; stale chunk 0.5 s -> hold, 3 s -> stop; target over 100 mm away -> hold;

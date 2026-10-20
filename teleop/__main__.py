@@ -16,7 +16,9 @@ Steps:
   7. CSV, the gripper thread CSV and a copy of the settings saved in the log folder
 
 With --record (demonstrations, rec-3b): the cameras (record.front_serial / wrist_serial) start before
-anything moves (refused if one is missing), and the run is a session in record.dir/<mode>_<time>/.
+anything moves with their fixed exposure / gain / white balance read back (refused if one is missing or a
+value differs); a mean brightness outside record.brightness_ref +/- brightness_tolerance asks for a typed
+yes (cam-2b), and the run is a session in record.dir/<mode>_<time>/.
 Keys in this terminal during the loop, as LeRobot's: -> / n end and keep the episode, or start the next
 one; <- / r discard the episode (or, in the reset, the one just finished); Esc / q end the session (an
 episode being recorded is discarded). The session starts in the reset phase. Episodes end and are kept
@@ -186,15 +188,33 @@ def main():
         if args.no_cameras:
             print(f"Record: session {session.relative_to(ROOT)}, NO cameras (--no-cameras), task '{task}'")
         else:
-            from .cameras import CameraRecorder
-            cams = [("front", s.record.front_serial), ("wrist", s.record.wrist_serial)]
-            cameras = CameraRecorder(cams, quality=s.record.jpeg_quality)
+            from .cameras import CameraRecorder, brightness_problems
+            r = s.record
+            cams = [("front", r.front_serial, {"exposure_us": r.front_exposure_us, "gain": r.front_gain,
+                                                "white_balance_k": r.front_white_balance_k}),
+                    ("wrist", r.wrist_serial, {"exposure_us": r.wrist_exposure_us, "gain": r.wrist_gain,
+                                                "white_balance_k": r.wrist_white_balance_k})]
+            cameras = CameraRecorder(cams, quality=r.jpeg_quality)
             problems = cameras.open()
             if problems:
                 close_ports()
                 refuse("cameras (python -m teleop --record --no-cameras records without them)", problems)
-            print(f"Record: session {session.relative_to(ROOT)}, cameras "
-                  f"{', '.join(f'{n} {sn}' for n, sn in cams)} streaming, task '{task}'")
+            print(f"Record: session {session.relative_to(ROOT)}, task '{task}'")
+            for name, c in cameras.info.items():
+                st = c["settings"]
+                print(f"  {name} {c['serial']}: exposure {st['exposure_us'] / 1000:.1f} ms, gain {st['gain']:g}, "
+                      f"white balance {st['white_balance_k']:g} K (fixed), mean brightness {c['brightness']}")
+            problems = brightness_problems(cameras.info, r.brightness_ref, r.brightness_tolerance)
+            for p in problems:
+                print(f"  WARNING: {p}")
+            if problems:
+                ok = ask("Brightness differs from the reference: the images will look different from the other "
+                         "sessions. Type yes to record anyway: ", "yes")
+                for name in cameras.info:
+                    cameras.info[name]["brightness_confirmed"] = ok if not cameras.info[name]["brightness_ok"] else None
+                if not ok:
+                    close_ports()
+                    sys.exit("Cancelled: fix the lighting (docs/data_rules.md) or run scripts/34 again.")
 
     from .rb5 import RB5
     rb5 = RB5(s.robot.ip, s.servo)
@@ -319,7 +339,7 @@ def main():
         if s.record.sounds and not speaker.enabled:
             print("Sounds: spd-say not found (sudo apt install speech-dispatcher); no spoken messages")
         recorder = EpisodeRecorder(session, task, s.record.episode_time_s, s.record.reset_time_s, keys, cameras,
-                                   say=speaker.say)
+                                   say=speaker.say, camera_info=None if cameras is None else cameras.info)
         print(f"RECORD: starts in the RESET phase. Keys here: -> or n = start / end and keep the episode, "
               f"<- or r = discard, q or Esc = end the session. Episodes end and are kept after "
               f"{s.record.episode_time_s:.0f} s.\n")

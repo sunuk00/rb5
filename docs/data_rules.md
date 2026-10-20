@@ -34,8 +34,10 @@ changes the data (task, object, cameras, settings) starts a new dataset.
 - **D435 (`front`)**: fixed above the workspace, the 20 x 20 cm square and the box in view, not covered
   by the arm at the ready pose. Mark its mount; it must not move between sessions.
 - **D405 (`wrist`)**: on the gripper body, cable strain-relieved; `lsusb -t` shows 5000M.
-- **Exposure and white balance fixed** (decided; the values and the code that sets them are still to do,
-  for both recording and the policy runner).
+- **Exposure, gain and white balance fixed** (cam-2b, `record.*` in configs/*.yaml): front 16.7 ms / gain 76 /
+  4600 K, wrist 8.3 ms / gain 61 / 4600 K. Set and read back every time the teleop opens the cameras.
+- **Brightness check at start**: each camera's mean brightness must be within 114 +/- 15 % (97..131);
+  otherwise a typed yes is needed. Reference, measured value and settings go into episodes.json.
 - 640x480 RGB @ 30 for both.
 
 ## Evaluation (after training, the same for every policy)
@@ -46,7 +48,10 @@ changes the data (task, object, cameras, settings) starts a new dataset.
 
 ## Before every session (in addition to docs/real_first_run_checklist.md)
 - [ ] Collision detection ON, emergency stop within reach.
-- [ ] Both cameras on USB 3 (5000M); D435 mount at its mark; same lighting.
+- [ ] Both cameras on USB 3 (5000M); D435 mount at its mark.
+- [ ] **Same lighting as the reference** (2026-10-21, when the camera values were chosen): blinds in the
+      same position, the same ceiling lights on, no extra lamps, no direct sun on the table. The start
+      brightness check (114 +/- 15 %) must pass; if not, fix the lighting rather than typing yes.
 - [ ] Gripper powered (12 V when available), fingers clear.
 - [ ] `range.z_min_mm` set for the mounted gripper (still -50: to decide before the real collection).
 - [ ] Box and square at their marks.

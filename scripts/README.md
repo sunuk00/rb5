@@ -400,6 +400,7 @@ python scripts/30_camera_recorder_test.py                              # front +
 python scripts/30_camera_recorder_test.py --seconds 60 --episodes 1
 python scripts/30_camera_recorder_test.py --camera front=943222070221   # one camera
 python scripts/30_camera_recorder_test.py --fake                        # synthetic frames, no cameras
+python scripts/30_camera_recorder_test.py --auto                        # auto exposure (default: the fixed values)
 ```
 Starts the camera process of `teleop/cameras.py` and records episodes the way the teleop will (the
 last one discarded: its files must be gone). Meanwhile this process runs a 50 Hz loop and counts late

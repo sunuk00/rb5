@@ -14,6 +14,14 @@ Episode files (dir given by start_episode):
 stop_episode(keep=False) deletes the episode folder (discarded episode); delete_episode removes a stopped
 one later. The teleop side never waits: results come from poll().
 
+Fixed camera settings (cam-2b): a camera given settings {exposure_us, gain, white_balance_k} gets auto
+exposure and auto white balance off and these values when it opens; they are read back and a mismatch
+refuses the start. The options are not stored in the camera (a replug returns to auto), so this runs at
+every open. Exposure units: the D435 RGB sensor takes 0.1 ms steps, the D405 stereo module microseconds.
+At the start the process also measures each camera's mean brightness (0-255) over BRIGHTNESS_FRAMES
+frames; CameraRecorder.info has the applied values and the brightness, and brightness_problems() compares
+it with the reference (the lighting must be the same as when the values were chosen).
+
 Times per frame: t_arrival_s = time.monotonic() when the frame reached the grab thread; cam_ts_ms = the
 camera timestamp (global_time domain: the PC wall clock at capture, in ms); t_capture_s = t_arrival_s
 minus the receive delay (PC wall clock at arrival - cam_ts_ms). The receive delay differs per camera
@@ -33,18 +41,26 @@ import numpy as np
 CAMERA_HEADER = ["index", "frame_number", "t_capture_s", "t_arrival_s", "cam_ts_ms", "domain", "write_ms"]
 READY_TIMEOUT_S = 15.0       # pipelines of two cameras start in about 2-3 s
 WRITE_QUEUE = 30             # frames per camera waiting for the writer (1 s at 30 fps)
+BRIGHTNESS_SETTLE_S = 1.0    # frames skipped after opening before the brightness is measured
+BRIGHTNESS_FRAMES = 10
 STALL_S = 1.0                # no frame for this long = camera error (real-pilot 141929: the D405 dropped off
                              # USB and came back as USB 2; its pipeline only timed out, nothing was reported)
 
 
 class FakeCamera:
     """Synthetic frames at the given rate (tests, runs without cameras). A serial "stall@N" stops delivering
-    frames after N frames (read() then times out like a disconnected camera)."""
+    frames after N frames (read() then times out like a disconnected camera); "bright@V" gives images of
+    brightness V; "badsettings" fails the settings read back."""
 
-    def __init__(self, serial, width, height, fps):
+    def __init__(self, serial, width, height, fps, settings=None):
         self.width, self.height, self.period = width, height, 1.0 / fps
         self.n, self.next_t = 0, time.monotonic()
-        self.stall_after = int(serial.split("@")[1]) if str(serial).startswith("stall@") else None
+        serial = str(serial)
+        self.stall_after = int(serial.split("@")[1]) if serial.startswith("stall@") else None
+        self.level = int(serial.split("@")[1]) if serial.startswith("bright@") else None
+        if settings is not None and serial == "badsettings":
+            raise RuntimeError(f"settings read back {dict(settings, gain=-1)} differ from {settings}")
+        self.applied = None if settings is None else dict(settings)
 
     def read(self):
         if self.stall_after is not None and self.n >= self.stall_after:
@@ -55,7 +71,7 @@ class FakeCamera:
         if delay > 0:
             time.sleep(delay)
         self.n += 1
-        img = np.full((self.height, self.width, 3), self.n % 256, dtype=np.uint8)
+        img = np.full((self.height, self.width, 3), self.n % 256 if self.level is None else self.level, dtype=np.uint8)
         wall_ms = time.time() * 1000.0
         return img, self.n, wall_ms, "fake", time.monotonic(), wall_ms
 
@@ -64,9 +80,10 @@ class FakeCamera:
 
 
 class RealSenseCamera:
-    """Color stream (RGB8) of one RealSense camera found by its serial number."""
+    """Color stream (RGB8) of one RealSense camera found by its serial number; settings (optional): fixed
+    exposure_us, gain, white_balance_k, applied and read back (applied = what the camera reports)."""
 
-    def __init__(self, serial, width, height, fps):
+    def __init__(self, serial, width, height, fps, settings=None):
         import pyrealsense2 as rs
         self.rs = rs
         devices = {d.get_info(rs.camera_info.serial_number): d for d in rs.context().query_devices()}
@@ -80,6 +97,30 @@ class RealSenseCamera:
         cfg.enable_stream(rs.stream.color, width, height, rs.format.rgb8, fps)
         self.pipe = rs.pipeline()
         self.pipe.start(cfg)
+        self.applied = None
+        if settings is not None:
+            try:
+                self.applied = self._apply(devices[serial], settings)
+            except Exception:
+                self.pipe.stop()
+                raise
+
+    def _apply(self, device, settings):
+        rs = self.rs
+        sensor = next(s for s in device.query_sensors()
+                      if any(p.stream_type() == rs.stream.color for p in s.get_stream_profiles()))
+        per_us = 0.01 if sensor.get_info(rs.camera_info.name) == "RGB Camera" else 1.0   # D435 RGB: 0.1 ms steps
+        want = {rs.option.enable_auto_exposure: 0.0, rs.option.enable_auto_white_balance: 0.0,
+                rs.option.exposure: float(max(1, round(settings["exposure_us"] * per_us))),
+                rs.option.gain: float(settings["gain"]), rs.option.white_balance: float(settings["white_balance_k"])}
+        for option, value in want.items():
+            sensor.set_option(option, value)
+        got = {option: sensor.get_option(option) for option in want}
+        bad = [f"{str(o).split('.')[-1]} {got[o]:g} (set {v:g})" for o, v in want.items() if abs(got[o] - v) > 1e-6]
+        if bad:
+            raise RuntimeError(f"settings read back differ: {', '.join(bad)}")
+        return {"exposure_us": got[rs.option.exposure] / per_us, "gain": got[rs.option.gain],
+                "white_balance_k": got[rs.option.white_balance], "auto_exposure": 0, "auto_white_balance": 0}
 
     def read(self):
         """(image, frame number, camera ts ms, domain, arrival monotonic s, arrival wall ms) or None."""
@@ -187,13 +228,37 @@ def _save(ep, item, quality, stats, Image):
     stats["write_ms_max"] = max(stats["write_ms_max"], write_ms)
 
 
+def _brightness(cam):
+    """Mean pixel value (0-255) over BRIGHTNESS_FRAMES frames after BRIGHTNESS_SETTLE_S, or None."""
+    t_end, values = time.monotonic() + BRIGHTNESS_SETTLE_S, []
+    while time.monotonic() < t_end:
+        cam.read()
+    for _ in range(3 * BRIGHTNESS_FRAMES):
+        got = cam.read()
+        if got is not None:
+            values.append(float(got[0].mean()))
+        if len(values) >= BRIGHTNESS_FRAMES:
+            break
+    return round(float(np.mean(values)), 1) if values else None
+
+
 def _process_main(cameras, width, height, fps, quality, fake, cmd_q, reply_q):
-    """cameras: list of (name, serial). Runs until ("quit",)."""
+    """cameras: list of (name, serial) or (name, serial, settings). Runs until ("quit",)."""
     cls = FakeCamera if fake else RealSenseCamera
     opened, errors, stop = [], queue.Queue(), threading.Event()
+    info = {}
     try:
-        for name, serial in cameras:
-            opened.append((name, cls(serial, width, height, fps)))
+        for cam_def in cameras:
+            name, serial = cam_def[0], cam_def[1]
+            settings = cam_def[2] if len(cam_def) > 2 else None
+            try:
+                cam = cls(serial, width, height, fps, settings)
+            except Exception as e:
+                raise RuntimeError(f"{name} ({serial}): {e}") from e
+            opened.append((name, cam))
+            info[name] = {"serial": str(serial), "settings": cam.applied}
+        for name, cam in opened:   # before the threads start: read() is used directly here
+            info[name]["brightness"] = _brightness(cam)
     except Exception as e:
         for _, cam in opened:
             cam.close()
@@ -209,7 +274,7 @@ def _process_main(cameras, width, height, fps, quality, fake, cmd_q, reply_q):
         threads.append(threading.Thread(target=_write, args=(name, fq, cq, done, quality, st), daemon=True))
     for t in threads:
         t.start()
-    reply_q.put(("ready", [name for name, _ in opened]))
+    reply_q.put(("ready", info))
     ep_dir = None
     try:
         while True:
@@ -259,13 +324,16 @@ def _process_main(cameras, width, height, fps, quality, fake, cmd_q, reply_q):
 class CameraRecorder:
     """Teleop side: starts the camera process and sends it episode commands (none of them blocks long).
 
-    cameras: list of (name, serial), e.g. [("front", "943222070221"), ("wrist", "130322273474")].
+    cameras: list of (name, serial) or (name, serial, settings), e.g. [("front", "943222070221",
+    {"exposure_us": 16667, "gain": 76, "white_balance_k": 4600}), ...]. After open(), info = {name: {serial,
+    settings (as read back, or None = auto), brightness}}.
     """
 
     def __init__(self, cameras, width=640, height=480, fps=30, quality=95, fake=False):
         ctx = mp.get_context("spawn")   # not fork: the teleop process has threads (gripper)
         self.cmd_q, self.reply_q = ctx.Queue(), ctx.Queue()
-        self.names = [name for name, _ in cameras]
+        self.names = [c[0] for c in cameras]
+        self.info = {}
         self.proc = ctx.Process(target=_process_main, name="cameras", daemon=True,
                                 args=(cameras, width, height, fps, quality, fake, self.cmd_q, self.reply_q))
         self.errors = []
@@ -279,6 +347,7 @@ class CameraRecorder:
             return self.errors[-1:] or [f"camera process not ready after {timeout:.0f} s"]
         if reply[0] == "error":
             return [reply[1]]
+        self.info = reply[1]
         return []
 
     def start_episode(self, ep_dir):
@@ -355,3 +424,18 @@ class CameraRecorder:
             if msg[0] == "error":
                 self.errors.append(msg[1])
         return None
+
+
+def brightness_problems(info, reference, tolerance):
+    """Cameras whose start brightness is outside reference x (1 +/- tolerance): list of texts. Also fills
+    info[name]["brightness_ref"] / ["brightness_ok"] for the record."""
+    problems = []
+    lo, hi = reference * (1.0 - tolerance), reference * (1.0 + tolerance)
+    for name, cam in info.items():
+        b = cam.get("brightness")
+        cam["brightness_ref"], cam["brightness_tolerance"] = reference, tolerance
+        cam["brightness_ok"] = b is not None and lo <= b <= hi
+        if not cam["brightness_ok"]:
+            problems.append(f"{name}: mean brightness {b} outside {lo:.0f}..{hi:.0f} (reference {reference:g} "
+                            f"+/- {100 * tolerance:.0f} %): is the lighting the same (blinds, ceiling lights)?")
+    return problems
