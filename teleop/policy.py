@@ -22,8 +22,17 @@ current target, or the run reached time_limit_s; stops when no chunk has arrived
 Policies inside the process (spec dicts, so they can be pickled):
   {"kind": "replay", "actions": (N, 4) list, "fps": 30, "delay_s": 0.0}  dataset actions as chunks from
       the run start (tests, structure checks); delay_s simulates the inference time
-  {"kind": "act", "checkpoint": path, "device": "cuda"}                   rec-6b
+  {"kind": "act", "checkpoint": path, "device": "cuda", "task": text}     a trained ACT (rec-6b)
+
+Observation tensors for ACT are made by observation_batch(), the same steps as LeRobot's
+prepare_observation_for_inference: image HWC uint8 RGB (the cameras stream rgb8, the recording saved the
+same arrays) -> float32 / 255 -> CHW -> batch dimension; state float32 [J1..J6 deg, gripper 0..1] in the
+dataset's order; then the checkpoint's own preprocessor (normalization with the training statistics).
+tests/test_policy_obs.py checks that a dataset frame gives the same tensors through both paths.
 """
+import gc
+import json
+from pathlib import Path
 import multiprocessing as mp
 import queue
 import threading
@@ -118,9 +127,69 @@ class ReplayPolicy:
         return self.actions[idx]
 
 
+STATE_NAMES = ["j1_deg", "j2_deg", "j3_deg", "j4_deg", "j5_deg", "j6_deg", "gripper_pos"]   # rec-1, converter
+ACTION_NAMES = ["x_mm", "y_mm", "z_mm", "gripper_open"]
+
+
+def policy_inputs(checkpoint):
+    """(camera names, state length) the checkpoint expects, from its config.json (no torch needed)."""
+    cfg = json.loads((Path(checkpoint) / "config.json").read_text())
+    feats = cfg["input_features"]
+    cams = [k.split(".", 2)[2] for k in feats if k.startswith("observation.images.")]
+    return cams, feats["observation.state"]["shape"][0]
+
+
+def observation_batch(images, state, task, cameras, device="cpu"):
+    """Model input before the preprocessor: images {name: HWC uint8 RGB}, state (7,) -> dict of tensors."""
+    import torch
+    batch = {"observation.state": torch.as_tensor(np.asarray(state, dtype=np.float32)).unsqueeze(0).to(device)}
+    for name in cameras:
+        img = torch.from_numpy(np.require(images[name], requirements=["C", "W"]))   # copies a read-only array
+        if img.dtype == torch.uint8:
+            img = img.type(torch.float32) / 255
+        batch[f"observation.images.{name}"] = img.permute(2, 0, 1).contiguous().unsqueeze(0).to(device)
+    batch["task"] = [task]
+    return batch
+
+
+class ACTChunkPolicy:
+    """A trained ACT checkpoint: observation -> chunk (chunk_size, 4) in mm / 0..1 (unnormalized)."""
+
+    def __init__(self, spec):
+        import torch
+        from lerobot.policies.act.modeling_act import ACTPolicy
+        from lerobot.policies.factory import make_pre_post_processors
+        self.torch = torch
+        self.device = spec.get("device", "cuda")
+        self.task = spec.get("task", "")
+        self.policy = ACTPolicy.from_pretrained(spec["checkpoint"])
+        self.policy.config.device = self.device
+        self.policy.to(self.device).eval()
+        self.pre, self.post = make_pre_post_processors(
+            self.policy.config, pretrained_path=str(spec["checkpoint"]),
+            preprocessor_overrides={"device_processor": {"device": self.device}})
+        self.cameras = [k.split(".", 2)[2] for k in self.policy.config.image_features]
+        names = (self.policy.config.input_features["observation.state"].shape[0],
+                 self.policy.config.output_features["action"].shape[0])
+        if names != (len(STATE_NAMES), len(ACTION_NAMES)):
+            raise ValueError(f"policy state / action sizes {names}, expected {len(STATE_NAMES)} / {len(ACTION_NAMES)}")
+
+    def predict(self, obs):
+        missing = [c for c in self.cameras if c not in obs["images"]]
+        if missing:
+            raise ValueError(f"the policy needs cameras {missing} that are not open")
+        with self.torch.inference_mode():
+            self.policy.reset()
+            batch = observation_batch(obs["images"], obs["state"], self.task, self.cameras, self.device)
+            chunk = self.post(self.policy.predict_action_chunk(self.pre(batch)))
+        return chunk[0].float().cpu().numpy()
+
+
 def make_policy(spec):
     if spec["kind"] == "replay":
         return ReplayPolicy(spec)
+    if spec["kind"] == "act":
+        return ACTChunkPolicy(spec)
     raise ValueError(f"unknown policy kind {spec['kind']!r}")
 
 
@@ -148,9 +217,27 @@ def _policy_main(spec, cameras, fake_cameras, fps, state, out_q, cmd_q, reply_q)
             cam.close()
         reply_q.put(("error", f"policy process start failed: {e}"))
         return
-    reply_q.put(("ready", {"cameras": list(readers)}))
-    period, n = 1.0 / fps, 0
+    info = {}
+    for (name, serial, _), cam in zip(cameras, opened):   # start brightness, as the recording checks it
+        values, t_end = [], time.monotonic() + 1.0
+        while time.monotonic() < t_end:
+            f = readers[name].latest()
+            values.append(float(f[0].mean()))
+            time.sleep(0.1)
+        info[name] = {"serial": str(serial), "settings": cam.applied, "brightness": round(float(np.mean(values)), 1)}
+    # Warm-up: the first inferences on the GPU are slow (about 230 ms: kernel selection), before "ready"
     first = next(iter(readers)) if readers else None
+    for _ in range(3):
+        policy.predict({"t_obs": time.monotonic(), "t_state": 0.0, "state": np.zeros(STATE_LEN),
+                        "images": {name: r.latest()[0] for name, r in readers.items()}})
+    if hasattr(policy, "t_start"):
+        policy.t_start = None          # the replay policy starts at the first real observation
+    # The model makes hundreds of thousands of Python objects; a full GC pass over them took about 80 ms every
+    # 42 s and delayed an inference by that much (rec-6b endurance). Freeze them: GC stays on for new objects.
+    gc.collect()
+    gc.freeze()
+    reply_q.put(("ready", {"cameras": info}))
+    period, n = 1.0 / fps, 0
     try:
         while True:
             try:

@@ -226,6 +226,33 @@ class TestPolicyRunner(unittest.TestCase):
         self.assertAlmostEqual(runner.run_time, 2.0, delta=0.05)
 
 
+class TestStateLikeTheConverter(unittest.TestCase):
+    def test_gripper_fraction_and_joint_source(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("convert", ROOT / "scripts" / "31_convert_to_lerobot.py")
+        cv = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cv)
+        clock = SimClock()
+        runner, robot, _, client, _ = make(clock, np.zeros((10, 4)), Keys({3: ["quit"]}))
+        gs = runner.s.gripper
+
+        class G:
+            def __init__(self, pos):
+                self.pos = pos
+
+            def latest(self):
+                return {"position": self.pos}
+        for pos in (gs.closed_ticks, gs.open_ticks, 3100, 4098, 2000):
+            runner.gripper = G(pos)
+            want = float(np.clip((pos - gs.closed_ticks) / (gs.open_ticks - gs.closed_ticks), 0.0, 1.0))   # converter rule
+            self.assertAlmostEqual(runner._grip_frac(), want)
+        runner.gripper = None
+        run_for(runner, 1)
+        t_state, state = client.published[-1]
+        np.testing.assert_allclose(state[:6], robot.q, atol=1e-9)        # Simulation: jnt_ref (the reader's q)
+        self.assertEqual(len(state), len(cv.STATE_NAMES))
+
+
 class TestPolicyProcess(unittest.TestCase):
     def test_replay_policy_with_fake_cameras(self):
         acts = np.c_[np.arange(300)[:, None] * np.ones((1, 3)), np.ones(300)]

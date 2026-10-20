@@ -57,6 +57,7 @@ default, Real with `--real` and typed confirmation; **leader** = writes torque t
 | 32 | `32_replay_episode.py` | Replay one dataset episode's actions through the teleop limits (teleop/follow.py) and compare with the recorded joints (env `lerobot`, rec-4b) | RB5 (Sim only) | test |
 | 33 | `33_policy_check.py` | A trained policy offline: predicted chunks vs recorded actions, inference time GPU / CPU (env `lerobot`, rec-5) | - | tool |
 | 34 | `34_camera_settings.py` | Fixed exposure / gain / white balance candidates for both cameras: gain matched to the auto brightness, noise, color balance, an image per setting; auto restored at the end (cam-2a) | - (cameras only, options changed temporarily) | tool |
+| 35 | `35_run_policy.py` | Run a trained ACT policy (teleop/policy.py): policy process with the cameras (fixed settings) + 50 Hz servo loop through the teleop limits; keys g / space / q (env `lerobot`, rec-6b) | RB5 (Sim only) | test |
 
 ## Usage per script
 
@@ -444,6 +445,7 @@ target vs desired (what the limits changed), tcp_ref vs target, the end position
 Env `lerobot`. No robot.
 ```bash
 python scripts/33_policy_check.py data/train/<run>/checkpoints/last/pretrained_model --repo-id local/pilot_front --two-cameras
+python scripts/33_policy_check.py --endurance 5     # inference on the 30 Hz schedule for 5 min + GPU temperature / clock
 ```
 Loads the policy and its normalization from the checkpoint; on frames spread over the dataset compares
 the predicted chunk with the recorded actions (+1, +10, +30, +99 steps; training data, so it shows the
@@ -460,3 +462,15 @@ Per camera: auto exposure as it is now (target brightness), then each fixed expo
 candidates. Prints mean brightness, frame-to-frame noise, R/G and B/G (the gray table: near 1 is
 neutral); saves a PNG per setting in `data/cameras/settings_<time>/`. Switches auto exposure and auto
 white balance back on at the end (a replug does too). Exposure units: D435 RGB 0.1 ms, D405 us.
+
+### 35 run a policy (Simulation)
+Env `lerobot`: `conda activate lerobot`. **Moves the RB5 in Simulation mode** (Real is refused).
+```bash
+python scripts/35_run_policy.py data/train/<run>/checkpoints/last/pretrained_model [--time-limit 60]
+```
+Opens the cameras the policy expects (its config.json) in the policy process with the recording's fixed
+settings and checks the brightness; Simulation mode and the teleop's checks; move_j to the ready pose
+(typed yes); shows the first action's distance from the TCP (typed yes); then the loop: **g** = run,
+**space** = hold, **q** = quit. Holds on a chunk older than 0.5 s, an action over 100 mm from the target,
+the time limit; stops when no chunk came for 3 s. The gripper is not moved yet (rec-6c). Log:
+`data/policy/run_sim_<time>.csv` (+ .json) and a summary (late cycles, chunk age, inference time).

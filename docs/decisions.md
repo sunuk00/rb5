@@ -113,6 +113,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-21 — range.z_min_mm -50 -> 19 mm for the mounted gripper](#2026-10-21--rangez_min_mm--50---19-mm-for-the-mounted-gripper)
 - [2026-10-21 — rec-6 policy runner: decisions (two processes, temporal ensembling by time, 100 % speed, keyboard toggle)](#2026-10-21--rec-6-policy-runner-decisions-two-processes-temporal-ensembling-by-time-100--speed-keyboard-toggle)
 - [2026-10-21 — rec-6a: policy runner structure (teleop/policy.py) with a fake policy and robot](#2026-10-21--rec-6a-policy-runner-structure-teleoppolicypy-with-a-fake-policy-and-robot)
+- [2026-10-21 — rec-6b: train/run observations match; inference 33 ms on the GPU power limit; GC freeze; ACT runner script](#2026-10-21--rec-6b-trainrun-observations-match-inference-33-ms-on-the-gpu-power-limit-gc-freeze-act-runner-script)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -2553,6 +2554,39 @@ with fake cameras). Real time (fake robot, real policy process with fake cameras
 interval max 20.3 ms, chunk age 330 / 410 ms, 15 chunks ensembled. The path follows in both; at the test range
 top the target stopped and the action kept rising: the jump guard held at 101 mm, as designed.
 
+## 2026-10-21 — rec-6b: train/run observations match; inference 33 ms on the GPU power limit; GC freeze; ACT runner script
+
+**Observation check first (user):** `tests/test_policy_obs.py` (env lerobot) feeds frames of
+local/pilot_front through the training path (dataset item, AV1-decoded image) and the run path (the JPEG the
+recording saved = the camera's rgb8 array, `observation_batch()`, the same steps as LeRobot's
+prepare_observation_for_inference), both through the checkpoint's preprocessor. Keys and camera count equal
+the policy's input features (front, state); shapes (1, 3, 480, 640) / (1, 7), float32 for both; image range
+0..1 in both; image mean difference 0.007 (video compression; R/B swapped would be 0.025) and the R - B maps
+correlate 0.98 (swapped: -0.98); state names J1..J6 deg + gripper in the dataset order, values identical
+(0 difference), inside the dataset range, degrees. The runner's gripper fraction uses the converter's formula
+and the published joints are jnt_ref in Simulation / jnt_ang in Real (test in test_policy).
+
+**Inference endurance (user):** script 33 `--endurance 5`: untrained ACT with two 480x640 cameras on the
+runner schedule (1 / 30 s), 8829 inferences. p50 31.6 ms in the first 10 %, 33.1 ms in the last 10 % (+5 %,
+reached after about 2 min, then flat); 20.6 % over one 33.3 ms step after the warm-up (one step in four or
+five has no new chunk: the ensembling by time keeps going). The GPU sits at its 35 W power limit the whole
+time (34.6-34.9 W), 58 -> 80 C, SM clock 1440 -> about 1100 MHz: the slowdown is the power limit, small.
+Spikes 92-174 ms, 7 times, every 42.6-43.1 s: Python's full GC pass over the model's objects (about 80 ms;
+GC callback times match, none with GC off). **Fix:** `gc.collect(); gc.freeze()` after the model loaded (policy
+process) and before the servo loop (script 35): 130 s with GC on, full passes 0.1 ms, max inference 34 ms.
+
+**ACT in the policy process:** kind `act` (`ACTChunkPolicy`: from_pretrained, the checkpoint's pre / post
+processors on the GPU, `observation_batch`, predict_action_chunk); 3 warm-up inferences before "ready" (the
+first took 233 ms). With the pilot checkpoint and a fake camera: ready in 6.8 s, 147 chunks in 5 s (100 x 4),
+inference p50 24.9 ms, max 46.8 ms. The process also reports each camera's settings and start brightness
+(the same check as the recording). Its first action from a gray image was 125 mm from the ready pose TCP:
+with real images it may differ, and over 100 mm the runner holds (the script shows the distance first).
+
+**Script 35 (Simulation only):** cameras the policy expects with the fixed settings and the brightness check;
+Simulation mode and the teleop's checks; move_j to the ready pose (yes); the first chunk's distance (yes); the
+PolicyRunner with keys g / space / q; log data/policy/run_sim_<time>.csv + .json. Not run yet (moves the
+Simulation robot: the user runs it).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -2579,8 +2613,8 @@ top the target stopped and the action kept rising: the jump guard held at 101 mm
       runner must open the cameras with the same code) and z_min 19 mm (2026-10-21). Left: the hardware
       items above.
     - **rec-6 policy runner:** decided 2026-10-21 (see its entry): two processes, temporal ensembling by time,
-      100 % speed, keyboard toggle (space = hold). 6a done (teleop/policy.py). Next: 6b (ACT + cameras +
-      Simulation, a runner script).
+      100 % speed, keyboard toggle (space = hold). 6a done; 6b code done (script 35, Simulation run by the
+      user next). Then 6c (gripper).
   - **Windows** (only if needed):
     - environment.yml (evdev only on Linux)
     - CPU pinning and the FTDI latency check per OS
