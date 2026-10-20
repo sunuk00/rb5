@@ -108,6 +108,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-19 — Real pilot 141929: the D405 dropped off USB; camera stall detection; converter coverage check, --cameras](#2026-10-19--real-pilot-141929-the-d405-dropped-off-usb-camera-stall-detection-converter-coverage-check---cameras)
 - [2026-10-19 — rec-5: ACT trial training on the pilot (front only): the flow works; inference 17 ms GPU](#2026-10-19--rec-5-act-trial-training-on-the-pilot-front-only-the-flow-works-inference-17-ms-gpu)
 - [2026-10-21 — Data rules for the first ACT dataset (docs/data_rules.md)](#2026-10-21--data-rules-for-the-first-act-dataset-docsdata_rulesmd)
+- [2026-10-21 — cam-2a: fixed camera exposure candidates measured (script 34)](#2026-10-21--cam-2a-fixed-camera-exposure-candidates-measured-script-34)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -2434,6 +2435,30 @@ collecting so every policy is compared the same way.
 
 **Open (before the real collection):** the exposure / white balance values and the code that sets them
 (recording and policy runner); `range.z_min_mm` for the mounted gripper; D405 cable; D435 position.
+
+## 2026-10-21 — cam-2a: fixed camera exposure candidates measured (script 34)
+
+**Facts:** both color sensors support auto exposure / auto white balance off, exposure, gain, white
+balance (2800-6500 K). Exposure units: D435 RGB 0.1 ms (1-10000), D405 stereo module us (1-165000); gain
+D435 0-128, D405 16-248. The options are not stored in the camera (a replug returns to auto), so the code
+must set them every time it opens a camera and read them back. With auto, the D405 used about 32 ms of
+the 33 ms frame (motion blur on the moving wrist camera: about 8 mm at 250 mm/s); the D435 does not
+report its actual exposure (metadata missing without the kernel module).
+
+**Measured 2026-10-21 (lab lighting, gain searched to match the auto brightness):**
+
+| camera | setting | mean (0-255) | noise | R/G, B/G |
+|---|---|---|---|---|
+| front D435 | auto | 113.9 | 1.74 | 0.909, 0.969 |
+| | 8.3 ms, gain 128 (max) | 101.8 (too dark) | 2.58 | |
+| | **16.7 ms, gain 76** | 114.0 | 1.95 | 4600 K: 1.091, 1.203; 5200 K: 1.141, 1.137 |
+| wrist D405 | auto (about 32 ms) | 114.7 | 1.35 | 0.947, 0.986 |
+| | **8.3 ms, gain 61** | 114.3 | 2.51 | 4600 K: 0.984, 0.998 |
+| | 16.7 ms, gain 31 | 116.8 | 1.81 | 4600 K: 0.990, 1.007 |
+
+Exposures are multiples of 1/120 s (60 Hz mains: no flicker). The D435 does not reach a neutral gray
+with any tested white balance (green is low: slight magenta); the D405 is neutral at 4600 K. Values to
+choose: next entry (cam-2b).
 
 ## PENDING
 

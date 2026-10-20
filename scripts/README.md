@@ -56,6 +56,7 @@ default, Real with `--real` and typed confirmation; **leader** = writes torque t
 | 31 | `31_convert_to_lerobot.py` | Demonstration sessions (`--record`) -> one LeRobotDataset at 30 fps: kept episodes, still ones left out, optional pause cut, checks (env `lerobot`, rec-4a) | - (files only) | tool |
 | 32 | `32_replay_episode.py` | Replay one dataset episode's actions through the teleop limits (teleop/follow.py) and compare with the recorded joints (env `lerobot`, rec-4b) | RB5 (Sim only) | test |
 | 33 | `33_policy_check.py` | A trained policy offline: predicted chunks vs recorded actions, inference time GPU / CPU (env `lerobot`, rec-5) | - | tool |
+| 34 | `34_camera_settings.py` | Fixed exposure / gain / white balance candidates for both cameras: gain matched to the auto brightness, noise, color balance, an image per setting; auto restored at the end (cam-2a) | - (cameras only, options changed temporarily) | tool |
 
 ## Usage per script
 
@@ -447,3 +448,14 @@ Loads the policy and its normalization from the checkpoint; on frames spread ove
 the predicted chunk with the recorded actions (+1, +10, +30, +99 steps; training data, so it shows the
 pipeline and the fit, not robot performance); times one inference (batch 1) on the GPU and the CPU;
 `--two-cameras` also times an untrained ACT with two 480x640 cameras.
+
+### 34 camera settings
+```bash
+python scripts/34_camera_settings.py                                   # 8.3 / 16.7 ms, 4000 / 4600 / 5200 K
+python scripts/34_camera_settings.py --exposures-us 8333 16667 25000 --wb 4400 4800
+```
+Per camera: auto exposure as it is now (target brightness), then each fixed exposure (multiples of
+1/120 s against 60 Hz flicker) with the gain searched until the brightness matches; then white balance
+candidates. Prints mean brightness, frame-to-frame noise, R/G and B/G (the gray table: near 1 is
+neutral); saves a PNG per setting in `data/cameras/settings_<time>/`. Switches auto exposure and auto
+white balance back on at the end (a replug does too). Exposure units: D435 RGB 0.1 ms, D405 us.
