@@ -61,10 +61,12 @@ def parse_keys(data):
 
 class KeyReader:
     """Reads keys from the terminal in a thread (cbreak mode: no Enter needed, no echo; Ctrl+C still works).
-    keys() returns the keys since the last call without waiting. stop() restores the terminal."""
+    keys() returns the keys since the last call without waiting. stop() restores the terminal.
+    parse: bytes -> key names (default parse_keys, the recording keys; the policy runner passes its own)."""
 
-    def __init__(self, fd=None):
+    def __init__(self, fd=None, parse=None):
         self.fd = sys.stdin.fileno() if fd is None else fd
+        self.parse = parse_keys if parse is None else parse
         self.q = queue.Queue()
         self.old = None
         self._stop = threading.Event()
@@ -84,7 +86,7 @@ class KeyReader:
         while not self._stop.is_set():
             ready, _, _ = select.select([self.fd], [], [], 0.1)
             if ready:
-                for k in parse_keys(os.read(self.fd, 32)):
+                for k in self.parse(os.read(self.fd, 32)):
                     self.q.put(k)
 
     def keys(self):

@@ -112,6 +112,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-21 — cam-2b: fixed camera settings in the teleop; brightness check at start](#2026-10-21--cam-2b-fixed-camera-settings-in-the-teleop-brightness-check-at-start)
 - [2026-10-21 — range.z_min_mm -50 -> 19 mm for the mounted gripper](#2026-10-21--rangez_min_mm--50---19-mm-for-the-mounted-gripper)
 - [2026-10-21 — rec-6 policy runner: decisions (two processes, temporal ensembling by time, 100 % speed, keyboard toggle)](#2026-10-21--rec-6-policy-runner-decisions-two-processes-temporal-ensembling-by-time-100--speed-keyboard-toggle)
+- [2026-10-21 — rec-6a: policy runner structure (teleop/policy.py) with a fake policy and robot](#2026-10-21--rec-6a-policy-runner-structure-teleoppolicypy-with-a-fake-policy-and-robot)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -2525,6 +2526,33 @@ walls; tool mass and TCP offset on the controller are still 0 kg / provisional.
 **Steps:** 6a structure with a fake policy and robot (no hardware); 6b real ACT + cameras + Simulation
 (timing, chunk age, GPU); 6c gripper and the key controls in Simulation.
 
+## 2026-10-21 — rec-6a: policy runner structure (teleop/policy.py) with a fake policy and robot
+
+**What:** `teleop/policy.py`:
+- `ChunkBuffer`: chunks with their observation time; `action_at(t)` = every recent chunk that covers t gives
+  its action interpolated between its 30 Hz steps; weights exp(-0.01 i), i = 0 the oldest (ACT); chunks
+  that ended before t are dropped; an older or repeated chunk is ignored.
+- Policy process (`PolicyClient`, spawn): opens the cameras with `teleop/cameras.py` (fixed settings) and
+  keeps the latest frame of each; at most once per 1/30 s: latest frames + the latest robot state (shared
+  memory from the servo side) -> policy -> chunk (100 x [x, y, z, gripper]) with t_obs = the front capture
+  time, inference time, counter; never waits (a full queue drops the chunk). Policy kinds: `replay` (dataset
+  actions as chunks from the first observation, optional simulated inference delay); `act` comes in 6b.
+- `PolicyRunner` (servo side, devices passed in): chunks and keys without waiting; the teleop's state checks
+  (stale state, late cycles); TargetFollower (the teleop's limits) and the gripper thread while running;
+  state published every cycle (Real: jnt_ang, Simulation: jnt_ref, as the converter). Keys: g = run (refused
+  until a recent chunk exists), space = hold, q / Esc = quit (`KeyReader` takes a parser now). Holds on: a
+  chunk older than 0.5 s, no chunk covering the time, an action over 100 mm from the target, 60 s of running.
+  Stops when no chunk has arrived for 3 s or the policy process ended. CSV row per cycle (`RUN_HEADER`).
+
+**Checked:** 13 tests (buffer interpolation, weights, ordering; keys; on a simulated clock with the fake DH
+robot: the same target path as a direct replay of the interpolated actions; the same path with chunks
+arriving 200 ms late or every second chunk missing; hold 0.5 s after the chunks stop and stop after 3 s;
+space / g; a 150 mm jump holds; the time limit; g refused before the first chunk; the real policy process
+with fake cameras). Real time (fake robot, real policy process with fake cameras, 10 s): simulated inference
+33 ms -> late 0, interval max 20.2 ms, chunk age 68 / 96 ms (p50 / max), 97 chunks ensembled; 200 ms -> late 0,
+interval max 20.3 ms, chunk age 330 / 410 ms, 15 chunks ensembled. The path follows in both; at the test range
+top the target stopped and the action kept rising: the jump guard held at 101 mm, as designed.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -2551,7 +2579,8 @@ walls; tool mass and TCP offset on the controller are still 0 kg / provisional.
       runner must open the cameras with the same code) and z_min 19 mm (2026-10-21). Left: the hardware
       items above.
     - **rec-6 policy runner:** decided 2026-10-21 (see its entry): two processes, temporal ensembling by time,
-      100 % speed, keyboard toggle (space = hold). Next: 6a (structure, fake policy and robot).
+      100 % speed, keyboard toggle (space = hold). 6a done (teleop/policy.py). Next: 6b (ACT + cameras +
+      Simulation, a runner script).
   - **Windows** (only if needed):
     - environment.yml (evdev only on Linux)
     - CPU pinning and the FTDI latency check per OS
