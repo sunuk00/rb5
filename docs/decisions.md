@@ -110,6 +110,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-21 — Data rules for the first ACT dataset (docs/data_rules.md)](#2026-10-21--data-rules-for-the-first-act-dataset-docsdata_rulesmd)
 - [2026-10-21 — cam-2a: fixed camera exposure candidates measured (script 34)](#2026-10-21--cam-2a-fixed-camera-exposure-candidates-measured-script-34)
 - [2026-10-21 — cam-2b: fixed camera settings in the teleop; brightness check at start](#2026-10-21--cam-2b-fixed-camera-settings-in-the-teleop-brightness-check-at-start)
+- [2026-10-21 — range.z_min_mm -50 -> 19 mm for the mounted gripper](#2026-10-21--rangez_min_mm--50---19-mm-for-the-mounted-gripper)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -2482,6 +2483,23 @@ episodes.json). Real cameras (script 30): read back front exposure 16.7 ms (167 
 gaps, wrist 1 missed frame (the D405 cable is not fixed yet); JPEG 82 / 69 kB per frame (higher gain, more
 noise: 4.5 MB/s together, was 3.9). The options stay set after the program ends until a replug.
 
+## 2026-10-21 — range.z_min_mm -50 -> 19 mm for the mounted gripper
+
+**Decision (user):** `range.z_min_mm` 19.0 in real.yaml and sim.yaml (frozen settings, so this entry).
+
+**Measurement:** the user put the gripper (fingers) at the lowest height it may reach above the table, at
+r 485 mm, azimuth -82.3 (below the ready pose), gripper vertical (rx 89.73, ry -0.45). Read only from the data
+channel: tcp_ref (89.73 / -0.45 / 179.16 rpy) x 64.65, y -480.24, **z 18.93 mm** (no change over 20 reads);
+jnt_ref = jnt_ang (84.33, -7.75, -129.76, 47.27, -90.47, -175.18). The DH model gives z 16.94 from the same
+joints (the known about 2 mm difference); the range acts on the targets in the controller's TCP frame, so
+the tcp_ref value is the one used. Options were 19 (chosen), 20 (1 mm margin, recommended) and 23.
+
+**Checks:** settings load (Real and Sim); r_min at z 19 is 331 mm (r_min_by_z unchanged), r_max 800; the
+ready pose (z 144) is inside; 123 tests pass. The pilot had grasps at TCP z 14-30 mm (one at 14.2, now
+below the floor). Measured at one place only: grasps in the pilot at r 667-693 happened at z 18-22, so the
+table there is not higher. The floor is a software limit (not safety rated) and does not protect the box
+walls; tool mass and TCP offset on the controller are still 0 kg / provisional.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -2492,7 +2510,7 @@ noise: 4.5 MB/s together, was 3.9). The options stay set after the program ends 
   - **Gripper:** connected in grip-3b (left trigger, released = closed). Log the gripper state with the
     demonstrations.
   - **Before mounting any tool:**
-    - Raise `range.z_min_mm` (now -50 because nothing is mounted): tool tip height + margin.
+    - ~~Raise `range.z_min_mm`~~: done, 19 mm for the gripper (2026-10-21).
     - Set the tool mass and the lab's TCP offset (controller settings: ask first).
     - Recheck the ready pose margins with the new TCP.
   - **Base +x direction:** confirm with `scripts/22_base_axis_check.py` and a tape. `frame_yaw_deg` 0 is
@@ -2503,9 +2521,10 @@ noise: 4.5 MB/s together, was 3.9). The options stay set after the program ends 
     `--record`, converter, Simulation replay, ACT trial on the pilot). Open:
     - Hardware before the real collection (user): D405 cable strain relief and USB 3 (it is on USB 2
       since the pilot; check `lsusb -t` 5000M and script 30 while moving the gripper); D435 position
-      (the arm covers about 2/3 of its view); `range.z_min_mm` for the mounted gripper (the pilot went to z 14).
+      (the arm covers about 2/3 of its view).
     - Real collection: rules in docs/data_rules.md (2026-10-21); fixed camera settings done (cam-2b; the policy
-      runner must open the cameras with the same code). Still to do first: z_min.
+      runner must open the cameras with the same code) and z_min 19 mm (2026-10-21). Left: the hardware
+      items above.
     - **rec-6 policy runner (planned, not approved yet):** policy process (cameras + ACT on the GPU, a new
       chunk every 0.2 s) and servo process (50 Hz, chunk interpolated by time, TargetFollower, never waits);
       policy speed scale 0.5; stale chunk 0.5 s -> hold, 3 s -> stop; target over 100 mm away -> hold;
@@ -2528,5 +2547,5 @@ noise: 4.5 MB/s together, was 3.9). The options stay set after the program ends 
     105914) median 17 / 19 / 30 deg, p90 38 / 45 / 73, max 88 deg -> a deadband of 40+ deg would be needed.
   - **Gripper (closed for now, 2026-10-19; see its entry):** 12 V supply; grip force eaten by compliance
     (goal that follows the position while grasping); thin objects not detected (finger pads); real finger
-    contact position; return delay 0 (motor setting, ask first); when mounted on the flange: z_min, tool
-    mass, TCP offset (ask first).
+    contact position; return delay 0 (motor setting, ask first); mounted on the flange: z_min done (19 mm),
+    tool mass and TCP offset still to set (ask first).

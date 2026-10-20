@@ -53,7 +53,8 @@ changes the data (task, object, cameras, settings) starts a new dataset.
       same position, the same ceiling lights on, no extra lamps, no direct sun on the table. The start
       brightness check (114 +/- 15 %) must pass; if not, fix the lighting rather than typing yes.
 - [ ] Gripper powered (12 V when available), fingers clear.
-- [ ] `range.z_min_mm` set for the mounted gripper (still -50: to decide before the real collection).
+- [x] `range.z_min_mm` 19 mm for the mounted gripper (2026-10-21). If the gripper, the table or its height
+      changes, measure again (lowest allowed TCP z from `tcp_ref`).
 - [ ] Box and square at their marks.
 
 ## Rules nobody sees in the data (keep them fixed)

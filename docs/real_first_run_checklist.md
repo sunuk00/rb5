@@ -13,8 +13,8 @@ on 2026-10-16). The first section is for every run; the rest are the open items 
       -160 .. 133 deg about the base z axis (the sides and the back of the RB5 too); cables free.
 - [ ] Nothing in the way of the ready-pose move (large wrist turns are warned).
 - [ ] Tablet connected; speed bar 0.1.
-- [ ] **Gripper mounted on the flange?** Then first: raise `range.z_min_mm`, set the tool mass and TCP
-      offset (controller settings: ask first). The teleop does not know whether it is mounted.
+- [ ] **Gripper mounted on the flange** (since grip-3b): `range.z_min_mm` is 19 for it (2026-10-21). Tool mass
+      and TCP offset on the controller are still 0 kg / provisional (controller settings: ask first).
 - [ ] Gripper: 12 V supply on, fingers clear. At Ctrl+C its torque goes off: put a held object down first.
 - [ ] After the run: `python scripts/24_run_report.py <log>` (late cycles, limits, joint speeds vs caps).
 
@@ -33,9 +33,9 @@ on 2026-10-16). The first section is for every run; the rest are the open items 
       2026-10-18: turned by J1 to azimuth -83 deg (workspace at the side); same margins.
       2026-10-19: the user's pose (J6 for the gripper camera, gripper straight down), margins checked.
 - [ ] The new side workspace (around azimuth -83 deg) clear; azimuth range -160 .. 133 leaves 77 deg on the minus side.
-- [ ] **z lower bound** (`range.z_min_mm`): -50 mm because **nothing is mounted** on the flange (the TCP
-      is 187 mm below the flange center; the flange center is about 140 mm above the table at the floor).
-      **Raise it before mounting any tool**: tool tip height + margin (z 0 = base bottom).
+- [x] **z lower bound** (`range.z_min_mm`): **19 mm** (2026-10-21, gripper mounted): the user put the
+      fingers at the lowest allowed height above the table, tcp_ref z 18.93 at r 485. Measure again if
+      the gripper, the table or the TCP offset changes.
 - [x] Range (`range.*`, absolute in the base frame since 2026-10-16): r 250-800 (inner radius 350 / 300 / 250 at
       z 0 / 50 / 100, 2026-10-17; was 350 everywhere), z -50 .. 465 (outer
       radius 800 -> 650 between z 265 and 465), azimuth -160 .. 133 deg.

@@ -67,10 +67,10 @@ range:                          # absolute in the RB5 base frame (2026-10-16; be
                                 # elbow >= 31.7 deg, shoulder >= 136 mm, J5 >= 86 deg.
                                 # The model does not know the robot body: r 250 is close to the base
   r_max_mm: 800.0               # same as Simulation; elbow >= 43 deg up to r 800 (DH grid)
-  z_min_mm: -50.0               # TCP never below z -50 (2026-10-16, user: lower; nothing is mounted on the flange,
-                                # the TCP is 187 mm below the flange center, so the flange center is at about 140 mm
-                                # above the table). Was 30 (provisional). RAISE IT when a tool is mounted:
-                                # tool tip height + margin
+  z_min_mm: 19.0                # TCP never below z 19 (2026-10-21, user, gripper mounted): the user put the gripper at
+                                # the lowest allowed height (fingers just above the table) at r 485, azimuth -82: tcp_ref
+                                # z 18.93. Controller TCP frame (tcp_ref), not the DH model (16.9 there). Was -50 (nothing
+                                # mounted), 30 before that
   z_max_mm: 465.0               # top; the outer radius falls with height above 265:
   r_max_by_z: [[265.0, 800.0], [315.0, 775.0], [365.0, 725.0], [415.0, 700.0], [465.0, 650.0]]
                                 # [z, r_max]: largest r without any slowdown at that height (DH grid with the ready
