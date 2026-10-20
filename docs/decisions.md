@@ -2643,6 +2643,24 @@ gripper position with the converter's 0..1 rule; catch 1.0 follows at once while
 all tests pass. The read-only check on the lab gripper: the motor did not answer (model None), as when its
 supply was off before: to repeat with the power on. The Simulation run with the gripper: by the user.
 
+**Run log (99ca8ae):** a `grip_pos` column (the gripper position 0..1 given to the policy, the same value) at
+the end of the CSV, and a `gripper` entry in the run JSON (ticks at the check and the start, held position,
+the first observation's value, stop reason, torque / mode read back).
+
+**Simulation runs with the gripper (user):** 060447 and 070756 never ran: every g was held by the 100 mm
+check (122-155 mm). Cause: the scene, not the code. Offline, with the ready-pose state, the policy's first
+action follows the arm it sees in the front image (recorded frame: 13 mm from the ready pose; a live frame
+with the real arm in another pose, the elbow in front of the camera and no block: 118 mm). In Simulation the
+real arm does not move, so the image must show it at the ready pose. 071545 (real arm at the ready pose, block
+in the square): first action 79 mm away; 30 s running (g at 36.1 s, space at 62.9 s, g again, time limit at
+68.7 s). The target reached the policy's point (65, -553, 85) in about 2 s at the teleop speed cap (250 mm/s;
+flags speed / accel on 21 cycles) and stayed there: the image never changes in Simulation, so the policy keeps
+asking for the same point. The gripper followed the action (0.85-0.86) at once: 0.988 -> 0.85, mean
+|grip_pos - grip_action| 0.001; read back torque 0 / mode 3. Timing: no interval over 25 ms (max 24.2), no
+late cycle, inference p50 / p95 17.7 / 19.3 ms, work max 10.0 ms, plan max 6.2 ms. rec-6 is done in
+Simulation. For Real (separate plan): the first action may be tens of mm away and is reached at the full
+speed cap; consider a lower cap or a smaller jump limit for the first second.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -2670,7 +2688,8 @@ supply was off before: to repeat with the power on. The Simulation run with the 
       items above.
     - **rec-6 policy runner:** decided 2026-10-21 (see its entry): two processes, temporal ensembling by time,
       100 % speed, keyboard toggle (space = hold). 6a done; 6b code done (script 35, Simulation run by the
-      user: 043648 clean after the core split); 6c code done (gripper, Simulation run by the user next).
+      user: 043648 clean after the core split); 6c done (gripper; Simulation 071545: the gripper follows the
+      policy, the image must show the real arm at the ready pose). Real policy runs need their own plan.
   - **Windows** (only if needed):
     - environment.yml (evdev only on Linux)
     - CPU pinning and the FTDI latency check per OS
