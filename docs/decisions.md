@@ -107,6 +107,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-19 — rec-4b: replay in Simulation through the teleop limits (TargetFollower, script 32); rbpodo in env lerobot](#2026-10-19--rec-4b-replay-in-simulation-through-the-teleop-limits-targetfollower-script-32-rbpodo-in-env-lerobot)
 - [2026-10-19 — Real pilot 141929: the D405 dropped off USB; camera stall detection; converter coverage check, --cameras](#2026-10-19--real-pilot-141929-the-d405-dropped-off-usb-camera-stall-detection-converter-coverage-check---cameras)
 - [2026-10-19 — rec-5: ACT trial training on the pilot (front only): the flow works; inference 17 ms GPU](#2026-10-19--rec-5-act-trial-training-on-the-pilot-front-only-the-flow-works-inference-17-ms-gpu)
+- [2026-10-21 — Data rules for the first ACT dataset (docs/data_rules.md)](#2026-10-21--data-rules-for-the-first-act-dataset-docsdata_rulesmd)
 
 **Gripper**
 - [2026-10-17 — grip-1: MX-106T gripper on its own U2D2; ports by adapter serial; read-only scan (27)](#2026-10-17--grip-1-mx-106t-gripper-on-its-own-u2d2-ports-by-adapter-serial-read-only-scan-27)
@@ -2418,6 +2419,22 @@ a new chunk every few hundred ms is enough; inference every 30 Hz step (temporal
 the GPU all the time with two cameras. Full training estimate with both cameras: to be measured (the
 ResNet part doubles; roughly 0.5 s per step -> 50 k steps about 7 h).
 
+## 2026-10-21 — Data rules for the first ACT dataset (docs/data_rules.md)
+
+**Decisions (user, all as recommended):** task "pick the green block and place it in the box"; the green
+block; block positions random inside a marked 20 x 20 cm square, orientation fixed; start poses within
+about 10 cm of the ready pose, gripper open; an episode ends after placing, opening and lifting about
+5 cm; 50 kept episodes in sessions of 10-15; camera exposure and white balance fixed; evaluation at 5
+positions (corners + center) x 4 trials, success = block in the box and gripper open within 60 s.
+
+**Reason:** a narrow, consistent task for about 50 demonstrations (ACT learns a small range well); the
+gripper stays vertical (no orientation change); the block is thick and rigid enough for grasp detection;
+fixed camera settings so the images do not change with the lighting; an evaluation fixed before
+collecting so every policy is compared the same way.
+
+**Open (before the real collection):** the exposure / white balance values and the code that sets them
+(recording and policy runner); `range.z_min_mm` for the mounted gripper; D405 cable; D435 position.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -2440,7 +2457,8 @@ ResNet part doubles; roughly 0.5 s per step -> 50 k steps about 7 h).
     - Hardware before the real collection (user): D405 cable strain relief and USB 3 (it is on USB 2
       since the pilot; check `lsusb -t` 5000M and script 30 while moving the gripper); D435 position
       (the arm covers about 2/3 of its view); `range.z_min_mm` for the mounted gripper (the pilot went to z 14).
-    - Real collection: one task, about 50 episodes, both cameras.
+    - Real collection: rules in docs/data_rules.md (2026-10-21). Still to do first: fixed camera exposure
+      and white balance (values + code, recording and policy runner), z_min.
     - **rec-6 policy runner (planned, not approved yet):** policy process (cameras + ACT on the GPU, a new
       chunk every 0.2 s) and servo process (50 Hz, chunk interpolated by time, TargetFollower, never waits);
       policy speed scale 0.5; stale chunk 0.5 s -> hold, 3 s -> stop; target over 100 mm away -> hold;
