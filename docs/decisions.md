@@ -2612,6 +2612,15 @@ in 30 s (not consecutive), work p50 / p99 / max 4.1 / 9.2 / 20.6 ms (the fake ro
 the real one does not), plan p99 3.0 ms, inference p50 / p95 / max 17.8 / 18.7 / 34.4 ms (one camera), chunk age
 p50 / max 85 / 123 ms. Tests: a 35 ms plan is late and not applied; three in a row stop.
 
+**Simulation run after the fixes (user, 043648, 23 s running):** cycle interval p50 / p99 / max 20.00 / 20.05 /
+20.18 ms, none over 25 ms (before: 15-22 at 40-48 ms); work p50 / p99 / max 2.1 / 4.7 / 14.4 ms; inference
+p50 / p95 / max 17.8 / 18.6 / 29.7 ms, none over one 33.3 ms step; chunk age p50 / p95 / max 84 / 107 / 114 ms; 96
+chunks ensembled. One late cycle, handled as intended: a 10.8 ms plan (p99 3.3) put the send 14 ms into the
+cycle, 33 ms after the previous send (over 30): that cycle kept the old target, the next was normal (the
+cycle-start intervals stayed 20 ms; the check measures the gap between sends, as the teleop). Holds: none
+but the start; the pilot policy again moved tens of mm near the ready pose (x 46..67, y -558..-499, z
+113..146), as expected. The structure is ready for a real policy; next 6c (gripper).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -2639,7 +2648,7 @@ p50 / max 85 / 123 ms. Tests: a 35 ms plan is late and not applied; three in a r
       items above.
     - **rec-6 policy runner:** decided 2026-10-21 (see its entry): two processes, temporal ensembling by time,
       100 % speed, keyboard toggle (space = hold). 6a done; 6b code done (script 35, Simulation run by the
-      user next). Then 6c (gripper).
+      user: 043648 clean after the core split). Next: 6c (gripper).
   - **Windows** (only if needed):
     - environment.yml (evdev only on Linux)
     - CPU pinning and the FTDI latency check per OS
