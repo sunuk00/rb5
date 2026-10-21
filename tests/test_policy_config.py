@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from rb5_lerobot.config import DEFAULT, check_policy_config, load_policy_config  # noqa: E402
 from rb5_lerobot.data_format import ACTION_LEN, STATE_LEN, resize_image  # noqa: E402
+from rb5_lerobot.train import resume_command, train_command  # noqa: E402
 
 RAW = yaml.safe_load(DEFAULT.read_text())
 
@@ -48,6 +49,26 @@ class TestPolicyConfig(unittest.TestCase):
         self.assertTrue(any("overlap" in x for x in p))
         p = problems_with(lambda d: d["run"].update(stop_stale_s=0.4))
         self.assertTrue(any("stop_stale_s" in x for x in p))
+
+
+class TestTrainCommand(unittest.TestCase):
+    def test_command_from_the_train_section(self):
+        cmd = train_command("p1", RAW["train"], "data/train/act_p1_x")
+        self.assertEqual(cmd[0], "lerobot-train")
+        for part in ("--policy.type=act", "--dataset.repo_id=local/p1", "--dataset.root=data/lerobot/p1",
+                     "--batch_size=8", "--steps=20000", "--save_freq=5000", "--output_dir=data/train/act_p1_x",
+                     "--policy.chunk_size=100", "--policy.use_vae=true", "--policy.optimizer_lr=1e-05",
+                     "--wandb.enable=false", "--policy.push_to_hub=false"):
+            self.assertIn(part, cmd)
+        t = copy.deepcopy(RAW["train"]); t["act"]["dropout"] = 0.2; t["act"]["use_vae"] = False
+        cmd = train_command("p1", t, "out")
+        self.assertIn("--policy.dropout=0.2", cmd)
+        self.assertIn("--policy.use_vae=false", cmd)
+
+    def test_resume(self):
+        self.assertEqual(resume_command("data/train/act_p1_x"), [
+            "lerobot-train", "--config_path=data/train/act_p1_x/checkpoints/last/pretrained_model/train_config.json",
+            "--resume=true"])
 
 
 class TestDataFormat(unittest.TestCase):

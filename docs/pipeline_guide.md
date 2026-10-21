@@ -65,22 +65,24 @@ python -m rb5_lerobot.convert $S --name NAME
 - Output: `data/lerobot/NAME`. Building it again: add `--overwrite`.
 - Time: about 1.1 x the recorded time per camera (15 episodes x 25 s x 2 cameras: about 15 min).
 
-## 3. Train (ACT, both cameras)
+## 3. Train (ACT)
 
 ```bash
 conda activate lerobot
-OUT=data/train/act_NAME_$(date +%Y%m%d_%H%M%S); echo $OUT
-lerobot-train --policy.type=act --policy.device=cuda --policy.push_to_hub=false \
-  --dataset.repo_id=local/NAME --dataset.root=data/lerobot/NAME \
-  --batch_size=8 --steps=20000 --save_freq=5000 --log_freq=100 --wandb.enable=false \
-  --output_dir=$OUT
+python -m rb5_lerobot.train NAME --dry-run    # the settings and the lerobot-train command, no training
+python -m rb5_lerobot.train NAME              # trains; prints the output folder data/train/act_NAME_<time>
+OUT=data/train/act_NAME_<time>                # set it to the printed folder (for steps 4 and 5)
 ```
 
-- A log line every 100 steps: `loss` should fall (pilot: 10.5 -> 1.2 in 2000 steps). The step time
-  (`updt_s`) times the steps left = time left.
+- Settings: `configs/policy.yaml` train (batch size, steps, checkpoint interval, ACT options). Another file:
+  `--config configs/<copy>.yaml`. The folder keeps `rb5_train.yaml`: the settings, the command and the dataset's
+  `rb5_convert.yaml`.
+- A log line every `log_freq` steps: `loss` should fall (pilot: 10.5 -> 1.2 in 2000 steps). The step time
+  (`updt_s`) times the steps left = time left. Three cameras at 320x240, batch 8: about 0.26 s per step and
+  1.8 GB of GPU memory (p2-c trial), so 20000 steps take about 1.5 h.
 - Checkpoints: `$OUT/checkpoints/005000`, `010000`, ... and `last` (about 600 MB each).
-- Keep the laptop on power and awake. Stopped? Resume:
-  `lerobot-train --config_path=$OUT/checkpoints/last/pretrained_model/train_config.json --resume=true`
+- Keep the laptop on power and awake. Ctrl+C stops it (the checkpoints so far stay). Continue:
+  `python -m rb5_lerobot.train --resume $OUT` (with the settings saved in the checkpoint, not policy.yaml).
 - GPU in use: `nvidia-smi` in another terminal.
 
 ## 4. Offline check (no robot)

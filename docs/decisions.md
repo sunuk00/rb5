@@ -2893,6 +2893,18 @@ cameras, command) into the dataset. **Checked:** tests (rb5 160, 4 skipped; lero
 three-camera Simulation session converted to data/lerobot/p2b_test: front / wrist / grip (3, 240, 320), state
 7, action 4, 342 frames. Until p2-d the run does not shrink camera images: a 320x240 checkpoint cannot run yet.
 
+**p2-c (training command):** `python -m rb5_lerobot.train NAME [--config FILE] [--dry-run]` builds the
+lerobot-train command from the train section (train.act -> `--policy.<name>=<value>`, booleans in lower case),
+prints the settings, the dataset (from its rb5_convert.yaml) and the command, and runs it in the repository
+root. lerobot-train refuses an existing output folder, so `rb5_train.yaml` (settings file, train section,
+command, the dataset's rb5_convert.yaml) is written once lerobot-train has made it. `--resume RUN_DIR` runs
+`lerobot-train --config_path=RUN_DIR/checkpoints/last/pretrained_model/train_config.json --resume=true`
+(LeRobot continues in the original folder with the checkpoint's settings). **Checked:** command tests; trial on
+data/lerobot/p2b_test (3 cameras, 320x240, batch 8): 40 steps in 16 s, 0.26 s per step, 1.8 GB, loss 41 -> 11;
+a 200-step run stopped after step 112 (checkpoints 50, 100), then `--resume` went on from 100 to 200. (A
+SIGINT sent to a background job is ignored by Linux, so the stop was tested with SIGTERM; Ctrl+C in a terminal
+reaches lerobot-train.)
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
