@@ -1,8 +1,9 @@
 """rec-5: check a trained policy offline (no robot): predictions on dataset frames and inference time.
 
-Run in the `lerobot` conda env:
-    python -m rb5_lerobot.check data/train/<run>/checkpoints/last/pretrained_model \
-        --repo-id local/pilot_front [--frames 200] [--two-cameras]
+Run in the `lerobot` conda env, from the repository root:
+    python -m rb5_lerobot.check data/train/act_<name>_<time>                 # its last checkpoint, its dataset
+    python -m rb5_lerobot.check <training or checkpoint folder> --dataset p1 [--frames 200] [--two-cameras]
+The dataset defaults to the one the training used (rb5_train.yaml in the training folder).
 
 1. Loads the policy and its pre / post processors (normalization) from the checkpoint.
 2. For --frames frames spread over the dataset: the predicted action chunk (chunk_size steps) vs the
@@ -25,6 +26,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -152,9 +154,9 @@ def endurance(minutes, period=1 / 30, window_s=30.0):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("checkpoint", nargs="?", help="…/checkpoints/<step>/pretrained_model")
-    ap.add_argument("--repo-id", default="local/pilot_front")
-    ap.add_argument("--root")
+    ap.add_argument("checkpoint", nargs="?", help="training folder data/train/act_<name>_<time> (its last "
+                                                  "checkpoint) or a checkpoint folder")
+    ap.add_argument("--dataset", help="dataset name in data/lerobot (default: the one the training used)")
     ap.add_argument("--frames", type=int, default=200)
     ap.add_argument("--two-cameras", action="store_true")
     ap.add_argument("--endurance", type=float, metavar="MINUTES", help="only the long inference timing")
@@ -164,8 +166,15 @@ def main():
     if not args.checkpoint:
         ap.error("checkpoint needed (except with --endurance)")
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
-    root = Path(args.root) if args.root else ROOT / "data" / "lerobot" / args.repo_id.split("/")[-1]
-    ds = LeRobotDataset(args.repo_id, root=root)
+    from rb5_lerobot.policy import resolve_checkpoint
+    args.checkpoint = resolve_checkpoint(args.checkpoint)
+    if args.dataset is None:
+        made = [p / "rb5_train.yaml" for p in Path(args.checkpoint).parents if (p / "rb5_train.yaml").exists()]
+        if not made:
+            raise SystemExit("--dataset NAME: the training folder has no rb5_train.yaml to say which dataset it used")
+        args.dataset = yaml.safe_load(made[0].read_text())["dataset"]
+    print(f"checkpoint {args.checkpoint}, dataset {args.dataset}")
+    ds = LeRobotDataset(f"local/{args.dataset}", root=ROOT / "data" / "lerobot" / args.dataset)
 
     policy, pre, post = load(args.checkpoint, "cuda")
     cfg = policy.config

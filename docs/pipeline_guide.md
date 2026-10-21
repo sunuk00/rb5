@@ -88,12 +88,13 @@ OUT=data/train/act_NAME_<time>                # set it to the printed folder (fo
 ## 4. Offline check (no robot)
 
 ```bash
-python -m rb5_lerobot.check $OUT/checkpoints/last/pretrained_model --repo-id local/NAME
+python -m rb5_lerobot.check $OUT                 # the last checkpoint, on the dataset it was trained on
+python -m rb5_lerobot.check $OUT/checkpoints/005000 --dataset NAME   # another checkpoint or dataset
 ```
 
 - Prediction vs the recorded action on training frames (mm at +1 / +30 / +99 steps, gripper) and the
   inference time. Pilot (6 episodes, 2000 steps): +1 step p50 28 mm. Training frames only: it shows what
-  the model learned, not how it does on the robot.
+  the model learned, not how it does on the robot. Three cameras at 320x240: inference about 17 ms on the GPU.
 
 ## 5. Simulation run
 
@@ -101,15 +102,28 @@ Checklist: tablet in Simulation mode, the **real arm at the ready pose** (the po
 front image), block in the square, gripper powered, fingers clear.
 
 ```bash
-python -m rb5_lerobot.run $OUT/checkpoints/last/pretrained_model --time-limit 30 \
-  --task "pick the green block and place it in the box"
+python -m rb5_lerobot.run $OUT --task "pick the green block and place it in the box"
 ```
 
+- Settings: `configs/policy.yaml` run (time limit, hold distance, ensembling, CPU cores); the hardware from
+  configs/sim.yaml. The camera images are shrunk to the size the checkpoint was trained on (printed at the
+  start; about 2 ms per camera), with the converter's function.
 - Typed answers: brightness (only if out of range) -> ready pose `yes` -> gripper start `yes` -> first
   action distance `yes`; then `g` = run, `space` = hold, `q` = quit.
-- Over 100 mm between the policy's action and the target holds (safety). In Simulation the real arm does
-  not move, so the image never changes: the robot goes to one point and stays.
-- Log: `data/policy/run_sim_<time>.csv` / `.json`.
+- An action further than `run.max_jump_mm` (100 mm) from the target holds (safety). In Simulation the real
+  arm does not move, so the image never changes: the robot goes to one point and stays.
+- Log: `data/policy/run_sim_<time>.csv` / `.json` (the JSON keeps the run settings and image sizes used).
+
+## What to redo after changing configs/policy.yaml
+
+| changed | redo | effect |
+|---|---|---|
+| `dataset.image_width / image_height` | convert (`--overwrite` or a new name), train | larger: more GPU memory and slower inference (3 cameras at 640x480: out of memory at batch 8, 50 ms) |
+| `dataset.min_*`, `keep_still`, `cut_pauses_s` | convert, train | which episodes and stretches are in the dataset |
+| `train.batch_size` | train | memory and time per step |
+| `train.steps`, `save_freq` | train | training time, checkpoints |
+| `train.act.*` | train | the model and how it learns |
+| `run.*` | nothing (the next run uses it) | the run only |
 
 ## A new terminal
 

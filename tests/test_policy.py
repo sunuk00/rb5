@@ -13,7 +13,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 from teleop.follow import TargetFollower  # noqa: E402
 from teleop.kinematics import RB5Model  # noqa: E402
-from rb5_lerobot.policy import RUN_HEADER, ChunkBuffer, PolicyClient, PolicyRunner, StopRequest, parse_policy_keys  # noqa: E402
+from rb5_lerobot.policy import (RUN_HEADER, ChunkBuffer, PolicyClient, PolicyRunner, StopRequest,  # noqa: E402
+                                parse_policy_keys, policy_image_sizes, policy_inputs, resolve_checkpoint)
 from test_loop import D, OFFSET, FakeRB5, FakeReader, FakeWorker, settings  # noqa: E402
 
 FPS = 30
@@ -49,6 +50,29 @@ class TestChunkBuffer(unittest.TestCase):
         self.assertIsNone(b.action_at(4.9)[0])
         b.add(4.0, np.zeros((100, 2)))                                # older than the newest: ignored
         self.assertEqual(len(b.chunks), 1)
+
+
+class TestCheckpointFolders(unittest.TestCase):
+    """p2-d: a training folder, a step folder or a pretrained_model folder; the trained image sizes."""
+
+    def test_resolve_and_sizes(self):
+        import json
+        import tempfile
+        run = Path(tempfile.mkdtemp()) / "act_p1_x"
+        pm = run / "checkpoints" / "000200" / "pretrained_model"
+        pm.mkdir(parents=True)
+        (run / "checkpoints" / "last").symlink_to("000200")
+        feats = {"observation.state": {"shape": [7]},
+                 "observation.images.front": {"shape": [3, 240, 320]}, "observation.images.grip": {"shape": [3, 120, 160]}}
+        (pm / "config.json").write_text(json.dumps({"input_features": feats}))
+        last = run / "checkpoints" / "last" / "pretrained_model"
+        self.assertEqual(resolve_checkpoint(run), last)
+        self.assertEqual(resolve_checkpoint(run / "checkpoints" / "000200"), pm)
+        self.assertEqual(resolve_checkpoint(pm), pm)
+        with self.assertRaises(SystemExit):
+            resolve_checkpoint(run / "checkpoints")
+        self.assertEqual(policy_image_sizes(pm), {"front": (320, 240), "grip": (160, 120)})
+        self.assertEqual(policy_inputs(pm), (["front", "grip"], 7))
 
 
 class TestKeys(unittest.TestCase):

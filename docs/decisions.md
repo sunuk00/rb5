@@ -2905,6 +2905,19 @@ a 200-step run stopped after step 112 (checkpoints 50, 100), then `--resume` wen
 SIGINT sent to a background job is ignored by Linux, so the stop was tested with SIGTERM; Ctrl+C in a terminal
 reaches lerobot-train.)
 
+**p2-d (run and check):** `python -m rb5_lerobot.run <training folder | checkpoint>` and `python -m rb5_lerobot.check`
+take a training folder (its last checkpoint) or a step / pretrained_model folder (`resolve_checkpoint`). The run
+reads the run section of configs/policy.yaml (`--config`; the hardware file is now `--robot-config`; the options
+--time-limit, --servo-cores, --policy-cores, --torch-threads are gone) and passes stale_s, stop_stale_s,
+max_jump_mm, time_limit_s and the ensembling coeff to PolicyRunner; the run JSON keeps the run section, the
+settings file and the image sizes. `ACTChunkPolicy` shrinks each camera image to the size in the checkpoint's
+config (`data_format.resize_image`, as the converter), so an older checkpoint keeps its own size. The check
+takes the dataset from the training's rb5_train.yaml (`--dataset` otherwise). **Checked:** tests (checkpoint
+folders, image sizes); with the p2b_test checkpoint: 640x480 camera images in -> a (100, 4) chunk; the run-path
+image (recorded JPEG shrunk) vs the training-path image (dataset video frame) for three frames and all three
+cameras: mean difference 1.4-2.0 / 255 (video compression), R-B maps correlated 0.90-0.98; check: GPU inference
+17 ms with three 320x240 cameras; the resize costs about 2.2 ms per camera (p50).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

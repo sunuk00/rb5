@@ -4,9 +4,16 @@ MOVES THE RB5 (Simulation mode) AND THE GRIPPER (the real gripper moves in Simul
 teleop; --no-gripper runs without it). The gripper follows the policy's gripper action at once while
 running (no catch: the dataset's gripper action is what the gripper did).
 
-Run in the `lerobot` conda env:
+Run in the `lerobot` conda env, from the repository root:
     conda activate lerobot
-    python -m rb5_lerobot.run data/train/<run>/checkpoints/last/pretrained_model [--time-limit 60]
+    python -m rb5_lerobot.run data/train/act_<name>_<time>                     # its last checkpoint
+    python -m rb5_lerobot.run data/train/act_<name>_<time>/checkpoints/005000  # a given checkpoint
+    python -m rb5_lerobot.run <training folder> --config configs/<copy>.yaml   # other run settings
+
+Settings: the run section of configs/policy.yaml (time limit, holds, temporal ensembling weight, CPU cores);
+the hardware (cameras, robot, gripper, the teleop's limits) from configs/sim.yaml (--robot-config). The
+camera images are shrunk to the size the checkpoint was trained on (its config.json), with the converter's
+function (data_format.resize_image). The run JSON keeps the run section used.
 
 Steps:
   1. settings (configs/sim.yaml); the cameras the policy expects (its config.json), opened in the policy
@@ -16,8 +23,8 @@ Steps:
      the ready pose after a typed yes; the gripper start writes after a typed yes (rec-6c)
   3. the first chunks: the first action's distance from the current TCP is shown; typed yes
   4. the 50 Hz loop (PolicyRunner): keys in this terminal: g = run, space = hold, q = quit. Holds on a chunk
-     older than 0.5 s, an action over 100 mm from the target, the time limit; stops when no chunk came
-     for 3 s. Every target goes through the teleop's limits (TargetFollower), speed caps 100 %.
+     older than run.stale_s, an action further than run.max_jump_mm from the target, the time limit; stops
+     when no chunk came for run.stop_stale_s. Every target goes through the teleop's limits (TargetFollower), speed caps 100 %.
   5. normal stop (task_stop on errors); data/policy/run_<time>.csv (a row per cycle) and the summary:
      late cycles, chunk age, inference time, holds
 """
@@ -42,7 +49,9 @@ from teleop.episodes import KeyReader  # noqa: E402
 from teleop.follow import TargetFollower  # noqa: E402
 from teleop.gripper import MODE_AT_END, PRESENT_POSITION, open_gripper, start_lines, start_worker  # noqa: E402
 from teleop.kinematics import RB5Model  # noqa: E402
-from rb5_lerobot.policy import RUN_HEADER, PolicyClient, PolicyRunner, StopRequest, parse_policy_keys, policy_inputs  # noqa: E402
+from rb5_lerobot.config import DEFAULT, load_policy_config  # noqa: E402
+from rb5_lerobot.policy import (RUN_HEADER, PolicyClient, PolicyRunner, StopRequest, parse_policy_keys,  # noqa: E402
+                                policy_image_sizes, policy_inputs, resolve_checkpoint)
 from teleop.safety import Watch  # noqa: E402
 from teleop.settings import SettingsError, load_settings  # noqa: E402
 
@@ -57,13 +66,11 @@ def ask(prompt):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("checkpoint", help="…/checkpoints/<step>/pretrained_model")
-    ap.add_argument("--config", default=str(ROOT / "configs" / "sim.yaml"))
+    ap.add_argument("checkpoint", help="training folder data/train/act_<name>_<time> (its last checkpoint) or a "
+                                       "checkpoint folder")
+    ap.add_argument("--config", default=str(DEFAULT), help="policy settings file (its run section)")
+    ap.add_argument("--robot-config", default=str(ROOT / "configs" / "sim.yaml"), help="hardware settings")
     ap.add_argument("--task", help="task text (default record.task)")
-    ap.add_argument("--time-limit", type=float, default=60.0, help="seconds of running, then hold")
-    ap.add_argument("--servo-cores", default="0-5", help="CPU cores of this (servo) process, first-last")
-    ap.add_argument("--policy-cores", default="6-11", help="CPU cores of the policy process, first-last")
-    ap.add_argument("--torch-threads", type=int, default=4, help="PyTorch CPU threads in the policy process")
     ap.add_argument("--no-gripper", action="store_true", help="without the gripper (its action is only logged)")
     ap.add_argument("--real", action="store_true", help=argparse.SUPPRESS)
     args = ap.parse_args()
@@ -71,18 +78,25 @@ def main():
         raise SystemExit("Real is not allowed yet (rec-6b is Simulation only)")
     np.set_printoptions(precision=1, suppress=True)
     try:
-        s, _ = load_settings(args.config, real=False)
+        s, _ = load_settings(args.robot_config, real=False)
+        pc, pc_raw = load_policy_config(args.config)
     except SettingsError as e:
         raise SystemExit(f"settings: {e}")
+    rc = pc.run
     task = args.task or s.record.task
-    ckpt = Path(args.checkpoint)
+    ckpt = resolve_checkpoint(args.checkpoint)
+    sizes = policy_image_sizes(ckpt)
+    print(f"Checkpoint {ckpt}; images to the policy: "
+          + ", ".join(f"{n} {w}x{h}" for n, (w, h) in sizes.items()) + " (cameras record 640x480)")
+    print(f"Run settings ({args.config}): time limit {rc.time_limit_s:.0f} s, hold over {rc.max_jump_mm:.0f} mm or a "
+          f"chunk older than {rc.stale_s} s, stop after {rc.stop_stale_s} s without a chunk, ensembling coeff "
+          f"{rc.ensemble_coeff}")
     # Servo and policy on separate performance cores (cpu0-11 on the i7-13700H): in the first Simulation runs
     # PyTorch used every core and the servo loop overran 15-22 times in 30 s (rec-6b)
-    servo_cores = [int(v) for v in args.servo_cores.split("-")]
-    policy_cores = [int(v) for v in args.policy_cores.split("-")]
+    servo_cores, policy_cores = list(rc.servo_cores), list(rc.policy_cores)
     os.sched_setaffinity(0, set(range(servo_cores[0], servo_cores[-1] + 1)))
     print(f"CPU cores: servo {sorted(os.sched_getaffinity(0))}, policy {policy_cores[0]}-{policy_cores[-1]} "
-          f"({args.torch_threads} PyTorch threads)")
+          f"({rc.torch_threads} PyTorch threads)")
 
     # 1. Policy process with the cameras the policy expects
     names, state_len = policy_inputs(ckpt)
@@ -94,7 +108,7 @@ def main():
     cams = camera_defs(r, names)   # the same devices, formats and fixed settings as the recording
     print(f"Policy {ckpt} (cameras {names}), task '{task}'. Loading (model on the GPU, cameras) ...")
     client = PolicyClient({"kind": "act", "checkpoint": str(ckpt), "device": "cuda", "task": task,
-                           "cpu_cores": policy_cores, "torch_threads": args.torch_threads}, cams)
+                           "cpu_cores": policy_cores, "torch_threads": rc.torch_threads}, cams)
     problems = client.open(timeout=120.0)
     if problems:
         client.close()
@@ -211,8 +225,8 @@ def main():
         raise SystemExit("no chunk from the policy within 5 s")
     a0 = first[-1][1][0]
     print(f"\nStart TCP {tcp0[:3]} mm. The policy's first action {a0[:3]} mm, gripper {a0[3]:.2f}: "
-          f"{np.linalg.norm(a0[:3] - tcp0[:3]):.0f} mm away (over 100 mm holds). Inference {first[-1][2]:.0f} ms.")
-    print(f"Keys here: g = run, space = hold, q = quit. Speed caps 100 % of the teleop; time limit {args.time_limit:.0f} s.")
+          f"{np.linalg.norm(a0[:3] - tcp0[:3]):.0f} mm away (over {rc.max_jump_mm:.0f} mm holds). Inference {first[-1][2]:.0f} ms.")
+    print(f"Keys here: g = run, space = hold, q = quit. Speed caps 100 % of the teleop; time limit {rc.time_limit_s:.0f} s.")
     if not ask("Type yes to start the loop (Simulation; the policy moves only after g): "):
         reader.stop()
         close_all()
@@ -222,7 +236,8 @@ def main():
     keys = KeyReader(parse=parse_policy_keys)
     follower = TargetFollower(s, model, tcp0)
     runner = PolicyRunner(s, rb5, reader, follower, client, keys, gripper=worker, real=False,
-                          time_limit_s=args.time_limit, event=lambda m: print(m, flush=True))
+                          stale_s=rc.stale_s, stop_stale_s=rc.stop_stale_s, max_jump_mm=rc.max_jump_mm,
+                          time_limit_s=rc.time_limit_s, coeff=rc.ensemble_coeff, event=lambda m: print(m, flush=True))
     for sig in (signal.SIGTERM, signal.SIGHUP):
         signal.signal(sig, to_keyboard_interrupt)
     error = stop_text = None
@@ -263,7 +278,9 @@ def main():
     stem = f"run_sim_{datetime.now():%Y%m%d_%H%M%S}"
     with open(out / f"{stem}.csv", "w", newline="") as f:
         csv.writer(f).writerows([RUN_HEADER] + runner.rows)
-    (out / f"{stem}.json").write_text(json.dumps({"checkpoint": str(ckpt), "task": task, "cameras": cam_info,
+    (out / f"{stem}.json").write_text(json.dumps({"checkpoint": str(ckpt), "task": task,
+                                                  "policy_config": str(args.config), "run": pc_raw["run"],
+                                                  "image_sizes": sizes, "cameras": cam_info,
                                                   "gripper": grip_info, "stop": stop_text,
                                                   "error": None if error is None else str(error)},
                                                  indent=1, default=int))

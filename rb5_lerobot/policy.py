@@ -44,7 +44,7 @@ import time
 
 import numpy as np
 
-from rb5_lerobot.data_format import ACTION_NAMES, STATE_LEN, STATE_NAMES
+from rb5_lerobot.data_format import ACTION_NAMES, STATE_LEN, STATE_NAMES, resize_image
 
 CHUNK_QUEUE = 8
 
@@ -134,12 +134,30 @@ class ReplayPolicy:
 
 
 
+def resolve_checkpoint(path):
+    """The pretrained_model folder for a training folder (data/train/act_<name>_<time>: its last checkpoint), a
+    checkpoint step folder (checkpoints/<step>) or a pretrained_model folder itself. SystemExit if none."""
+    path = Path(path)
+    for p in (path, path / "pretrained_model", path / "checkpoints" / "last" / "pretrained_model"):
+        if (p / "config.json").exists():
+            return p
+    raise SystemExit(f"no checkpoint in {path} (a training folder data/train/act_<name>_<time>, or "
+                     f".../checkpoints/<step>/pretrained_model)")
+
+
 def policy_inputs(checkpoint):
     """(camera names, state length) the checkpoint expects, from its config.json (no torch needed)."""
     cfg = json.loads((Path(checkpoint) / "config.json").read_text())
     feats = cfg["input_features"]
     cams = [k.split(".", 2)[2] for k in feats if k.startswith("observation.images.")]
     return cams, feats["observation.state"]["shape"][0]
+
+
+def policy_image_sizes(checkpoint):
+    """{camera: (width, height)} of the images the checkpoint was trained on (its config.json, shape C, H, W)."""
+    feats = json.loads((Path(checkpoint) / "config.json").read_text())["input_features"]
+    return {k.split(".", 2)[2]: (v["shape"][2], v["shape"][1]) for k, v in feats.items()
+            if k.startswith("observation.images.")}
 
 
 def observation_batch(images, state, task, cameras, device="cpu"):
@@ -173,6 +191,8 @@ class ACTChunkPolicy:
             self.policy.config, pretrained_path=str(spec["checkpoint"]),
             preprocessor_overrides={"device_processor": {"device": self.device}})
         self.cameras = [k.split(".", 2)[2] for k in self.policy.config.image_features]
+        # p2-d: camera images are shrunk to the size the checkpoint was trained on, with the converter's function
+        self.sizes = {k.split(".", 2)[2]: (f.shape[2], f.shape[1]) for k, f in self.policy.config.image_features.items()}
         names = (self.policy.config.input_features["observation.state"].shape[0],
                  self.policy.config.output_features["action"].shape[0])
         if names != (len(STATE_NAMES), len(ACTION_NAMES)):
@@ -184,7 +204,8 @@ class ACTChunkPolicy:
             raise ValueError(f"the policy needs cameras {missing} that are not open")
         with self.torch.inference_mode():
             self.policy.reset()
-            batch = observation_batch(obs["images"], obs["state"], self.task, self.cameras, self.device)
+            images = {c: resize_image(obs["images"][c], *self.sizes[c]) for c in self.cameras}
+            batch = observation_batch(images, obs["state"], self.task, self.cameras, self.device)
             chunk = self.post(self.policy.predict_action_chunk(self.pre(batch)))
         return chunk[0].float().cpu().numpy()
 
