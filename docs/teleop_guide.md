@@ -19,16 +19,16 @@ python -m unittest discover -s tests     # must end with OK (and no "skipped")
 The PC talks to the RB5 control box at 10.0.2.6 (`configs/robot.yaml`): PC address 10.0.2.100/24 on
 the Ethernet adapter connected to the control box.
 
-### Wrist webcam: USB autosuspend off (udev rule)
-The C270 on the gripper failed to wake from USB autosuspend at every open (`reset_resume error -5` and a
-USB reset in `journalctl -k`); the rule keeps it powered (cam-4c).
+### Gripper webcams: USB autosuspend off (udev rule)
+The C270 (wrist) and the Brio 101 (grip) on the gripper failed to wake from USB autosuspend at every open
+(`reset_resume error -5` and a USB reset in `journalctl -k`); the rule keeps them powered (cam-4c, cam-5b).
 ```
 sudo cp assets/udev/99-rb-cobot-webcam.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules
 ```
-Unplug and replug the webcam, then check:
+Unplug and replug the webcams, then check (both -> on):
 ```
-cat /sys/bus/usb/devices/$(basename $(dirname $(dirname $(readlink -f /sys/class/video4linux/$(basename $(readlink -f /dev/v4l/by-id/usb-046d_0825_6E259540-video-index0))/device))))/power/control   # -> on
+for c in usb-046d_0825_6E259540 usb-046d_Brio_101_2612APCBP7K8; do cat $(dirname $(readlink -f /sys/class/video4linux/$(basename $(readlink -f /dev/v4l/by-id/$c-video-index0))/device))/power/control; done
 ```
 
 ### Leader arm USB: 1 ms latency (udev rule)

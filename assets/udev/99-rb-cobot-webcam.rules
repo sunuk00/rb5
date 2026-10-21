@@ -1,5 +1,7 @@
-# Wrist webcam of this setup (cam-4c, see docs/teleop_guide.md): Logitech C270 (046d:0825).
+# Webcams on the gripper of this setup (see docs/teleop_guide.md): Logitech C270 (046d:0825, wrist, cam-4c)
+# and Logitech Brio 101 (046d:094d, grip, cam-5b).
 # USB autosuspend off. With the default (power/control auto: suspended 2 s after it is closed) every open
-# woke it with "uvcvideo ... reset_resume error -5" and a USB reset in the kernel log; it came back each
-# time, but a failed reset would stop the recording start. Matched on the USB device itself (ATTR).
+# woke them with "uvcvideo ... reset_resume error -5" (C270) or a USB reset (both) in the kernel log; they came
+# back each time, but a failed reset would stop the recording start. Matched on the USB device itself (ATTR).
 ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="046d", ATTR{idProduct}=="0825", ATTR{power/control}="on"
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="046d", ATTR{idProduct}=="094d", ATTR{power/control}="on"
