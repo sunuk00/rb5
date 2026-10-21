@@ -19,3 +19,4 @@ dependencies:
       - matplotlib==3.10.9      # plots in scripts 09-11
       - pyrealsense2==2.58.4.10922   # RealSense D405 / D435 (script 25); same version as the system librealsense 2.58.4
       - evdev==1.9.3            # keyboard input in scripts 05, 07, 08 (Linux only)
+      - opencv-python-headless==4.13.0.92   # UVC webcam on the gripper (cam-4a); same OpenCV as the lerobot env

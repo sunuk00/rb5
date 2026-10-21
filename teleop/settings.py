@@ -157,7 +157,7 @@ SCHEMA = {
         "episode_time_s": _num(5.0, 600.0),           # an episode this long ends and is kept
         "reset_time_s": _num(0.0, 600.0),             # 0 = the next episode starts only with ->
         "front_serial": _str(),                       # D435 above the workspace
-        "wrist_serial": _str(),                       # D405 on the gripper body
+        "wrist_serial": _str(),                       # on the gripper: a /dev/ path = UVC webcam (cam-4a)
         # fixed camera settings (cam-2b): auto exposure and auto white balance off
         "front_exposure_us": _num(100.0, 100000.0),
         "front_gain": _num(0, 248, integer=True),

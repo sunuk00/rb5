@@ -111,6 +111,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-21 — cam-2a: fixed camera exposure candidates measured (script 34)](#2026-10-21--cam-2a-fixed-camera-exposure-candidates-measured-script-34)
 - [2026-10-21 — cam-2b: fixed camera settings in the teleop; brightness check at start](#2026-10-21--cam-2b-fixed-camera-settings-in-the-teleop-brightness-check-at-start)
 - [2026-10-21 — cam-3: a saturated camera image refuses the start (red, no typed yes)](#2026-10-21--cam-3-a-saturated-camera-image-refuses-the-start-red-no-typed-yes)
+- [2026-10-21 — cam-4a: C270 webcam as the wrist camera (the D405 broke)](#2026-10-21--cam-4a-c270-webcam-as-the-wrist-camera-the-d405-broke)
 - [2026-10-21 — range.z_min_mm -50 -> 19 mm for the mounted gripper](#2026-10-21--rangez_min_mm--50---19-mm-for-the-mounted-gripper)
 - [2026-10-21 — rec-6 policy runner: decisions (two processes, temporal ensembling by time, 100 % speed, keyboard toggle)](#2026-10-21--rec-6-policy-runner-decisions-two-processes-temporal-ensembling-by-time-100--speed-keyboard-toggle)
 - [2026-10-21 — rec-6a: policy runner structure (teleop/policy.py) with a fake policy and robot](#2026-10-21--rec-6a-policy-runner-structure-teleoppolicypy-with-a-fake-policy-and-robot)
@@ -2708,6 +2709,42 @@ teleop's refusal was not run on the hardware (it opens the leader arm and the gr
 
 **Not covered:** a camera that saturates during a session (only the start is checked).
 
+## 2026-10-21 — cam-4a: C270 webcam as the wrist camera (the D405 broke)
+
+**What happened:** the D405 (wrist) broke physically (user). Before that, the kernel log showed it switching
+between USB 3 and USB 2 and USB errors (-71, -110) through the VIA hub, also on the D435 next to it. The user
+mounted a Logitech C270 webcam on the gripper instead and aimed it at the workspace.
+
+**Decision (user approved the plan):** `wrist_serial` may be a device path: a value starting with `/dev/` opens
+`UVCCamera`, a number a RealSense (`open_camera()`, used by the camera process and the policy process, so
+recording and policy runs open the cameras the same way). Path `/dev/v4l/by-id/usb-046d_0825_6E259540-video-index0`
+(stays the same after a replug).
+- YUYV 640x480 at 30 fps (29.9 fps measured, no interval over 50 ms). Rejected: MJPG (same rate, but a
+  "Corrupt JPEG data" warning on almost every frame in the terminal, and compression on top of our JPEG).
+- Settings with `v4l2-ctl` (OpenCV has no control for the variable frame rate): auto exposure, variable frame
+  rate and auto white balance off first (the values are inactive under auto), then exposure (0.1 ms steps),
+  gain, white balance; read back after 0.5 s of streaming. While streaming the C270 reports the exposure
+  0.5 ms higher than written (83 -> 88, 167 -> 172, every value tried), so the exposure may differ by 1 ms;
+  gain and white balance must match. The settings stay in the webcam until it is unplugged: written at every
+  open (the earlier "30 ms darker than 16.6 ms" test had left the gain at auto's 192).
+- Times: the webcam has no clock of its own; OpenCV gives the kernel's buffer time (CLOCK_MONOTONIC ms,
+  the clock of time.monotonic()), about 33 ms before the arrival with steady 32 ms intervals: domain `v4l2`,
+  `capture_delay_s()` handles every domain. Frame numbers count frame periods between buffer times (a
+  missed frame is a gap, as on a RealSense).
+- Images converted BGR -> RGB (OpenCV order) like the RealSense rgb8 stream.
+- rb5 env: `opencv-python-headless==4.13.0.92` (same as the lerobot env), installed by the user.
+- Provisional wrist values: 8.3 ms (same blur as the D405 setting), gain 128, 4600 K. To be set with script 34
+  in cam-4b.
+
+**Checked:** tests (webcam controls, read-back tolerance, capture delay for each domain, a missing webcam path
+refuses; fake cameras unchanged). Hardware, camera only: applied 8.8 ms / 128 / 4600; 150 frames in 5 s, 0 gaps,
+capture interval 32.0 / 36.1 ms (p50 / max), delay 33.1 ms; green block green (RGB order right); both cameras
+through the recorder: front 111.2 / 0.1 %, wrist 147.3 / 0 % (first open 131.8): the wrist is outside 97..131
+with gain 128 -> cam-4b.
+
+**Not done:** the webcam's own delay from exposure to the buffer time is not known (the buffer time is when the
+first USB data arrives); the D405 rule of thumb no longer applies. Fingers are not in the wrist view yet.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -2727,9 +2764,9 @@ teleop's refusal was not run on the hardware (it opens the leader arm and the gr
   - **RB5 joint speed specification** for this model, to replace our own caps (75 / 60 deg/s).
   - **Demonstration recording for ACT / LeRobot (2026-10-19):** rec-1 .. rec-5 done (format, env lerobot,
     `--record`, converter, Simulation replay, ACT trial on the pilot). Open:
-    - Hardware before the real collection (user): D405 cable strain relief and USB 3 (it is on USB 2
-      since the pilot; check `lsusb -t` 5000M and script 30 while moving the gripper); D435 position
-      (the arm covers about 2/3 of its view).
+    - Hardware before the real collection (user): the D405 broke (2026-10-21); C270 webcam on the gripper
+      (cam-4a), its settings in cam-4b (script 34), then script 30 with both cameras while moving the gripper;
+      D435 position (the arm covers about 2/3 of its view).
     - Real collection: rules in docs/data_rules.md (2026-10-21); fixed camera settings done (cam-2b; the policy
       runner must open the cameras with the same code) and z_min 19 mm (2026-10-21). Left: the hardware
       items above.

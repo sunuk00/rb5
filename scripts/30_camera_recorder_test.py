@@ -27,7 +27,8 @@ sys.path.insert(0, str(ROOT))
 from teleop.cameras import CameraRecorder, brightness_problems, print_red, saturation_problems  # noqa: E402
 from teleop.settings import load_settings  # noqa: E402
 
-CAMERAS = {"front": "943222070221", "wrist": "130322273474"}   # D435 above the workspace, D405 on the gripper
+CAMERAS = {"front": "943222070221",   # D435 above the workspace; wrist: C270 webcam on the gripper (cam-4a)
+           "wrist": "/dev/v4l/by-id/usb-046d_0825_6E259540-video-index0"}
 PERIOD = 0.02          # the teleop loop
 LATE_MS = 5.0          # a cycle that starts this much after its time counts as late
 

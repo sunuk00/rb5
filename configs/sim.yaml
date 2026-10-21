@@ -155,14 +155,15 @@ record:                         # demonstrations: python -m teleop --record [--t
   episode_time_s: 120.0         # user, 2026-10-19: 2 minutes, then the episode ends and is kept
   reset_time_s: 0.0             # 0 = the next episode starts only with -> (no automatic start)
   front_serial: "943222070221"  # D435, fixed above the workspace
-  wrist_serial: "130322273474"  # D405, on the gripper body
+  wrist_serial: "/dev/v4l/by-id/usb-046d_0825_6E259540-video-index0"   # C270 webcam on the gripper (cam-4a; the
+                                # D405 130322273474 broke 2026-10-21). A /dev/ path = UVC webcam, a number = RealSense
   # Fixed camera settings (cam-2b, user 2026-10-21; measured with script 34 in the lab lighting): exposures are
   # multiples of 1/120 s (60 Hz lights do not flicker); gains match the auto brightness (about 114)
   front_exposure_us: 16667.0    # D435 (fixed camera): 8.3 ms was too dark even at the maximum gain
   front_gain: 76
   front_white_balance_k: 4600
-  wrist_exposure_us: 8333.0     # D405 moves with the gripper: short exposure, blur about 2 mm at 250 mm/s
-  wrist_gain: 61
+  wrist_exposure_us: 8333.0     # moves with the gripper: short exposure, blur about 2 mm at 250 mm/s
+  wrist_gain: 128               # C270 (0-255), provisional: mean 121 at 8.3 ms in a quick test; set in cam-4b
   wrist_white_balance_k: 4600
   brightness_ref: 114.0         # mean pixel value with these settings in the reference lighting
   brightness_tolerance: 0.15    # start: a camera outside 114 +/- 15 % (97..131) asks for a typed yes

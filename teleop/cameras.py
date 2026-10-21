@@ -1,4 +1,5 @@
-"""Camera recorder in its own process (rec-3a): RealSense RGB -> JPEG per frame + a time CSV per episode.
+"""Camera recorder in its own process (rec-3a): RealSense / UVC webcam RGB -> JPEG per frame + a time CSV per
+episode. open_camera() picks the class: a serial starting with /dev/ is a UVC webcam (cam-4a), else a RealSense.
 
 Why a process: a thread in the teleop process would share its GIL, and image work at 2 x 30 fps could
 delay the 50 Hz loop (as the gripper thread's reads were delayed, grip-4). The process has its own GIL;
@@ -26,12 +27,15 @@ Times per frame: t_arrival_s = time.monotonic() when the frame reached the grab 
 camera timestamp (global_time domain: the PC wall clock at capture, in ms); t_capture_s = t_arrival_s
 minus the receive delay (PC wall clock at arrival - cam_ts_ms). The receive delay differs per camera
 (cam-1 / 2026-10-19: D405 about 9.5 ms, D435 about 34 ms), so t_capture_s is the time to match on.
+A UVC webcam has no camera clock: cam_ts_ms is the kernel's buffer time (domain v4l2, time.monotonic() in
+ms), about 33 ms before the arrival; capture_delay_s() gives the delay for every domain.
 """
 import csv
 import multiprocessing as mp
 import os
 import queue
 import shutil
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -50,6 +54,8 @@ SATURATED_MAX_FRAC = 0.25    # more saturated pixels than this at the start refu
 RED, RESET = "\033[1;31m", "\033[0m"
 STALL_S = 1.0                # no frame for this long = camera error (real-pilot 141929: the D405 dropped off
                              # USB and came back as USB 2; its pipeline only timed out, nothing was reported)
+UVC_SETTLE_S = 0.5           # frames read after writing the webcam settings, before they are read back
+UVC_EXPOSURE_TOL = 10        # 0.1 ms steps: the C270 reports 5 more than written while it streams (cam-4a)
 
 
 class FakeCamera:
@@ -145,6 +151,118 @@ class RealSenseCamera:
         self.pipe.stop()
 
 
+class UVCCamera:
+    """Color stream of a UVC webcam (cam-4a: Logitech C270 on the gripper) found by its device path, e.g.
+    /dev/v4l/by-id/usb-046d_0825_<serial>-video-index0 (the same after a replug). YUYV, converted to RGB
+    (MJPG gave a corrupt-JPEG warning on almost every frame). Settings (optional): auto exposure, the variable
+    frame rate and auto white balance off, then exposure_us (0.1 ms steps), gain, white_balance_k, read back
+    while streaming (applied = what the camera reports). The webcam keeps them until it is unplugged, so they
+    are written at every open. Frame numbers count the frame periods between the buffer times, so a missed
+    frame shows as a gap as on a RealSense."""
+
+    def __init__(self, path, width, height, fps, settings=None):
+        self.path = str(path)
+        if not os.path.exists(self.path):
+            raise RuntimeError(f"webcam {self.path} not found (ls /dev/v4l/by-id)")
+        import cv2
+        cv2.setNumThreads(1)   # only a color conversion here; no thread pool next to PyTorch in the policy process
+        self.cv2 = cv2
+        self.cap = cv2.VideoCapture(self.path, cv2.CAP_V4L2)
+        if not self.cap.isOpened():
+            raise RuntimeError(f"webcam {self.path} could not be opened (another program using it?)")
+        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"YUYV"))
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        self.cap.set(cv2.CAP_PROP_FPS, fps)
+        size = (int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+        if size != (width, height):
+            self.cap.release()
+            raise RuntimeError(f"webcam {self.path} gives {size[0]}x{size[1]}, not {width}x{height}")
+        self.period_ms, self.n, self.last_ts = 1000.0 / fps, 0, None
+        self.applied = None
+        if settings is not None:
+            try:
+                self.applied = self._apply(settings)
+            except Exception:
+                self.cap.release()
+                raise
+
+    def _ctl(self, *args):
+        done = subprocess.run(["v4l2-ctl", "-d", self.path, *args], capture_output=True, text=True, timeout=5)
+        if done.returncode != 0:
+            raise RuntimeError(f"v4l2-ctl {' '.join(args)}: {done.stderr.strip()}")
+        return done.stdout
+
+    def _apply(self, settings):
+        want = uvc_controls(settings)
+        # auto off first: the exposure and white balance values are inactive while the auto modes are on
+        self._ctl("--set-ctrl=auto_exposure=1,exposure_dynamic_framerate=0,white_balance_automatic=0")
+        self._ctl("--set-ctrl=" + ",".join(f"{k}={want[k]}" for k in
+                                           ("exposure_time_absolute", "gain", "white_balance_temperature")))
+        t_end = time.monotonic() + UVC_SETTLE_S
+        while time.monotonic() < t_end:
+            self.cap.read()
+        got = {}
+        for line in self._ctl("-C", ",".join(want)).splitlines():   # "auto_exposure: 1 (Manual Mode)"
+            name, value = line.split(":", 1)
+            got[name.strip()] = int(value.split()[0])
+        bad = uvc_mismatch(want, got)
+        if bad:
+            raise RuntimeError(f"settings read back differ: {', '.join(bad)}")
+        return {"exposure_us": got["exposure_time_absolute"] * 100.0, "gain": got["gain"],
+                "white_balance_k": got["white_balance_temperature"], "auto_exposure": 0, "auto_white_balance": 0}
+
+    def read(self):
+        """Same as RealSenseCamera.read; camera ts = the kernel buffer time (monotonic ms), domain v4l2."""
+        ok, bgr = self.cap.read()
+        mono, wall_ms = time.monotonic(), time.time() * 1000.0
+        if not ok:
+            time.sleep(0.1)   # an unplugged webcam fails at once: no busy loop
+            return None
+        ts = self.cap.get(self.cv2.CAP_PROP_POS_MSEC)
+        self.n += 1 if self.last_ts is None else max(1, round((ts - self.last_ts) / self.period_ms))
+        self.last_ts = ts
+        return self.cv2.cvtColor(bgr, self.cv2.COLOR_BGR2RGB), self.n, ts, "v4l2", mono, wall_ms
+
+    def close(self):
+        self.cap.release()
+
+
+def uvc_controls(settings):
+    """v4l2 control values for the fixed settings {exposure_us, gain, white_balance_k}."""
+    return {"auto_exposure": 1, "exposure_dynamic_framerate": 0, "white_balance_automatic": 0,   # 1 = manual
+            "exposure_time_absolute": max(1, round(settings["exposure_us"] / 100.0)),
+            "gain": int(settings["gain"]), "white_balance_temperature": int(settings["white_balance_k"])}
+
+
+def uvc_mismatch(want, got):
+    """Texts for the read-back controls that differ (exposure: within UVC_EXPOSURE_TOL)."""
+    bad = []
+    for name, value in want.items():
+        tol = UVC_EXPOSURE_TOL if name == "exposure_time_absolute" else 0
+        if name not in got or abs(got[name] - value) > tol:
+            bad.append(f"{name} {got.get(name)} (set {value})")
+    return bad
+
+
+def open_camera(serial, width, height, fps, settings=None, fake=False):
+    """FakeCamera (fake), UVCCamera (serial = a /dev/ path) or RealSenseCamera (serial number)."""
+    if fake:
+        return FakeCamera(serial, width, height, fps, settings)
+    if str(serial).startswith("/dev/"):
+        return UVCCamera(serial, width, height, fps, settings)
+    return RealSenseCamera(serial, width, height, fps, settings)
+
+
+def capture_delay_s(cam_ts, domain, mono, wall_ms):
+    """Seconds from the camera time to the arrival of a read() result (0 when the camera time is no PC clock)."""
+    if domain in ("global_time", "system_time", "fake"):
+        return (wall_ms - cam_ts) / 1000.0
+    if domain == "v4l2":
+        return mono - cam_ts / 1000.0
+    return 0.0
+
+
 class _Episode:
     """Files of one camera for one episode (used by the writer thread only)."""
 
@@ -180,7 +298,7 @@ def _grab(cam, name, frames_q, recording, stats, stop, errors):
             if last_fn is not None and fn - last_fn > 1:
                 stats["gaps"] += fn - last_fn - 1
             last_fn = fn
-            delay_s = (wall_ms - cam_ts) / 1000.0 if domain in ("global_time", "system_time", "fake") else 0.0
+            delay_s = capture_delay_s(cam_ts, domain, mono, wall_ms)
             try:
                 frames_q.put_nowait((img, fn, mono - delay_s, mono, cam_ts, domain))
             except queue.Full:
@@ -262,7 +380,6 @@ def _brightness(cam):
 
 def _process_main(cameras, width, height, fps, quality, fake, cmd_q, reply_q):
     """cameras: list of (name, serial) or (name, serial, settings). Runs until ("quit",)."""
-    cls = FakeCamera if fake else RealSenseCamera
     opened, errors, stop = [], queue.Queue(), threading.Event()
     info = {}
     try:
@@ -270,7 +387,7 @@ def _process_main(cameras, width, height, fps, quality, fake, cmd_q, reply_q):
             name, serial = cam_def[0], cam_def[1]
             settings = cam_def[2] if len(cam_def) > 2 else None
             try:
-                cam = cls(serial, width, height, fps, settings)
+                cam = open_camera(serial, width, height, fps, settings, fake)
             except Exception as e:
                 raise RuntimeError(f"{name} ({serial}): {e}") from e
             opened.append((name, cam))

@@ -98,14 +98,14 @@ class _Latest(threading.Thread):
         self.frame = None
 
     def run(self):
+        from .cameras import capture_delay_s
         while not self.stop_event.is_set():
             got = self.cam.read()
             if got is None:
                 continue
             img, _, cam_ts, domain, mono, wall_ms = got
-            delay_s = (wall_ms - cam_ts) / 1000.0 if domain in ("global_time", "system_time", "fake") else 0.0
             with self.lock:
-                self.frame = (img, mono - delay_s)
+                self.frame = (img, mono - capture_delay_s(cam_ts, domain, mono, wall_ms))
 
     def latest(self):
         with self.lock:
@@ -200,17 +200,16 @@ def make_policy(spec):
 
 def _policy_main(spec, cameras, fake_cameras, fps, state, out_q, cmd_q, reply_q):
     """cameras: list of (name, serial, settings or None). Sends ("ready", info) or ("error", text) first."""
-    from .cameras import FakeCamera, RealSenseCamera, image_level, level_info
+    from .cameras import image_level, level_info, open_camera
     if spec.get("cpu_cores"):
         first, last = spec["cpu_cores"]
         os.sched_setaffinity(0, set(range(int(first), int(last) + 1)))
-    cls = FakeCamera if fake_cameras else RealSenseCamera
     stop = threading.Event()
     opened, readers = [], {}
     try:
         policy = make_policy(spec)
         for name, serial, settings in cameras:
-            cam = cls(serial, 640, 480, 30, settings)
+            cam = open_camera(serial, 640, 480, 30, settings, fake_cameras)
             opened.append(cam)
             readers[name] = _Latest(cam, stop)
             readers[name].start()

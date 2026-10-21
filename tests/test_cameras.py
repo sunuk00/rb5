@@ -11,8 +11,9 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from teleop.cameras import (CAMERA_HEADER, CameraRecorder, brightness_problems, image_level,  # noqa: E402
-                           level_info, saturation_problems)
+from teleop.cameras import (CAMERA_HEADER, CameraRecorder, FakeCamera, brightness_problems,  # noqa: E402
+                           capture_delay_s, image_level, level_info, open_camera, saturation_problems,
+                           uvc_controls, uvc_mismatch)
 
 CAMS = [("front", "1"), ("wrist", "2")]
 
@@ -159,6 +160,43 @@ class TestOpenFailure(unittest.TestCase):
         rec.close()
         self.assertEqual(len(problems), 1)
         self.assertIn("no-such-serial", problems[0])
+
+    def test_missing_webcam_is_reported(self):
+        rec = CameraRecorder([("wrist", "/dev/v4l/by-id/no-such-webcam")], fake=False)
+        problems = rec.open(timeout=20.0)
+        rec.close()
+        self.assertEqual(len(problems), 1)
+        self.assertIn("wrist (/dev/v4l/by-id/no-such-webcam): webcam", problems[0])
+        self.assertIn("not found", problems[0])
+
+
+class TestWebcam(unittest.TestCase):
+    """UVC webcam (cam-4a) without the device: class choice, control values, read-back check, times."""
+    SET = {"exposure_us": 8333.0, "gain": 128, "white_balance_k": 4600}
+
+    def test_fake_wins_over_the_path(self):
+        self.assertIsInstance(open_camera("/dev/video99", 64, 48, 30, fake=True), FakeCamera)
+
+    def test_controls(self):
+        self.assertEqual(uvc_controls(self.SET), {"auto_exposure": 1, "exposure_dynamic_framerate": 0,
+                                                  "white_balance_automatic": 0, "exposure_time_absolute": 83,
+                                                  "gain": 128, "white_balance_temperature": 4600})
+
+    def test_read_back(self):
+        want = uvc_controls(self.SET)
+        self.assertEqual(uvc_mismatch(want, dict(want, exposure_time_absolute=88)), [])   # C270 while streaming
+        self.assertEqual(uvc_mismatch(want, dict(want, exposure_time_absolute=94)),
+                         ["exposure_time_absolute 94 (set 83)"])
+        self.assertEqual(uvc_mismatch(want, dict(want, gain=129)), ["gain 129 (set 128)"])
+        self.assertEqual(uvc_mismatch(want, dict(want, auto_exposure=3)), ["auto_exposure 3 (set 1)"])
+        got = dict(want)
+        del got["exposure_dynamic_framerate"]
+        self.assertEqual(uvc_mismatch(want, got), ["exposure_dynamic_framerate None (set 0)"])
+
+    def test_capture_delay(self):
+        self.assertAlmostEqual(capture_delay_s(1000.0, "v4l2", 1.033, 5000.0), 0.033)        # monotonic ms
+        self.assertAlmostEqual(capture_delay_s(4990.5, "global_time", 1.0, 5000.0), 0.0095)  # wall clock ms
+        self.assertEqual(capture_delay_s(123.0, "hardware_clock", 1.0, 5000.0), 0.0)
 
 
 if __name__ == "__main__":
