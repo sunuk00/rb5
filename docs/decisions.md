@@ -116,6 +116,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-21 — cam-4c: webcam USB autosuspend off (udev rule)](#2026-10-21--cam-4c-webcam-usb-autosuspend-off-udev-rule)
 - [2026-10-21 — Grasp not visible in the gripper state (test A)](#2026-10-21--grasp-not-visible-in-the-gripper-state-test-a)
 - [2026-10-21 — cam-5a: three cameras (grip = Brio on the gripper); C270 in MJPG; missing-rows check](#2026-10-21--cam-5a-three-cameras-grip--brio-on-the-gripper-c270-in-mjpg-missing-rows-check)
+- [2026-10-21 — cam-5b: Brio autosuspend off; wrist gain 86, grip gain 152; teleop with three cameras](#2026-10-21--cam-5b-brio-autosuspend-off-wrist-gain-86-grip-gain-152-teleop-with-three-cameras)
 - [2026-10-21 — range.z_min_mm -50 -> 19 mm for the mounted gripper](#2026-10-21--rangez_min_mm--50---19-mm-for-the-mounted-gripper)
 - [2026-10-21 — rec-6 policy runner: decisions (two processes, temporal ensembling by time, 100 % speed, keyboard toggle)](#2026-10-21--rec-6-policy-runner-decisions-two-processes-temporal-ensembling-by-time-100--speed-keyboard-toggle)
 - [2026-10-21 — rec-6a: policy runner structure (teleop/policy.py) with a fake policy and robot](#2026-10-21--rec-6a-policy-runner-structure-teleoppolicypy-with-a-fake-policy-and-robot)
@@ -2834,6 +2835,25 @@ Start brightness front 116.2, wrist 108.5, grip 71.4 (provisional gain: cam-5b).
 (script 34); script 30 with all three while the teleop runs the leader arm and the gripper (same USB bus).
 The 22 two-camera episodes go to data/archive.
 
+## 2026-10-21 — cam-5b: Brio autosuspend off; wrist gain 86, grip gain 152; teleop with three cameras
+
+- **USB:** the Brio moved to a new USB 3.1 hub (Genesys 05e3) on the USB-C port: its USB 3 half came up on
+  the Thunderbolt controller (bus 4), its USB 2 half on the main controller (bus 1). The USB-C ports route
+  USB 2 to the main controller, so every USB 2 webcam shares bus 1 whatever the port (bus 3 stays empty);
+  moving the Ethernet adapter would not have helped. C270 MJPG + Brio YUYV stays the solution.
+- **Autosuspend:** `assets/udev/99-rb-cobot-webcam.rules` has a line for the Brio (046d:094d); installed by the
+  user, both read `on`. The check command in docs/teleop_guide.md read the hub above the webcam (two
+  `dirname`s): fixed; the C270 had been `on` since cam-4c.
+- **Settings (script 34, settings_20261021_152437, target 114, user approved):** wrist 8.3 ms gain 86 (114.1;
+  was 78 in YUYV before it was re-aimed); grip 8.3 ms gain 152 (114.6; the Brio is less sensitive; 16.7 ms
+  gain 88 gave 106). White balance 4600 K for both (the Brio's auto balance; the C270 hardly reacts to it).
+  Rejected for grip: 16.7 ms (twice the blur on the moving wrist).
+- **Teleop with three cameras (Simulation, session sim_20261021_153300, leader arm and gripper running):**
+  start brightness 115.1 / 106.9 / 107.2, no refusal; kept episode 11.4 s: front 30.07 fps, wrist 29.88, grip
+  30.02, 0 gaps, 0 dropped, 0 missing rows. Loop: 0 late cycles in 1164, cycle interval max 20.4 ms, leader read
+  p99 8.6 ms, gripper reads normal. Leader tool (trigger) read failures 1.4 % (16, longest 3 cycles); before
+  the Brio (real_20261021_135405) 0.9 % (longest 26): not new, a short test.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -2854,7 +2874,7 @@ The 22 two-camera episodes go to data/archive.
   - **Demonstration recording for ACT / LeRobot (2026-10-19):** rec-1 .. rec-5 done (format, env lerobot,
     `--record`, converter, Simulation replay, ACT trial on the pilot). Open:
     - Hardware before the real collection (user): the D405 broke (2026-10-21); C270 webcam on the gripper
-      (cam-4a), its settings done (cam-4b: 8.3 ms, gain 78); left: script 30 with both cameras while moving the gripper;
+      (cam-4a), grip camera Brio (cam-5a/5b: three cameras, settings set, checked in a Simulation teleop);
       D435 position (the arm covers about 2/3 of its view).
     - Real collection: rules in docs/data_rules.md (2026-10-21); fixed camera settings done (cam-2b; the policy
       runner must open the cameras with the same code) and z_min 19 mm (2026-10-21). Left: the hardware
