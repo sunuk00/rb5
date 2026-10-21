@@ -114,6 +114,8 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-21 — cam-4a: C270 webcam as the wrist camera (the D405 broke)](#2026-10-21--cam-4a-c270-webcam-as-the-wrist-camera-the-d405-broke)
 - [2026-10-21 — cam-4b: wrist webcam settings (8.3 ms, gain 78); settings written once the stream runs](#2026-10-21--cam-4b-wrist-webcam-settings-83-ms-gain-78-settings-written-once-the-stream-runs)
 - [2026-10-21 — cam-4c: webcam USB autosuspend off (udev rule)](#2026-10-21--cam-4c-webcam-usb-autosuspend-off-udev-rule)
+- [2026-10-21 — Grasp not visible in the gripper state (test A)](#2026-10-21--grasp-not-visible-in-the-gripper-state-test-a)
+- [2026-10-21 — cam-5a: three cameras (grip = Brio on the gripper); C270 in MJPG; missing-rows check](#2026-10-21--cam-5a-three-cameras-grip--brio-on-the-gripper-c270-in-mjpg-missing-rows-check)
 - [2026-10-21 — range.z_min_mm -50 -> 19 mm for the mounted gripper](#2026-10-21--rangez_min_mm--50---19-mm-for-the-mounted-gripper)
 - [2026-10-21 — rec-6 policy runner: decisions (two processes, temporal ensembling by time, 100 % speed, keyboard toggle)](#2026-10-21--rec-6-policy-runner-decisions-two-processes-temporal-ensembling-by-time-100--speed-keyboard-toggle)
 - [2026-10-21 — rec-6a: policy runner structure (teleop/policy.py) with a fake policy and robot](#2026-10-21--rec-6a-policy-runner-structure-teleoppolicypy-with-a-fake-policy-and-robot)
@@ -2780,6 +2782,57 @@ and the kernel resets it. It came back every time, but a failed reset would stop
 Installed by the user with sudo (docs/teleop_guide.md). Rejected: the kernel boot option
 `usbcore.autosuspend=-1` (turns it off for every USB device: a system-wide change for one camera);
 `usbcore.quirks=046d:0825:b` (reset-resume quirk: keeps the reset, only makes it expected).
+
+## 2026-10-21 — Grasp not visible in the gripper state (test A)
+
+**What happened (user, collecting p1, session real_20261021_135405, 22 kept):** the robot cannot tell whether
+the gripper holds the block. In every kept episode the gripper closed to the configured closed position (3967,
+goal 3968) with the block, holding at about 20 mA; the grasp detection (squeeze) never fired. By hand the
+fingers touch the block at 3517-3575 and touch each other (empty) at 4172 (user: the block is light and
+grippy, a touch holds it). The logs show the motor passing 3517-3575 at full speed (48 rpm, no current
+rise): the contact does not reach the motor.
+
+**Test A (script 28, `--closed 4150` / `4140`, block and empty closes):** with the block the motor still went
+to the goal (4138-4139) at full speed, holding 20-34 mA; empty 4139-4142, 0 mA. Position and current are the
+same with and without the block, so the gripper state cannot tell a grasp. Overshoot max 4160 (12 ticks
+before the empty touch). `closed_ticks` stays 3968 (nothing changed). **Decision (user):** a camera on the
+fingers (cam-5a). Rejected: a deeper closed position (no difference, test A); adding the gripper current to
+the state (no difference either).
+
+## 2026-10-21 — cam-5a: three cameras (grip = Brio on the gripper); C270 in MJPG; missing-rows check
+
+**Setup (user):** a Logitech Brio 101 (046d:094d) on the gripper, aimed at the fingers and what they hold:
+camera `grip`. The C270 (`wrist`) keeps the view of the block, the D435 (`front`) the workspace.
+
+**USB:** both webcams are USB 2 devices on the main controller's USB 2 bus (bus 1, with the leader arm and the
+gripper U2D2; the other USB-C port, on the Thunderbolt controller, holds the robot's Ethernet adapter). Both in
+YUYV: the second one is refused (`Not enough bandwidth for altsetting 11`). Tried:
+- uvcvideo `quirks=128` (FIX_BANDWIDTH): all three open, but every C270 frame lost its bottom 61 % (pure
+  green rows: YUYV zeros) and the brightness check passed it. **Rejected.** (The value is unsigned on this
+  kernel: restore with 4294967295, not -1.) The D435 was unaffected after a replug.
+- Formats, 20 s each (C270 / Brio): YUYV / MJPG: Brio refused (it asks the most bandwidth in MJPG too);
+  **MJPG / YUYV: both 30 fps, 0 gaps, 0 damaged frames**; MJPG / MJPG also works. The 634 JPEG warnings came
+  from the C270 (OpenCV's decoder); the Brio's MJPG was clean.
+**Decision:** wrist (C270) MJPG, grip (Brio) YUYV. `UVCCamera(fmt)`: MJPG frames are taken as the JPEG bytes
+(`CAP_PROP_CONVERT_RGB` 0) and decoded with PIL: no warnings, 4.6 ms per frame. Rejected: moving the Ethernet
+adapter (changes the robot link; kept as the fallback).
+
+**Config:** `record.cameras.<front|wrist|grip>` = device, format (RGB / YUYV / MJPG), exposure_us, gain,
+white_balance_k (replaces front_* / wrist_*); checks: devices differ, RGB only for a RealSense.
+`cameras.camera_defs(record, names)` gives the list for the teleop, script 35 (the cameras the policy expects,
+in its order), scripts 30 and 34. The converter takes the cameras the sessions recorded (episodes.json) and
+refuses sessions with different cameras.
+
+**Missing-rows check:** `image_level` also returns the fraction of pure-green rows; a start image with more
+than 2 % refuses like a saturated one (`refusal_problems`, teleop and script 35, no typed yes).
+
+**Checked:** tests (rb5 154, 4 skipped; lerobot policy, cameras, converter). Hardware, cameras only, 20 s through
+the recorder: front 30.03 fps, wrist (MJPG) 29.84, grip 29.98; 0 gaps, 0 dropped, 0 missing rows, no warnings.
+Start brightness front 116.2, wrist 108.5, grip 71.4 (provisional gain: cam-5b).
+
+**Next (cam-5b):** Brio USB autosuspend off (it resets at every open, as the C270 did); wrist and grip settings
+(script 34); script 30 with all three while the teleop runs the leader arm and the gripper (same USB bus).
+The 22 two-camera episodes go to data/archive.
 
 ## PENDING
 

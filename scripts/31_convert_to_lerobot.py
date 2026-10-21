@@ -17,8 +17,9 @@ Format (docs/decisions.md rec-1), 30 fps on a time grid from each kept episode's
 - observation.state (7): joints [deg] at their read time (cycle start + leader_read_ms - state_age_ms):
   jnt_ang (encoders) in Real, jnt_ref in Simulation (jnt_ang there is the physical robot, not the
   simulated one); gripper position 0 = closed .. 1 = open at its read time (- grip_age_ms)
-- observation.images.front / .wrist: the frame whose capture time (t_capture_s) is nearest to the
-  grid time (the cameras run at 30 fps but are not synchronized with the grid: up to half a frame)
+- observation.images.<camera> (the cameras the sessions recorded, episodes.json "cameras": since cam-5a front,
+  wrist, grip): the frame whose capture time (t_capture_s) is nearest to the grid time (the cameras run at
+  30 fps but are not synchronized with the grid: up to half a frame). All sessions must have the same cameras.
 
 Episodes left out (reported): discarded ones; ones whose camera frames do not cover them (none, or a
 gap / missing start or end of more than 0.2 s); still ones (clutch engaged < --min-clutch-s or target path <
@@ -44,7 +45,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent
 FPS = 30
 H, W = 480, 640
-CAMERAS = ["front", "wrist"]
+CAMERAS = ["front", "wrist"]   # for sessions that do not list their cameras (rec-1 tests)
 STATE_NAMES = ["j1_deg", "j2_deg", "j3_deg", "j4_deg", "j5_deg", "j6_deg", "gripper_pos"]
 ACTION_NAMES = ["x_mm", "y_mm", "z_mm", "gripper_open"]
 IMAGE_DT_WARN_MS = 25.0   # nearest frame further than this from the grid time (half a frame is 16.7 ms)
@@ -234,6 +235,12 @@ def action_resample_error(s, rows, t_grid, act):
     return np.linalg.norm(back - s.target[rows][inside], axis=1)
 
 
+def session_cameras(folder):
+    """Camera names a session recorded (episodes.json "cameras", in their order); CAMERAS if it does not say."""
+    meta = json.loads((Path(folder) / "episodes.json").read_text())
+    return list(meta.get("cameras") or CAMERAS)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("sessions", nargs="+", help="session folders (data/demos/...)")
@@ -245,15 +252,22 @@ def main():
     ap.add_argument("--min-path-mm", type=float, default=30.0)
     ap.add_argument("--keep-still", action="store_true", help="keep episodes without motion")
     ap.add_argument("--check-only", action="store_true", help="report only, write nothing")
-    ap.add_argument("--cameras", default=",".join(CAMERAS),
-                    help="cameras in the dataset, e.g. front (tests only: real datasets use both)")
+    ap.add_argument("--cameras", help="cameras in the dataset, e.g. front (tests only; default: all the sessions "
+                                       "recorded)")
     args = ap.parse_args()
-    args.cameras = [c.strip() for c in args.cameras.split(",") if c.strip()]
-    unknown = set(args.cameras) - set(CAMERAS)
-    if unknown or not args.cameras:
-        raise SystemExit(f"--cameras: use names from {CAMERAS}")
-    if args.cameras != CAMERAS:
-        print(f"Cameras: {', '.join(args.cameras)} only (a test dataset; the rec-1 format has {', '.join(CAMERAS)})")
+    recorded = [session_cameras(f) for f in args.sessions]
+    if any(r != recorded[0] for r in recorded):
+        raise SystemExit("sessions recorded different cameras: " + "; ".join(
+            f"{Path(f).name} {r}" for f, r in zip(args.sessions, recorded)))
+    if args.cameras is None:
+        args.cameras = recorded[0]
+        print(f"Cameras: {', '.join(args.cameras)}")
+    else:
+        args.cameras = [c.strip() for c in args.cameras.split(",") if c.strip()]
+        unknown = set(args.cameras) - set(recorded[0])
+        if unknown or not args.cameras:
+            raise SystemExit(f"--cameras: use names from {recorded[0]}")
+        print(f"Cameras: {', '.join(args.cameras)} only (a test dataset; the sessions have {', '.join(recorded[0])})")
 
     root = Path(args.root) if args.root else ROOT / "data" / "lerobot" / args.repo_id.split("/")[-1]
     episodes, errors, sources = [], [], set()

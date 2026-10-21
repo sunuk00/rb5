@@ -5,12 +5,13 @@ stop_episode(keep) mark the episodes, a discarded episode's files are deleted. M
 runs a 50 Hz loop like the teleop and counts late cycles, to see whether the camera process disturbs it.
 
 Usage (env rb5):
-    python scripts/30_camera_recorder_test.py                         # front + wrist, 2 x 20 s kept, 1 x 3 s discarded
+    python scripts/30_camera_recorder_test.py                         # all cameras, 2 x 20 s kept, 1 x 3 s discarded
     python scripts/30_camera_recorder_test.py --seconds 60 --episodes 1
-    python scripts/30_camera_recorder_test.py --camera front=943222070221   # one camera
+    python scripts/30_camera_recorder_test.py --camera front --camera grip   # some of them
     python scripts/30_camera_recorder_test.py --fake                   # synthetic frames, no cameras
     python scripts/30_camera_recorder_test.py --auto                   # auto exposure (default: fixed values)
 
+The cameras (devices, formats, fixed settings) are those of configs/sim.yaml record.cameras (cam-5a).
 Output: data/cameras/rec_<time>/episode_<n>/ (cam_<name>/*.jpg, cam_<name>.csv), summary printed.
 """
 import argparse
@@ -24,11 +25,9 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from teleop.cameras import CameraRecorder, brightness_problems, print_red, saturation_problems  # noqa: E402
+from teleop.cameras import CameraRecorder, brightness_problems, camera_defs, print_red, refusal_problems  # noqa: E402
 from teleop.settings import load_settings  # noqa: E402
 
-CAMERAS = {"front": "943222070221",   # D435 above the workspace; wrist: C270 webcam on the gripper (cam-4a)
-           "wrist": "/dev/v4l/by-id/usb-046d_0825_6E259540-video-index0"}
 PERIOD = 0.02          # the teleop loop
 LATE_MS = 5.0          # a cycle that starts this much after its time counts as late
 
@@ -73,7 +72,7 @@ def summarize(ep_dir, name, seconds):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--camera", action="append", help="name=serial (repeat); default: front and wrist")
+    ap.add_argument("--camera", action="append", help="a camera name of the config (repeat); default: all")
     ap.add_argument("--episodes", type=int, default=2, help="kept episodes")
     ap.add_argument("--seconds", type=float, default=20.0)
     ap.add_argument("--quality", type=int, default=95, help="JPEG quality")
@@ -81,12 +80,13 @@ def main():
     ap.add_argument("--auto", action="store_true",
                     help="auto exposure / white balance (default: the fixed values of configs/sim.yaml record)")
     args = ap.parse_args()
-    cams = ([tuple(c.split("=", 1)) for c in args.camera] if args.camera else list(CAMERAS.items()))
     r = load_settings(ROOT / "configs" / "sim.yaml")[0].record
-    fixed = {"front": {"exposure_us": r.front_exposure_us, "gain": r.front_gain, "white_balance_k": r.front_white_balance_k},
-             "wrist": {"exposure_us": r.wrist_exposure_us, "gain": r.wrist_gain, "white_balance_k": r.wrist_white_balance_k}}
-    if not args.auto:
-        cams = [(n, sn, fixed[n]) if n in fixed else (n, sn) for n, sn in cams]
+    unknown = set(args.camera or []) - set(vars(r.cameras))
+    if unknown:
+        raise SystemExit(f"--camera: {sorted(unknown)} not in the config ({list(vars(r.cameras))})")
+    cams = camera_defs(r, args.camera)
+    if args.auto:
+        cams = [(n, dev, None, fmt) for n, dev, _, fmt in cams]
 
     out = ROOT / "data" / "cameras" / f"rec_{datetime.now():%Y%m%d_%H%M%S}"
     rec = CameraRecorder(cams, quality=args.quality, fake=args.fake)
@@ -96,9 +96,10 @@ def main():
         raise SystemExit("; ".join(problems))
     print(f"camera process ready in {time.monotonic() - t0:.1f} s")
     for name, c in rec.info.items():
-        print(f"  {name} {c['serial']}: settings {c['settings'] or 'auto'}, mean brightness {c['brightness']}, "
-              f"saturated {100 * (c['saturated_frac'] or 0):.1f} %")
-    print_red([f"  SATURATED: {p}" for p in saturation_problems(rec.info)])
+        print(f"  {name} {c['serial']} ({c['format']}): settings {c['settings'] or 'auto'}, mean brightness "
+              f"{c['brightness']}, saturated {100 * (c['saturated_frac'] or 0):.1f} %, missing rows "
+              f"{100 * (c['missing_rows_frac'] or 0):.1f} %")
+    print_red([f"  REFUSED IN THE TELEOP: {p}" for p in refusal_problems(rec.info)])
     for p in brightness_problems(rec.info, r.brightness_ref, r.brightness_tolerance):
         print(f"  WARNING: {p}")
 

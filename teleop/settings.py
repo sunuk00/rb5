@@ -45,6 +45,17 @@ def _bool():
     return {"kind": "bool"}
 
 
+CAMERA_NAMES = ("front", "wrist", "grip")   # D435 above the workspace; C270 on the gripper (the block); Brio on
+                                            # the gripper (fingers and what they hold)
+_CAMERA = {
+    "device": _str(),                       # RealSense serial number, or a webcam's /dev/v4l/by-id path
+    "format": _str(("RGB", "YUYV", "MJPG")),   # RGB for a RealSense; a webcam: YUYV (uncompressed) or MJPG
+    # fixed settings (cam-2b): auto exposure and auto white balance off
+    "exposure_us": _num(100.0, 100000.0),
+    "gain": _num(0, 255, integer=True),     # RealSense D435 up to 248, the webcams 255
+    "white_balance_k": _num(2800, 6500, integer=True),
+}
+
 # Ranges are hard sanity limits for any mode; the Real limits below are stricter.
 SCHEMA = {
     "mode": _str(("sim", "real")),
@@ -156,15 +167,7 @@ SCHEMA = {
         "task": _str(),                               # task text of the dataset (--task overrides)
         "episode_time_s": _num(5.0, 600.0),           # an episode this long ends and is kept
         "reset_time_s": _num(0.0, 600.0),             # 0 = the next episode starts only with ->
-        "front_serial": _str(),                       # D435 above the workspace
-        "wrist_serial": _str(),                       # on the gripper: a /dev/ path = UVC webcam (cam-4a)
-        # fixed camera settings (cam-2b): auto exposure and auto white balance off
-        "front_exposure_us": _num(100.0, 100000.0),
-        "front_gain": _num(0, 248, integer=True),
-        "front_white_balance_k": _num(2800, 6500, integer=True),
-        "wrist_exposure_us": _num(100.0, 100000.0),
-        "wrist_gain": _num(0, 248, integer=True),
-        "wrist_white_balance_k": _num(2800, 6500, integer=True),
+        "cameras": {name: _CAMERA for name in CAMERA_NAMES},   # cam-5a; the dataset keys are these names
         "brightness_ref": _num(10.0, 245.0),          # mean pixel value (0-255) when the values were chosen
         "brightness_tolerance": _num(0.01, 0.5),      # start check: outside ref x (1 +/- this) -> typed yes
         "jpeg_quality": _num(50, 100, integer=True),
@@ -317,8 +320,15 @@ def _check_relations(d, problems):
     if g["port"] == d["leader"]["port"]:
         problems.append("gripper.port is the leader arm's port")
     rec = d["record"]
-    if rec["front_serial"] == rec["wrist_serial"]:
-        problems.append("record: front_serial and wrist_serial are the same camera")
+    cams = rec["cameras"]
+    devices = [cams[n]["device"] for n in CAMERA_NAMES]
+    if len(set(devices)) != len(devices):
+        problems.append("record.cameras: two cameras have the same device")
+    for n in CAMERA_NAMES:
+        webcam = cams[n]["device"].startswith("/dev/")
+        if webcam == (cams[n]["format"] == "RGB"):
+            problems.append(f"record.cameras.{n}.format: {cams[n]['format']} for "
+                            + ("a webcam (YUYV or MJPG)" if webcam else "a RealSense (RGB)"))
     if not rec["task"].strip():
         problems.append("record.task: empty")
     sv = d["servo"]

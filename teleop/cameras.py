@@ -31,6 +31,7 @@ A UVC webcam has no camera clock: cam_ts_ms is the kernel's buffer time (domain 
 ms), about 33 ms before the arrival; capture_delay_s() gives the delay for every domain.
 """
 import csv
+import io
 import multiprocessing as mp
 import os
 import queue
@@ -51,6 +52,7 @@ SATURATED_LEVEL = 250        # a pixel whose R, G and B are all at least this is
 SATURATED_MAX_FRAC = 0.25    # more saturated pixels than this at the start refuses (no typed yes): the
                              # p1 session 105618 recorded the D405 at 99-100 % (mean 253) after a yes;
                              # normal images have 1-2 %
+MISSING_ROWS_MAX_FRAC = 0.02  # more missing rows than this in a start image refuses (cam-5a: 61 % in the bad case)
 RED, RESET = "\033[1;31m", "\033[0m"
 STALL_S = 1.0                # no frame for this long = camera error (real-pilot 141929: the D405 dropped off
                              # USB and came back as USB 2; its pipeline only timed out, nothing was reported)
@@ -153,16 +155,17 @@ class RealSenseCamera:
 
 
 class UVCCamera:
-    """Color stream of a UVC webcam (cam-4a: Logitech C270 on the gripper) found by its device path, e.g.
-    /dev/v4l/by-id/usb-046d_0825_<serial>-video-index0 (the same after a replug). YUYV, converted to RGB
-    (MJPG gave a corrupt-JPEG warning on almost every frame). Settings (optional): auto exposure, the variable
-    frame rate and auto white balance off, then exposure_us (0.1 ms steps), gain, white_balance_k, written once
-    the stream runs and read back (applied = what the camera reports). The webcam keeps them until it is unplugged, so they
-    are written at every open. Frame numbers count the frame periods between the buffer times, so a missed
+    """Color stream of a UVC webcam (cam-4a: Logitech C270, cam-5a: Brio 101, both on the gripper) found by its
+    device path, e.g. /dev/v4l/by-id/usb-046d_0825_<serial>-video-index0 (the same after a replug). fmt YUYV
+    (uncompressed, converted to RGB) or MJPG (cam-5a: less USB bandwidth; the JPEG bytes are decoded with PIL,
+    as OpenCV's decoder printed a corrupt-JPEG warning for almost every C270 frame). Settings (optional): auto
+    exposure, the variable frame rate and auto white balance off, then exposure_us (0.1 ms steps), gain,
+    white_balance_k, written once the stream runs and read back (applied = what the camera reports). The webcam
+    keeps them until it is unplugged, so they are written at every open. Frame numbers count the frame periods between the buffer times, so a missed
     frame shows as a gap as on a RealSense."""
 
-    def __init__(self, path, width, height, fps, settings=None):
-        self.path = str(path)
+    def __init__(self, path, width, height, fps, settings=None, fmt="YUYV"):
+        self.path, self.mjpg = str(path), fmt == "MJPG"
         if not os.path.exists(self.path):
             raise RuntimeError(f"webcam {self.path} not found (ls /dev/v4l/by-id)")
         import cv2
@@ -171,7 +174,9 @@ class UVCCamera:
         self.cap = cv2.VideoCapture(self.path, cv2.CAP_V4L2)
         if not self.cap.isOpened():
             raise RuntimeError(f"webcam {self.path} could not be opened (another program using it?)")
-        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"YUYV"))
+        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*fmt))
+        if self.mjpg:   # the JPEG bytes as sent: decoded with PIL in read() (OpenCV's decoder prints a warning
+            self.cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)   # for almost every C270 frame, cam-5a)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         self.cap.set(cv2.CAP_PROP_FPS, fps)
@@ -221,7 +226,7 @@ class UVCCamera:
 
     def read(self):
         """Same as RealSenseCamera.read; camera ts = the kernel buffer time (monotonic ms), domain v4l2."""
-        ok, bgr = self.cap.read()
+        ok, frame = self.cap.read()
         mono, wall_ms = time.monotonic(), time.time() * 1000.0
         if not ok:
             time.sleep(0.1)   # an unplugged webcam fails at once: no busy loop
@@ -229,7 +234,15 @@ class UVCCamera:
         ts = self.cap.get(self.cv2.CAP_PROP_POS_MSEC)
         self.n += 1 if self.last_ts is None else max(1, round((ts - self.last_ts) / self.period_ms))
         self.last_ts = ts
-        return self.cv2.cvtColor(bgr, self.cv2.COLOR_BGR2RGB), self.n, ts, "v4l2", mono, wall_ms
+        if self.mjpg:
+            from PIL import Image
+            try:
+                img = np.asarray(Image.open(io.BytesIO(frame.tobytes())).convert("RGB"))
+            except OSError:   # a broken JPEG: counted as a missed frame (the next one is a gap)
+                return None
+        else:
+            img = self.cv2.cvtColor(frame, self.cv2.COLOR_BGR2RGB)
+        return img, self.n, ts, "v4l2", mono, wall_ms
 
     def close(self):
         self.cap.release()
@@ -252,12 +265,13 @@ def uvc_mismatch(want, got):
     return bad
 
 
-def open_camera(serial, width, height, fps, settings=None, fake=False):
-    """FakeCamera (fake), UVCCamera (serial = a /dev/ path) or RealSenseCamera (serial number)."""
+def open_camera(serial, width, height, fps, settings=None, fake=False, fmt=None):
+    """FakeCamera (fake), UVCCamera (serial = a /dev/ path; fmt YUYV, the default, or MJPG) or RealSenseCamera
+    (serial number)."""
     if fake:
         return FakeCamera(serial, width, height, fps, settings)
     if str(serial).startswith("/dev/"):
-        return UVCCamera(serial, width, height, fps, settings)
+        return UVCCamera(serial, width, height, fps, settings, fmt or "YUYV")
     return RealSenseCamera(serial, width, height, fps, settings)
 
 
@@ -359,16 +373,23 @@ def _save(ep, item, quality, stats, Image):
 
 
 def image_level(img):
-    """(mean pixel value 0-255, fraction of saturated pixels) of an HxWx3 uint8 image."""
-    return float(img.mean()), float((img.min(axis=2) >= SATURATED_LEVEL).mean())
+    """(mean pixel value 0-255, fraction of saturated pixels, fraction of missing rows) of an HxWx3 uint8 RGB
+    image. A missing row is pure green (R and B under 20, G over 100 in almost every pixel): what YUYV gives
+    where the frame data did not arrive (Y = U = V = 0); cam-5a: the C270 under the uvcvideo FIX_BANDWIDTH
+    quirk sent only the top 39 % of every frame, and the brightness check passed it."""
+    green = (img[..., 0] < 20) & (img[..., 1] > 100) & (img[..., 2] < 20)
+    return (float(img.mean()), float((img.min(axis=2) >= SATURATED_LEVEL).mean()),
+            float((green.mean(axis=1) > 0.98).mean()))
 
 
 def level_info(levels):
-    """{"brightness", "saturated_frac"} from a list of image_level() results (None, None if empty)."""
+    """{"brightness", "saturated_frac", "missing_rows_frac"} from a list of image_level() results (None if
+    empty)."""
     if not levels:
-        return {"brightness": None, "saturated_frac": None}
+        return {"brightness": None, "saturated_frac": None, "missing_rows_frac": None}
     v = np.asarray(levels)
-    return {"brightness": round(float(v[:, 0].mean()), 1), "saturated_frac": round(float(v[:, 1].mean()), 3)}
+    return {"brightness": round(float(v[:, 0].mean()), 1), "saturated_frac": round(float(v[:, 1].mean()), 3),
+            "missing_rows_frac": round(float(v[:, 2].max()), 3)}
 
 
 def _brightness(cam):
@@ -386,19 +407,21 @@ def _brightness(cam):
 
 
 def _process_main(cameras, width, height, fps, quality, fake, cmd_q, reply_q):
-    """cameras: list of (name, serial) or (name, serial, settings). Runs until ("quit",)."""
+    """cameras: list of (name, serial), (name, serial, settings) or (name, serial, settings, format). Runs
+    until ("quit",)."""
     opened, errors, stop = [], queue.Queue(), threading.Event()
     info = {}
     try:
         for cam_def in cameras:
             name, serial = cam_def[0], cam_def[1]
             settings = cam_def[2] if len(cam_def) > 2 else None
+            fmt = cam_def[3] if len(cam_def) > 3 else None
             try:
-                cam = open_camera(serial, width, height, fps, settings, fake)
+                cam = open_camera(serial, width, height, fps, settings, fake, fmt)
             except Exception as e:
                 raise RuntimeError(f"{name} ({serial}): {e}") from e
             opened.append((name, cam))
-            info[name] = {"serial": str(serial), "settings": cam.applied}
+            info[name] = {"serial": str(serial), "format": fmt, "settings": cam.applied}
         for name, cam in opened:   # before the threads start: read() is used directly here
             info[name].update(_brightness(cam))
     except Exception as e:
@@ -466,9 +489,10 @@ def _process_main(cameras, width, height, fps, quality, fake, cmd_q, reply_q):
 class CameraRecorder:
     """Teleop side: starts the camera process and sends it episode commands (none of them blocks long).
 
-    cameras: list of (name, serial) or (name, serial, settings), e.g. [("front", "943222070221",
-    {"exposure_us": 16667, "gain": 76, "white_balance_k": 4600}), ...]. After open(), info = {name: {serial,
-    settings (as read back, or None = auto), brightness}}.
+    cameras: list of (name, serial), (name, serial, settings) or (name, serial, settings, format), e.g.
+    camera_defs(settings.record) or [("front", "943222070221", {"exposure_us": 16667, "gain": 76,
+    "white_balance_k": 4600}), ...]. After open(), info = {name: {serial, format, settings (as read back, or
+    None = auto), brightness, saturated_frac, missing_rows_frac}}.
     """
 
     def __init__(self, cameras, width=640, height=480, fps=30, quality=95, fake=False):
@@ -579,6 +603,33 @@ def saturation_problems(info, max_frac=SATURATED_MAX_FRAC):
                             f"mean brightness {cam.get('brightness')}: the images would carry no detail. Check the "
                             f"camera (unplug / replug it, scripts/34) and the light on it, then start again")
     return problems
+
+
+def missing_rows_problems(info, max_frac=MISSING_ROWS_MAX_FRAC):
+    """Cameras whose start images lack rows (frame data that did not arrive, see image_level): list of texts.
+    The callers refuse to start, as for a saturated image."""
+    problems = []
+    for name, cam in info.items():
+        f = cam.get("missing_rows_frac")
+        if f is not None and f > max_frac:
+            problems.append(f"{name}: {100 * f:.0f} % of the image rows missing (pure green; limit {100 * max_frac:.0f} %): "
+                            f"the frames arrive incomplete. USB bandwidth? (uvcvideo quirks, another camera on the "
+                            f"same bus: lsusb -t)")
+    return problems
+
+
+def refusal_problems(info):
+    """saturation_problems + missing_rows_problems: start images that must not be recorded (no typed yes)."""
+    return saturation_problems(info) + missing_rows_problems(info)
+
+
+def camera_defs(record, names=None):
+    """[(name, device, settings, format)] of the settings' record.cameras (cam-5a), in the config order or in
+    the order of names (e.g. the cameras a policy expects); KeyError for a name that is not configured."""
+    cams = vars(record.cameras)
+    return [(n, cams[n].device, {"exposure_us": cams[n].exposure_us, "gain": cams[n].gain,
+                                 "white_balance_k": cams[n].white_balance_k}, cams[n].format)
+            for n in (names or list(cams))]
 
 
 def print_red(lines):

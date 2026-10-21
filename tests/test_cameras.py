@@ -12,8 +12,9 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from teleop.cameras import (CAMERA_HEADER, CameraRecorder, FakeCamera, brightness_problems,  # noqa: E402
-                           capture_delay_s, image_level, level_info, open_camera, saturation_problems,
-                           uvc_controls, uvc_mismatch)
+                           camera_defs, capture_delay_s, image_level, level_info, open_camera,
+                           refusal_problems, saturation_problems, uvc_controls, uvc_mismatch)
+from teleop.settings import load_settings  # noqa: E402
 
 CAMS = [("front", "1"), ("wrist", "2")]
 
@@ -141,11 +142,28 @@ class TestSettingsAndBrightness(unittest.TestCase):
         img = np.full((10, 10, 3), 100, dtype=np.uint8)
         img[:3] = 255                                    # 30 % white
         img[3, :, 0] = 255                               # red only: not saturated (one channel)
-        mean, frac = image_level(img)
+        mean, frac, missing = image_level(img)
         self.assertAlmostEqual(frac, 0.3)
-        self.assertEqual(saturation_problems({"a": level_info([(mean, frac)])})[0][:3], "a: ")
-        self.assertEqual(saturation_problems({"a": level_info([(mean, 0.2)])}), [])   # under 25 %
+        self.assertEqual(missing, 0.0)
+        self.assertEqual(saturation_problems({"a": level_info([(mean, frac, 0.0)])})[0][:3], "a: ")
+        self.assertEqual(saturation_problems({"a": level_info([(mean, 0.2, 0.0)])}), [])   # under 25 %
         self.assertEqual(saturation_problems({"a": level_info([])}), [])              # unknown: not refused here
+
+    def test_missing_rows(self):
+        """cam-5a: YUYV frame data that did not arrive is Y = U = V = 0, pure green (0, 135, 0) in RGB."""
+        img = np.full((100, 64, 3), 120, dtype=np.uint8)
+        img[39:] = (0, 135, 0)                           # the bottom 61 % missing, as the C270 under FIX_BANDWIDTH
+        mean, frac, missing = image_level(img)
+        self.assertAlmostEqual(missing, 0.61)
+        info = {"wrist": level_info([(mean, frac, missing), (mean, frac, 0.0)])}   # the worst frame counts
+        self.assertEqual(info["wrist"]["missing_rows_frac"], 0.61)
+        problems = refusal_problems(info)
+        self.assertEqual(len(problems), 1)
+        self.assertTrue(problems[0].startswith("wrist: 61 % of the image rows missing"))
+        block = np.full((100, 64, 3), 120, dtype=np.uint8)
+        block[20:60] = (60, 160, 60)                     # the green block across whole rows: not missing
+        self.assertEqual(image_level(block)[2], 0.0)
+        self.assertEqual(refusal_problems({"a": level_info([image_level(block)])}), [])
 
     def test_brightness_limits(self):
         info = {"a": {"brightness": 97.0}, "b": {"brightness": 131.0}, "c": {"brightness": 96.8}, "d": {"brightness": None}}
@@ -192,6 +210,16 @@ class TestWebcam(unittest.TestCase):
         got = dict(want)
         del got["exposure_dynamic_framerate"]
         self.assertEqual(uvc_mismatch(want, got), ["exposure_dynamic_framerate None (set 0)"])
+
+    def test_camera_defs_from_the_config(self):
+        r = load_settings(ROOT / "configs" / "sim.yaml")[0].record
+        defs = camera_defs(r)
+        self.assertEqual([d[0] for d in defs], ["front", "wrist", "grip"])
+        self.assertEqual([d[3] for d in defs], ["RGB", "MJPG", "YUYV"])
+        self.assertEqual(set(defs[0][2]), {"exposure_us", "gain", "white_balance_k"})
+        self.assertEqual([d[0] for d in camera_defs(r, ["grip", "front"])], ["grip", "front"])   # policy order
+        with self.assertRaises(KeyError):
+            camera_defs(r, ["side"])
 
     def test_capture_delay(self):
         self.assertAlmostEqual(capture_delay_s(1000.0, "v4l2", 1.033, 5000.0), 0.033)        # monotonic ms

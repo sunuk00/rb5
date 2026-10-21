@@ -1,7 +1,7 @@
 """cam-2a / cam-4b: find fixed exposure / gain / white balance for the cameras. Cameras only, no robot.
 
-The cameras are the ones of configs/sim.yaml record (front_serial, wrist_serial): a RealSense by its serial
-number, a UVC webcam by its /dev/ path (cam-4b: the C270 on the gripper). For each, 640x480 RGB @ 30:
+The cameras are the ones of configs/sim.yaml record.cameras (cam-5a: front, wrist, grip): a RealSense by its
+serial number, a UVC webcam by its /dev/ path in its configured format. For each, 640x480 RGB @ 30:
   1. auto exposure and auto white balance: mean brightness, frame-to-frame noise, a sample image. Its mean
      is the target, unless --target gives one (the start check compares every camera with brightness_ref)
   2. fixed exposure at each candidate (default 8.3 and 16.7 ms: multiples of 1/120 s, so 60 Hz lighting
@@ -34,7 +34,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from teleop.cameras import UVCCamera  # noqa: E402
-from teleop.settings import load_settings  # noqa: E402
+from teleop.settings import CAMERA_NAMES, load_settings  # noqa: E402
 
 MEASURE_FRAMES = 6
 
@@ -85,8 +85,8 @@ class Webcam:
     """UVC webcam (teleop UVCCamera for the stream, v4l2-ctl for the controls)."""
     settle_s = 1.0      # the C270 took longer than 0.6 s to settle after leaving auto exposure (cam-4a)
 
-    def __init__(self, path):
-        self.cam = UVCCamera(path, 640, 480, 30)
+    def __init__(self, path, fmt):
+        self.cam = UVCCamera(path, 640, 480, 30, fmt=fmt)
         self.name = "UVC webcam"
         line = next(l for l in self.cam.ctl("-l").splitlines() if l.split()[:1] == ["gain"])
         fields = dict(f.split("=") for f in line.split(":", 1)[1].split() if "=" in f)
@@ -134,19 +134,19 @@ def save(img, out, name):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--camera", choices=["front", "wrist"], action="append", help="default: both")
+    ap.add_argument("--camera", choices=CAMERA_NAMES, action="append", help="default: all")
     ap.add_argument("--target", type=float, help="mean brightness to match (default: the auto one)")
     ap.add_argument("--exposures-us", type=float, nargs="+", default=[8333.0, 16667.0])
     ap.add_argument("--wb", type=float, nargs="+", default=[4000.0, 4600.0, 5200.0])
     args = ap.parse_args()
     r = load_settings(ROOT / "configs" / "sim.yaml")[0].record
-    cameras = {"front": r.front_serial, "wrist": r.wrist_serial}
+    cameras = vars(r.cameras)
     out = ROOT / "data" / "cameras" / f"settings_{datetime.now():%Y%m%d_%H%M%S}"
     out.mkdir(parents=True)
 
     for name in args.camera or list(cameras):
-        serial = str(cameras[name])
-        cam = Webcam(serial) if serial.startswith("/dev/") else RealSense(serial)
+        serial = str(cameras[name].device)
+        cam = Webcam(serial, cameras[name].format) if serial.startswith("/dev/") else RealSense(serial)
         g_min, g_max = cam.gain_range
         print(f"\n== {name} ({cam.name}, {serial}); gain {g_min:.0f}..{g_max:.0f}")
         try:

@@ -199,7 +199,8 @@ def make_policy(spec):
 
 
 def _policy_main(spec, cameras, fake_cameras, fps, state, out_q, cmd_q, reply_q):
-    """cameras: list of (name, serial, settings or None). Sends ("ready", info) or ("error", text) first."""
+    """cameras: list of (name, serial, settings or None[, format]). Sends ("ready", info) or ("error", text)
+    first."""
     from .cameras import image_level, level_info, open_camera
     if spec.get("cpu_cores"):
         first, last = spec["cpu_cores"]
@@ -208,8 +209,8 @@ def _policy_main(spec, cameras, fake_cameras, fps, state, out_q, cmd_q, reply_q)
     opened, readers = [], {}
     try:
         policy = make_policy(spec)
-        for name, serial, settings in cameras:
-            cam = open_camera(serial, 640, 480, 30, settings, fake_cameras)
+        for name, serial, settings, *fmt in cameras:
+            cam = open_camera(serial, 640, 480, 30, settings, fake_cameras, fmt[0] if fmt else None)
             opened.append(cam)
             readers[name] = _Latest(cam, stop)
             readers[name].start()
@@ -225,12 +226,13 @@ def _policy_main(spec, cameras, fake_cameras, fps, state, out_q, cmd_q, reply_q)
         reply_q.put(("error", f"policy process start failed: {e}"))
         return
     info = {}
-    for (name, serial, _), cam in zip(cameras, opened):   # start brightness, as the recording checks it
+    for (name, serial, _, *fmt), cam in zip(cameras, opened):   # start brightness, as the recording checks it
         levels, t_end = [], time.monotonic() + 1.0
         while time.monotonic() < t_end:
             levels.append(image_level(readers[name].latest()[0]))
             time.sleep(0.1)
-        info[name] = {"serial": str(serial), "settings": cam.applied, **level_info(levels)}
+        info[name] = {"serial": str(serial), "format": fmt[0] if fmt else None, "settings": cam.applied,
+                      **level_info(levels)}
     # Warm-up: the first inferences on the GPU are slow (about 230 ms: kernel selection), before "ready"
     first = next(iter(readers)) if readers else None
     for _ in range(3):

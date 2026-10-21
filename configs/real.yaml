@@ -158,17 +158,30 @@ record:                         # demonstrations: python -m teleop --record [--t
   task: "pick the block and place it in the box"
   episode_time_s: 120.0         # user, 2026-10-19: 2 minutes, then the episode ends and is kept
   reset_time_s: 0.0             # 0 = the next episode starts only with -> (no automatic start)
-  front_serial: "943222070221"  # D435, fixed above the workspace
-  wrist_serial: "/dev/v4l/by-id/usb-046d_0825_6E259540-video-index0"   # C270 webcam on the gripper (cam-4a; the
-                                # D405 130322273474 broke 2026-10-21). A /dev/ path = UVC webcam, a number = RealSense
-  # Fixed camera settings (cam-2b, user 2026-10-21; measured with script 34 in the lab lighting): exposures are
-  # multiples of 1/120 s (60 Hz lights do not flicker); gains match the auto brightness (about 114)
-  front_exposure_us: 16667.0    # D435 (fixed camera): 8.3 ms was too dark even at the maximum gain
-  front_gain: 76
-  front_white_balance_k: 4600
-  wrist_exposure_us: 8333.0     # moves with the gripper: short exposure, blur about 2 mm at 250 mm/s
-  wrist_gain: 78                # C270 (0-255): mean 114.6 at 8.3 ms (cam-4b, script 34, 2026-10-21 lab lighting)
-  wrist_white_balance_k: 4600
+  # Cameras (cam-5a): device = RealSense serial number or a webcam's /dev/v4l/by-id path (the same after a
+  # replug). The two webcams share one USB 2 bus: the C270 in MJPG and the Brio in YUYV fit together, both in
+  # YUYV do not (the Brio is refused: not enough bandwidth). Fixed settings (cam-2b, measured with script 34 in
+  # the lab lighting): exposures are multiples of 1/120 s (60 Hz lights do not flicker); gains match a mean
+  # brightness of about 114.
+  cameras:
+    front:                      # D435, fixed above the workspace
+      device: "943222070221"
+      format: RGB
+      exposure_us: 16667.0      # fixed camera: 8.3 ms was too dark even at the maximum gain
+      gain: 76
+      white_balance_k: 4600
+    wrist:                      # C270 webcam on the gripper, sees the block (cam-4a; the D405 broke 2026-10-21)
+      device: "/dev/v4l/by-id/usb-046d_0825_6E259540-video-index0"
+      format: MJPG              # cam-5a: leaves the bus room for the Brio
+      exposure_us: 8333.0       # moves with the gripper: short exposure, blur about 2 mm at 250 mm/s
+      gain: 78                  # mean 114.6 in YUYV before the camera was re-aimed (cam-4b): to measure again (cam-5b)
+      white_balance_k: 4600
+    grip:                       # Brio 101 webcam on the gripper, sees the fingers and what they hold (cam-5a)
+      device: "/dev/v4l/by-id/usb-046d_Brio_101_2612APCBP7K8-video-index0"
+      format: YUYV
+      exposure_us: 8333.0
+      gain: 78                  # provisional: to measure (cam-5b)
+      white_balance_k: 4600
   brightness_ref: 114.0         # mean pixel value with these settings in the reference lighting
   brightness_tolerance: 0.15    # start: a camera outside 114 +/- 15 % (97..131) asks for a typed yes
   jpeg_quality: 95

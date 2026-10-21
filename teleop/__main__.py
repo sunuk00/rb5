@@ -15,9 +15,10 @@ Steps:
      the gripper: torque off and operating mode 3 (a held object is dropped: put it down first)
   7. CSV, the gripper thread CSV and a copy of the settings saved in the log folder
 
-With --record (demonstrations, rec-3b): the cameras (record.front_serial / wrist_serial) start before
+With --record (demonstrations, rec-3b): the cameras (record.cameras: front, wrist, grip) start before
 anything moves with their fixed exposure / gain / white balance read back (refused if one is missing or a
-value differs, or if a start image is saturated: cameras.SATURATED_MAX_FRAC, no typed yes); a mean
+value differs, or if a start image is saturated or has missing rows: cameras.refusal_problems, no typed
+yes); a mean
 brightness outside record.brightness_ref +/- brightness_tolerance asks for a typed yes (cam-2b), and the run
 is a session in record.dir/<mode>_<time>/.
 Keys in this terminal during the loop, as LeRobot's: -> / n end and keep the episode, or start the next
@@ -162,13 +163,9 @@ def main():
         if args.no_cameras:
             print(f"Record: session {session.relative_to(ROOT)}, NO cameras (--no-cameras), task '{task}'")
         else:
-            from .cameras import CameraRecorder, brightness_problems, print_red, saturation_problems
+            from .cameras import CameraRecorder, brightness_problems, camera_defs, print_red, refusal_problems
             r = s.record
-            cams = [("front", r.front_serial, {"exposure_us": r.front_exposure_us, "gain": r.front_gain,
-                                                "white_balance_k": r.front_white_balance_k}),
-                    ("wrist", r.wrist_serial, {"exposure_us": r.wrist_exposure_us, "gain": r.wrist_gain,
-                                                "white_balance_k": r.wrist_white_balance_k})]
-            cameras = CameraRecorder(cams, quality=r.jpeg_quality)
+            cameras = CameraRecorder(camera_defs(r), quality=r.jpeg_quality)
             problems = cameras.open()
             if problems:
                 close_ports()
@@ -176,11 +173,11 @@ def main():
             print(f"Record: session {session.relative_to(ROOT)}, task '{task}'")
             for name, c in cameras.info.items():
                 st = c["settings"]
-                print(f"  {name} {c['serial']}: exposure {st['exposure_us'] / 1000:.1f} ms, gain {st['gain']:g}, "
-                      f"white balance {st['white_balance_k']:g} K (fixed), mean brightness {c['brightness']}")
-            problems = saturation_problems(cameras.info)
+                print(f"  {name} {c['serial']} ({c['format']}): exposure {st['exposure_us'] / 1000:.1f} ms, gain "
+                      f"{st['gain']:g}, white balance {st['white_balance_k']:g} K (fixed), mean brightness {c['brightness']}")
+            problems = refusal_problems(cameras.info)
             if problems:
-                print_red(["NOT STARTING - camera image saturated (no typed yes for this):"]
+                print_red(["NOT STARTING - camera image saturated or incomplete (no typed yes for this):"]
                           + [f"  {p}" for p in problems])
                 close_ports()
                 sys.exit(1)

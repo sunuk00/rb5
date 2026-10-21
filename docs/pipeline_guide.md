@@ -33,8 +33,9 @@ The task text is the same in every step. (ACT does not use it, but the dataset a
 ## 1. Collect (Real teleop, both cameras)
 
 Checklist: Real mode on the tablet, leader arm and gripper powered, D435 on USB 3 (`lsusb -t` shows 5000M),
-C270 webcam on the gripper (`ls /dev/v4l/by-id` shows `usb-046d_0825_...`; it is a USB 2 device), no other
-program using a camera (realsense-viewer, ffplay), lighting as usual, block in the square, gripper open.
+both webcams on the gripper (`ls /dev/v4l/by-id` shows `usb-046d_0825_...` = wrist and `usb-046d_Brio_101_...`
+= grip; USB 2 devices), no other program using a camera (realsense-viewer, ffplay), lighting as usual, block in
+the square, gripper open. Cameras: `record.cameras` in configs/real.yaml (front, wrist, grip; cam-5a).
 
 ```bash
 cd ~/RB_Cobot

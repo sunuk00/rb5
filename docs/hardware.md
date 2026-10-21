@@ -66,6 +66,11 @@ Decisions and measurements behind them are in `docs/decisions.md`.
   measured), no camera clock (kernel buffer time, about 33 ms before arrival). Settings with `v4l2-ctl`,
   written once the stream runs (cam-4a, cam-4b). USB autosuspend off with `assets/udev/99-rb-cobot-webcam.rules`
   (cam-4c).
+- **Grip camera (cam-5a):** Logitech Brio 101 webcam (046d:094d, serial 2612APCBP7K8, USB 2) on the gripper,
+  aimed at the fingers: `/dev/v4l/by-id/usb-046d_Brio_101_2612APCBP7K8-video-index0`, YUYV 640x480 @ 30 (also
+  1280x720 @ 5 YUYV / @ 30 MJPG). The C270 and the Brio share the USB 2 bus of the main controller: the C270
+  runs in MJPG so that both fit (both YUYV: not enough bandwidth). Same v4l2 controls as the C270 (exposure
+  0.5-250 ms in 0.1 ms steps, gain 0-255, white balance 2800-7500 K).
 
 ## Gripper
 - 3D-printed parallel gripper (built by a team member, in progress), one Dynamixel MX-106T (TTL, 3-pin).

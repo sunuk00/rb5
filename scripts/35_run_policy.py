@@ -37,7 +37,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from teleop import preflight  # noqa: E402
-from teleop.cameras import brightness_problems, print_red, saturation_problems  # noqa: E402
+from teleop.cameras import brightness_problems, camera_defs, print_red, refusal_problems  # noqa: E402
 from teleop.episodes import KeyReader  # noqa: E402
 from teleop.follow import TargetFollower  # noqa: E402
 from teleop.gripper import MODE_AT_END, PRESENT_POSITION, open_gripper, start_lines, start_worker  # noqa: E402
@@ -87,14 +87,11 @@ def main():
     # 1. Policy process with the cameras the policy expects
     names, state_len = policy_inputs(ckpt)
     r = s.record
-    fixed = {"front": (r.front_serial, {"exposure_us": r.front_exposure_us, "gain": r.front_gain,
-                                         "white_balance_k": r.front_white_balance_k}),
-             "wrist": (r.wrist_serial, {"exposure_us": r.wrist_exposure_us, "gain": r.wrist_gain,
-                                         "white_balance_k": r.wrist_white_balance_k})}
-    unknown = [n for n in names if n not in fixed]
+    known = list(vars(r.cameras))
+    unknown = [n for n in names if n not in known]
     if unknown or state_len != 7:
-        raise SystemExit(f"NOT STARTING - the policy expects cameras {names} / state {state_len} (known: {list(fixed)}, 7)")
-    cams = [(n, fixed[n][0], fixed[n][1]) for n in names]
+        raise SystemExit(f"NOT STARTING - the policy expects cameras {names} / state {state_len} (known: {known}, 7)")
+    cams = camera_defs(r, names)   # the same devices, formats and fixed settings as the recording
     print(f"Policy {ckpt} (cameras {names}), task '{task}'. Loading (model on the GPU, cameras) ...")
     client = PolicyClient({"kind": "act", "checkpoint": str(ckpt), "device": "cuda", "task": task,
                            "cpu_cores": policy_cores, "torch_threads": args.torch_threads}, cams)
@@ -105,11 +102,11 @@ def main():
     cam_info = client.info["cameras"]
     for n, c in cam_info.items():
         st = c["settings"]
-        print(f"  {n} {c['serial']}: exposure {st['exposure_us'] / 1000:.1f} ms, gain {st['gain']:g}, "
+        print(f"  {n} {c['serial']} ({c['format']}): exposure {st['exposure_us'] / 1000:.1f} ms, gain {st['gain']:g}, "
               f"white balance {st['white_balance_k']:g} K, brightness {c['brightness']}")
-    problems = saturation_problems(cam_info)
+    problems = refusal_problems(cam_info)
     if problems:
-        print_red(["NOT STARTING - camera image saturated (no typed yes for this):"] + [f"  {p}" for p in problems])
+        print_red(["NOT STARTING - camera image saturated or incomplete (no typed yes for this):"] + [f"  {p}" for p in problems])
         client.close()
         raise SystemExit(1)
     problems = brightness_problems(cam_info, r.brightness_ref, r.brightness_tolerance)
