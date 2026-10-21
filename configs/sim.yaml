@@ -163,7 +163,7 @@ record:                         # demonstrations: python -m teleop --record [--t
   front_gain: 76
   front_white_balance_k: 4600
   wrist_exposure_us: 8333.0     # moves with the gripper: short exposure, blur about 2 mm at 250 mm/s
-  wrist_gain: 128               # C270 (0-255), provisional: mean 121 at 8.3 ms in a quick test; set in cam-4b
+  wrist_gain: 78                # C270 (0-255): mean 114.6 at 8.3 ms (cam-4b, script 34, 2026-10-21 lab lighting)
   wrist_white_balance_k: 4600
   brightness_ref: 114.0         # mean pixel value with these settings in the reference lighting
   brightness_tolerance: 0.15    # start: a camera outside 114 +/- 15 % (97..131) asks for a typed yes
