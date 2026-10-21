@@ -174,13 +174,14 @@ record:                         # demonstrations: python -m teleop --record [--t
       device: "/dev/v4l/by-id/usb-046d_0825_6E259540-video-index0"
       format: MJPG              # cam-5a: leaves the bus room for the Brio
       exposure_us: 8333.0       # moves with the gripper: short exposure, blur about 2 mm at 250 mm/s
-      gain: 78                  # mean 114.6 in YUYV before the camera was re-aimed (cam-4b): to measure again (cam-5b)
+      gain: 86                  # MJPG, re-aimed: mean 114.1 at 8.3 ms (cam-5b, script 34, 2026-10-21 lab lighting)
       white_balance_k: 4600
     grip:                       # Brio 101 webcam on the gripper, sees the fingers and what they hold (cam-5a)
       device: "/dev/v4l/by-id/usb-046d_Brio_101_2612APCBP7K8-video-index0"
       format: YUYV
       exposure_us: 8333.0
-      gain: 78                  # provisional: to measure (cam-5b)
+      gain: 152                 # mean 114.6 at 8.3 ms (cam-5b, script 34); less sensitive than the C270. 4600 K =
+                                # its auto white balance (it is sensitive to it, unlike the C270)
       white_balance_k: 4600
   brightness_ref: 114.0         # mean pixel value with these settings in the reference lighting
   brightness_tolerance: 0.15    # start: a camera outside 114 +/- 15 % (97..131) asks for a typed yes
