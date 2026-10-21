@@ -37,7 +37,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from teleop import preflight  # noqa: E402
-from teleop.cameras import brightness_problems  # noqa: E402
+from teleop.cameras import brightness_problems, print_red, saturation_problems  # noqa: E402
 from teleop.episodes import KeyReader  # noqa: E402
 from teleop.follow import TargetFollower  # noqa: E402
 from teleop.gripper import MODE_AT_END, PRESENT_POSITION, open_gripper, start_lines, start_worker  # noqa: E402
@@ -107,6 +107,11 @@ def main():
         st = c["settings"]
         print(f"  {n} {c['serial']}: exposure {st['exposure_us'] / 1000:.1f} ms, gain {st['gain']:g}, "
               f"white balance {st['white_balance_k']:g} K, brightness {c['brightness']}")
+    problems = saturation_problems(cam_info)
+    if problems:
+        print_red(["NOT STARTING - camera image saturated (no typed yes for this):"] + [f"  {p}" for p in problems])
+        client.close()
+        raise SystemExit(1)
     problems = brightness_problems(cam_info, r.brightness_ref, r.brightness_tolerance)
     for p in problems:
         print(f"  WARNING: {p}")

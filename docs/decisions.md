@@ -110,6 +110,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-21 — Data rules for the first ACT dataset (docs/data_rules.md)](#2026-10-21--data-rules-for-the-first-act-dataset-docsdata_rulesmd)
 - [2026-10-21 — cam-2a: fixed camera exposure candidates measured (script 34)](#2026-10-21--cam-2a-fixed-camera-exposure-candidates-measured-script-34)
 - [2026-10-21 — cam-2b: fixed camera settings in the teleop; brightness check at start](#2026-10-21--cam-2b-fixed-camera-settings-in-the-teleop-brightness-check-at-start)
+- [2026-10-21 — cam-3: a saturated camera image refuses the start (red, no typed yes)](#2026-10-21--cam-3-a-saturated-camera-image-refuses-the-start-red-no-typed-yes)
 - [2026-10-21 — range.z_min_mm -50 -> 19 mm for the mounted gripper](#2026-10-21--rangez_min_mm--50---19-mm-for-the-mounted-gripper)
 - [2026-10-21 — rec-6 policy runner: decisions (two processes, temporal ensembling by time, 100 % speed, keyboard toggle)](#2026-10-21--rec-6-policy-runner-decisions-two-processes-temporal-ensembling-by-time-100--speed-keyboard-toggle)
 - [2026-10-21 — rec-6a: policy runner structure (teleop/policy.py) with a fake policy and robot](#2026-10-21--rec-6a-policy-runner-structure-teleoppolicypy-with-a-fake-policy-and-robot)
@@ -2682,6 +2683,30 @@ steps about 15 epochs, enough to tell too little data from too little training. 
 block position must come from the wrist camera. If round 1 shows it, it is the reason to move the D435.
 
 **Not yet tried end to end:** both cameras through convert -> train -> run (the pilot was front only).
+
+## 2026-10-21 — cam-3: a saturated camera image refuses the start (red, no typed yes)
+
+**What happened (p1 collection):** session real_20261021_105618 (51 kept episodes) recorded the D405 (wrist)
+saturated in every frame: mean 250-254, 98-100 % of the pixels white; the front camera and the robot data
+were fine. The start check measured the wrist at 253.4 (outside 97..131) and a typed yes let it record.
+The settings read back were the normal ones (8.3 ms, gain 61); opened again later the camera gave 115.5:
+the cause is not known (camera state). With 100 ms exposure / gain 128 the D405 gives the same picture
+(253.9, 98 %). A saturated image has no detail to recover, so the session (and the earlier 7-episode session
+073857) went to data/archive/demos and the 50 episodes are collected again (user).
+
+**Decision (user):** a saturated image must show a red warning and must not be passable with yes.
+`teleop/cameras.py`: `image_level` (mean, fraction of pixels with R, G and B all >= 250), `level_info`,
+`saturation_problems` (more than 25 % saturated, `SATURATED_MAX_FRAC`; normal images 0-2 %), `print_red`.
+The start measurement (camera process and policy process) records `saturated_frac` with the brightness
+(episodes.json, run JSON). The teleop (`--record`) and script 35 refuse in red before anything moves; script 30
+prints it in red. The brightness range check with its typed yes stays for the smaller differences.
+
+**Checked:** tests (fake camera at 253: 100 % and refused; one channel at 255 does not count; under 25 %
+passes); real cameras: normal 119.7 / 0.7 % (front), 115.5 / 0 % (wrist); wrist at 165 ms / gain 128: 253.9 /
+98 %, red text; script 35 with a config at front 100 ms / gain 128: 245.8 / 78 %, "NOT STARTING", exit 1. The
+teleop's refusal was not run on the hardware (it opens the leader arm and the gripper first); same code path.
+
+**Not covered:** a camera that saturates during a session (only the start is checked).
 
 ## PENDING
 

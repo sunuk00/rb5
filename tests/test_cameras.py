@@ -7,9 +7,12 @@ import time
 import unittest
 from pathlib import Path
 
+import numpy as np
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from teleop.cameras import CAMERA_HEADER, CameraRecorder, brightness_problems  # noqa: E402
+from teleop.cameras import (CAMERA_HEADER, CameraRecorder, brightness_problems, image_level,  # noqa: E402
+                           level_info, saturation_problems)
 
 CAMS = [("front", "1"), ("wrist", "2")]
 
@@ -121,6 +124,27 @@ class TestSettingsAndBrightness(unittest.TestCase):
         rec.close()
         self.assertEqual(len(problems), 1)
         self.assertIn("front (badsettings): settings read back", problems[0])
+
+    def test_saturated_start_is_reported(self):
+        rec = CameraRecorder([("front", "bright@114", self.SET), ("wrist", "bright@253", self.SET)],
+                             width=64, height=48, fake=True)
+        self.addCleanup(rec.close)
+        self.assertEqual(rec.open(), [])
+        self.assertEqual(rec.info["front"]["saturated_frac"], 0.0)
+        self.assertEqual(rec.info["wrist"]["saturated_frac"], 1.0)
+        problems = saturation_problems(rec.info)
+        self.assertEqual(len(problems), 1)
+        self.assertTrue(problems[0].startswith("wrist: 100 % of the pixels saturated"))
+
+    def test_saturation_measure(self):
+        img = np.full((10, 10, 3), 100, dtype=np.uint8)
+        img[:3] = 255                                    # 30 % white
+        img[3, :, 0] = 255                               # red only: not saturated (one channel)
+        mean, frac = image_level(img)
+        self.assertAlmostEqual(frac, 0.3)
+        self.assertEqual(saturation_problems({"a": level_info([(mean, frac)])})[0][:3], "a: ")
+        self.assertEqual(saturation_problems({"a": level_info([(mean, 0.2)])}), [])   # under 25 %
+        self.assertEqual(saturation_problems({"a": level_info([])}), [])              # unknown: not refused here
 
     def test_brightness_limits(self):
         info = {"a": {"brightness": 97.0}, "b": {"brightness": 131.0}, "c": {"brightness": 96.8}, "d": {"brightness": None}}

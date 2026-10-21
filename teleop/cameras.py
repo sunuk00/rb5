@@ -43,6 +43,11 @@ READY_TIMEOUT_S = 15.0       # pipelines of two cameras start in about 2-3 s
 WRITE_QUEUE = 30             # frames per camera waiting for the writer (1 s at 30 fps)
 BRIGHTNESS_SETTLE_S = 1.0    # frames skipped after opening before the brightness is measured
 BRIGHTNESS_FRAMES = 10
+SATURATED_LEVEL = 250        # a pixel whose R, G and B are all at least this is saturated (white, no detail)
+SATURATED_MAX_FRAC = 0.25    # more saturated pixels than this at the start refuses (no typed yes): the
+                             # p1 session 105618 recorded the D405 at 99-100 % (mean 253) after a yes;
+                             # normal images have 1-2 %
+RED, RESET = "\033[1;31m", "\033[0m"
 STALL_S = 1.0                # no frame for this long = camera error (real-pilot 141929: the D405 dropped off
                              # USB and came back as USB 2; its pipeline only timed out, nothing was reported)
 
@@ -228,18 +233,31 @@ def _save(ep, item, quality, stats, Image):
     stats["write_ms_max"] = max(stats["write_ms_max"], write_ms)
 
 
+def image_level(img):
+    """(mean pixel value 0-255, fraction of saturated pixels) of an HxWx3 uint8 image."""
+    return float(img.mean()), float((img.min(axis=2) >= SATURATED_LEVEL).mean())
+
+
+def level_info(levels):
+    """{"brightness", "saturated_frac"} from a list of image_level() results (None, None if empty)."""
+    if not levels:
+        return {"brightness": None, "saturated_frac": None}
+    v = np.asarray(levels)
+    return {"brightness": round(float(v[:, 0].mean()), 1), "saturated_frac": round(float(v[:, 1].mean()), 3)}
+
+
 def _brightness(cam):
-    """Mean pixel value (0-255) over BRIGHTNESS_FRAMES frames after BRIGHTNESS_SETTLE_S, or None."""
-    t_end, values = time.monotonic() + BRIGHTNESS_SETTLE_S, []
+    """level_info over BRIGHTNESS_FRAMES frames after BRIGHTNESS_SETTLE_S."""
+    t_end, levels = time.monotonic() + BRIGHTNESS_SETTLE_S, []
     while time.monotonic() < t_end:
         cam.read()
     for _ in range(3 * BRIGHTNESS_FRAMES):
         got = cam.read()
         if got is not None:
-            values.append(float(got[0].mean()))
-        if len(values) >= BRIGHTNESS_FRAMES:
+            levels.append(image_level(got[0]))
+        if len(levels) >= BRIGHTNESS_FRAMES:
             break
-    return round(float(np.mean(values)), 1) if values else None
+    return level_info(levels)
 
 
 def _process_main(cameras, width, height, fps, quality, fake, cmd_q, reply_q):
@@ -258,7 +276,7 @@ def _process_main(cameras, width, height, fps, quality, fake, cmd_q, reply_q):
             opened.append((name, cam))
             info[name] = {"serial": str(serial), "settings": cam.applied}
         for name, cam in opened:   # before the threads start: read() is used directly here
-            info[name]["brightness"] = _brightness(cam)
+            info[name].update(_brightness(cam))
     except Exception as e:
         for _, cam in opened:
             cam.close()
@@ -424,6 +442,24 @@ class CameraRecorder:
             if msg[0] == "error":
                 self.errors.append(msg[1])
         return None
+
+
+def saturation_problems(info, max_frac=SATURATED_MAX_FRAC):
+    """Cameras whose start image is saturated (more than max_frac of the pixels white): list of texts. A
+    saturated image has no detail to recover, so the callers refuse to start (no typed yes)."""
+    problems = []
+    for name, cam in info.items():
+        f = cam.get("saturated_frac")
+        if f is not None and f > max_frac:
+            problems.append(f"{name}: {100 * f:.0f} % of the pixels saturated (white; limit {100 * max_frac:.0f} %), "
+                            f"mean brightness {cam.get('brightness')}: the images would carry no detail. Check the "
+                            f"camera (unplug / replug it, scripts/34) and the light on it, then start again")
+    return problems
+
+
+def print_red(lines):
+    for line in lines:
+        print(f"{RED}{line}{RESET}")
 
 
 def brightness_problems(info, reference, tolerance):

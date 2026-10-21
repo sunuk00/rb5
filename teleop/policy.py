@@ -200,7 +200,7 @@ def make_policy(spec):
 
 def _policy_main(spec, cameras, fake_cameras, fps, state, out_q, cmd_q, reply_q):
     """cameras: list of (name, serial, settings or None). Sends ("ready", info) or ("error", text) first."""
-    from .cameras import FakeCamera, RealSenseCamera
+    from .cameras import FakeCamera, RealSenseCamera, image_level, level_info
     if spec.get("cpu_cores"):
         first, last = spec["cpu_cores"]
         os.sched_setaffinity(0, set(range(int(first), int(last) + 1)))
@@ -227,12 +227,11 @@ def _policy_main(spec, cameras, fake_cameras, fps, state, out_q, cmd_q, reply_q)
         return
     info = {}
     for (name, serial, _), cam in zip(cameras, opened):   # start brightness, as the recording checks it
-        values, t_end = [], time.monotonic() + 1.0
+        levels, t_end = [], time.monotonic() + 1.0
         while time.monotonic() < t_end:
-            f = readers[name].latest()
-            values.append(float(f[0].mean()))
+            levels.append(image_level(readers[name].latest()[0]))
             time.sleep(0.1)
-        info[name] = {"serial": str(serial), "settings": cam.applied, "brightness": round(float(np.mean(values)), 1)}
+        info[name] = {"serial": str(serial), "settings": cam.applied, **level_info(levels)}
     # Warm-up: the first inferences on the GPU are slow (about 230 ms: kernel selection), before "ready"
     first = next(iter(readers)) if readers else None
     for _ in range(3):

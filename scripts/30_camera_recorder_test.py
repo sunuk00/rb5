@@ -24,7 +24,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from teleop.cameras import CameraRecorder, brightness_problems  # noqa: E402
+from teleop.cameras import CameraRecorder, brightness_problems, print_red, saturation_problems  # noqa: E402
 from teleop.settings import load_settings  # noqa: E402
 
 CAMERAS = {"front": "943222070221", "wrist": "130322273474"}   # D435 above the workspace, D405 on the gripper
@@ -95,7 +95,9 @@ def main():
         raise SystemExit("; ".join(problems))
     print(f"camera process ready in {time.monotonic() - t0:.1f} s")
     for name, c in rec.info.items():
-        print(f"  {name} {c['serial']}: settings {c['settings'] or 'auto'}, mean brightness {c['brightness']}")
+        print(f"  {name} {c['serial']}: settings {c['settings'] or 'auto'}, mean brightness {c['brightness']}, "
+              f"saturated {100 * (c['saturated_frac'] or 0):.1f} %")
+    print_red([f"  SATURATED: {p}" for p in saturation_problems(rec.info)])
     for p in brightness_problems(rec.info, r.brightness_ref, r.brightness_tolerance):
         print(f"  WARNING: {p}")
 

@@ -17,8 +17,9 @@ Steps:
 
 With --record (demonstrations, rec-3b): the cameras (record.front_serial / wrist_serial) start before
 anything moves with their fixed exposure / gain / white balance read back (refused if one is missing or a
-value differs); a mean brightness outside record.brightness_ref +/- brightness_tolerance asks for a typed
-yes (cam-2b), and the run is a session in record.dir/<mode>_<time>/.
+value differs, or if a start image is saturated: cameras.SATURATED_MAX_FRAC, no typed yes); a mean
+brightness outside record.brightness_ref +/- brightness_tolerance asks for a typed yes (cam-2b), and the run
+is a session in record.dir/<mode>_<time>/.
 Keys in this terminal during the loop, as LeRobot's: -> / n end and keep the episode, or start the next
 one; <- / r discard the episode (or, in the reset, the one just finished); Esc / q end the session (an
 episode being recorded is discarded). The session starts in the reset phase. Episodes end and are kept
@@ -161,7 +162,7 @@ def main():
         if args.no_cameras:
             print(f"Record: session {session.relative_to(ROOT)}, NO cameras (--no-cameras), task '{task}'")
         else:
-            from .cameras import CameraRecorder, brightness_problems
+            from .cameras import CameraRecorder, brightness_problems, print_red, saturation_problems
             r = s.record
             cams = [("front", r.front_serial, {"exposure_us": r.front_exposure_us, "gain": r.front_gain,
                                                 "white_balance_k": r.front_white_balance_k}),
@@ -177,6 +178,12 @@ def main():
                 st = c["settings"]
                 print(f"  {name} {c['serial']}: exposure {st['exposure_us'] / 1000:.1f} ms, gain {st['gain']:g}, "
                       f"white balance {st['white_balance_k']:g} K (fixed), mean brightness {c['brightness']}")
+            problems = saturation_problems(cameras.info)
+            if problems:
+                print_red(["NOT STARTING - camera image saturated (no typed yes for this):"]
+                          + [f"  {p}" for p in problems])
+                close_ports()
+                sys.exit(1)
             problems = brightness_problems(cameras.info, r.brightness_ref, r.brightness_tolerance)
             for p in problems:
                 print(f"  WARNING: {p}")
