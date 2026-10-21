@@ -51,6 +51,14 @@ class TestChunkBuffer(unittest.TestCase):
         b.add(4.0, np.zeros((100, 2)))                                # older than the newest: ignored
         self.assertEqual(len(b.chunks), 1)
 
+    def test_keep_newest(self):
+        b = ChunkBuffer(FPS)
+        b.add(0.0, np.zeros((100, 1)))
+        b.add(1.0 / FPS, np.ones((100, 1)))
+        b.keep_newest()
+        self.assertEqual(len(b.chunks), 1)
+        self.assertEqual(float(b.action_at(2.0 / FPS)[0][0]), 1.0)
+        ChunkBuffer(FPS).keep_newest()                                # empty: no error
 
 class TestCheckpointFolders(unittest.TestCase):
     """p2-d: a training folder, a step folder or a pretrained_model folder; the trained image sizes."""
@@ -277,6 +285,28 @@ class TestPolicyRunner(unittest.TestCase):
         run_for(runner, 1)
         self.assertTrue(any("from the target (> 100)" in e for e in events))
         np.testing.assert_allclose(follower.target, p0, atol=1e-9)
+
+    def test_chunks_from_the_wait_are_dropped_at_g(self):
+        # every chunk plans 60 mm/s up from the current pose; the robot waits 3 s before g. The ensemble of the
+        # chunks from the wait would be far up (they planned motion that did not happen); after g only the
+        # newest chunk counts, so the run starts and follows.
+        clock = SimClock()
+        p0 = FakeRB5(D, RB5Model(OFFSET)).pose()[:3]
+        plan = line_actions(p0, [0.0, 0.0, 60.0], 100 / FPS)
+
+        class Planning(StubClient):
+            def poll(self):
+                out = super().poll()
+                return [(t_obs, plan, ms, n) for t_obs, _, ms, n in out]
+
+        client = Planning(clock, plan)
+        runner, _, follower, _, events = make(clock, plan, Keys({150: ["run"], 200: ["quit"]}), client=client)
+        run_for(runner, 1)
+        self.assertFalse(any("HOLD" in e for e in events), events)
+        run = [e for e in events if "RUN:" in e]
+        self.assertEqual(len(run), 1)
+        self.assertIn("first action", run[0])
+        self.assertGreater(follower.target[2] - p0[2], 5.0)            # moved up
 
     def test_time_limit_holds(self):
         clock = SimClock()

@@ -2925,6 +2925,23 @@ of 10-15 (docs/data_rules.md). CLAUDE.md (not committed: gitignored) lists `rb5_
 settings file; tested end to end on a one-episode Simulation dataset (p2b_test, 200 steps). The trial outputs
 (data/lerobot/p2b_test, data/train/act_p2b_test_20261021_160351) stay until the user's own trial.
 
+## 2026-10-22 — p3-a: the policy run starts from the newest chunk only
+
+**Problem:** first Simulation run of the p1 policy (data/policy/run_sim_20261022_034730): every `g` held in the
+same cycle, "action 117 mm from the target (> 100)"; the robot never moved. The policy wanted to go down toward
+the block (y -100, z -64 mm), a plausible direction. Cause: inference runs while waiting, and the ensembling by
+time mixed about 96 chunks from the last 3.3 s, the oldest weighted most (ACT weights). Each of them planned
+motion from its observation time; the arm stood still, so their value for "now" was where the arm should have
+been after up to 3 s of motion. The distance grew from 40 to 117 mm while waiting and then stayed.
+**Decision:** on `g` (also after a hold) `ChunkBuffer.keep_newest()` drops every chunk but the newest; the
+ensembling then builds up again while the arm moves (as LeRobot, which resets the ensembler at an episode start).
+The RUN line prints the first action's distance. max_jump_mm stays 100 mm; no retraining.
+**Rejected:** a larger max_jump_mm (removes the safety check, and the jump would be real); a negative coeff
+(newest weighted most: changes the ensembling while running too); no inference while waiting (the first chunk
+would come 20+ ms after g, and the stale check needs a recent chunk). **Checked:** a runner test with chunks
+that plan 60 mm/s up and a 3 s wait: it held at 103 mm without the fix and moves with it; tests rb5 165 OK
+(4 skipped), lerobot policy tests 33 OK.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

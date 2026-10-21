@@ -15,6 +15,9 @@ that covers the time gives its action, interpolated between its steps; weights e
 oldest, as ACT), passes the position through teleop.follow.TargetFollower (the teleop's limits) to
 move_servo_l and the gripper value to the gripper thread, and writes the state for the next observation.
 
+Starting (g, also after a hold) keeps only the newest chunk: the chunks predicted while held planned motion
+that did not happen (Simulation 034730: their ensemble was 117 mm away, every g held at once).
+
 Holds (the target stays where it is) when: not running (start with g, hold with space), the newest
 chunk is older than stale_s, no chunk covers the time, the action is more than max_jump_mm from the
 current target, or the run reached time_limit_s; stops when no chunk has arrived for stop_stale_s.
@@ -66,6 +69,11 @@ class ChunkBuffer:
 
     def newest_t(self):
         return self.chunks[-1][0] if self.chunks else None
+
+    def keep_newest(self):
+        """Drop every chunk but the newest. Chunks predicted while the robot was held planned motion that did
+        not happen: ensembled with them, the action at the start is where the arm should have been by now."""
+        self.chunks = self.chunks[-1:]
 
     def action_at(self, t):
         """(action (D,), chunks used) or (None, 0) when no chunk covers t. Drops chunks that ended before t."""
@@ -444,8 +452,11 @@ class PolicyRunner:
                     if newest is None or now - newest > self.stale_s:
                         self.event(f"[{t:7.2f} s] not running: no recent chunk from the policy yet")
                     else:
+                        self.buffer.keep_newest()
                         self.running = True
-                        self.event(f"[{t:7.2f} s] RUN: following the policy (space holds)")
+                        a0, _ = self.buffer.action_at(now)
+                        dist = "" if a0 is None else f", first action {np.linalg.norm(a0[:3] - self.follower.target):.0f} mm away"
+                        self.event(f"[{t:7.2f} s] RUN: following the policy (space holds){dist}")
             if not self.client.alive():
                 raise StopRequest("policy process ended")
             # 2. robot state (the teleop's checks)
