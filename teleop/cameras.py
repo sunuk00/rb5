@@ -187,7 +187,8 @@ class UVCCamera:
                 self.cap.release()
                 raise
 
-    def _ctl(self, *args):
+    def ctl(self, *args):
+        """Runs v4l2-ctl on this webcam (also used by script 34); its output, or RuntimeError."""
         done = subprocess.run(["v4l2-ctl", "-d", self.path, *args], capture_output=True, text=True, timeout=5)
         if done.returncode != 0:
             raise RuntimeError(f"v4l2-ctl {' '.join(args)}: {done.stderr.strip()}")
@@ -196,14 +197,14 @@ class UVCCamera:
     def _apply(self, settings):
         want = uvc_controls(settings)
         # auto off first: the exposure and white balance values are inactive while the auto modes are on
-        self._ctl("--set-ctrl=auto_exposure=1,exposure_dynamic_framerate=0,white_balance_automatic=0")
-        self._ctl("--set-ctrl=" + ",".join(f"{k}={want[k]}" for k in
+        self.ctl("--set-ctrl=auto_exposure=1,exposure_dynamic_framerate=0,white_balance_automatic=0")
+        self.ctl("--set-ctrl=" + ",".join(f"{k}={want[k]}" for k in
                                            ("exposure_time_absolute", "gain", "white_balance_temperature")))
         t_end = time.monotonic() + UVC_SETTLE_S
         while time.monotonic() < t_end:
             self.cap.read()
         got = {}
-        for line in self._ctl("-C", ",".join(want)).splitlines():   # "auto_exposure: 1 (Manual Mode)"
+        for line in self.ctl("-C", ",".join(want)).splitlines():   # "auto_exposure: 1 (Manual Mode)"
             name, value = line.split(":", 1)
             got[name.strip()] = int(value.split()[0])
         bad = uvc_mismatch(want, got)
