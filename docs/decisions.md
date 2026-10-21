@@ -2918,6 +2918,13 @@ image (recorded JPEG shrunk) vs the training-path image (dataset video frame) fo
 cameras: mean difference 1.4-2.0 / 255 (video compression), R-B maps correlated 0.90-0.98; check: GPU inference
 17 ms with three 320x240 cameras; the resize costs about 2.2 ms per camera (p50).
 
+**p2-e (wrap-up):** docs/pipeline_guide.md starts with a table of the code and where each setting lives, and
+ends with what to redo after a change in policy.yaml; collection step for three cameras, 50 episodes in sessions
+of 10-15 (docs/data_rules.md). CLAUDE.md (not committed: gitignored) lists `rb5_lerobot/` and
+`configs/policy.yaml`. p2 is done: convert / train / check / run are `python -m rb5_lerobot.<name>` with one
+settings file; tested end to end on a one-episode Simulation dataset (p2b_test, 200 steps). The trial outputs
+(data/lerobot/p2b_test, data/train/act_p2b_test_20261021_160351) stay until the user's own trial.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

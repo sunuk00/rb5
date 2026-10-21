@@ -3,6 +3,22 @@
 Every step is a command you type. Run them from the repository root (`cd ~/RB_Cobot` first).
 Replace `NAME` with the dataset name of the round (round 1: `p1`).
 
+## Code and settings (p2)
+
+| what | code | settings |
+|---|---|---|
+| teleop and recording | `teleop/` (`python -m teleop`) | `configs/real.yaml` / `sim.yaml` (robot, leader arm, gripper, cameras: `record.cameras`) |
+| dataset format (state, action, fps, image resize) | `rb5_lerobot/data_format.py` | none: changing it means changing recording, converter and run together |
+| convert | `rb5_lerobot/convert.py` | `configs/policy.yaml` dataset |
+| train | `rb5_lerobot/train.py` -> LeRobot's `lerobot-train` | `configs/policy.yaml` train (`act`: any ACT option) |
+| offline check | `rb5_lerobot/check.py` | - |
+| run (Simulation) | `rb5_lerobot/run.py`, `rb5_lerobot/policy.py` | `configs/policy.yaml` run; hardware from `configs/sim.yaml` |
+
+To change a parameter: edit `configs/policy.yaml` and run the command again (what to redo: the table at the
+end). To keep variants side by side: copy it (`configs/policy_<variant>.yaml`) and pass `--config`. Every
+output keeps the settings it was made with: `rb5_convert.yaml` in the dataset, `rb5_train.yaml` in the training
+folder, the run section in the run JSON.
+
 | step | env | moves the robot |
 |---|---|---|
 | 1 collect | rb5 | yes (Real) |
@@ -17,8 +33,8 @@ Where the files go (`data/` is not committed):
 |---|---|---|
 | `data/demos/real_<time>/` | one collection session: episodes (camera JPEGs), teleop.csv, gripper.csv, episodes.json | step 1 |
 | `data/teleop/` | the teleop's own run log (every run, also without `--record`) | step 1 |
-| `data/lerobot/NAME/` | the LeRobot dataset (parquet + AV1 videos) | step 2 |
-| `data/train/act_NAME_<time>/` | training output: checkpoints, train_config.json | step 3 |
+| `data/lerobot/NAME/` | the LeRobot dataset (parquet + AV1 videos), rb5_convert.yaml | step 2 |
+| `data/train/act_NAME_<time>/` | training output: checkpoints, rb5_train.yaml | step 3 |
 | `data/policy/` | Simulation run logs (CSV + JSON) | step 5 |
 | `data/cameras/` | camera tests (scripts 30, 34) | - |
 | `data/archive/` | old outputs (scripts 04-21, camera tests, earlier sessions and runs), moved 2026-10-21 | - |
@@ -30,7 +46,7 @@ holds only this round's sessions (`data/demos/real_*` picks no old one). The pil
 
 The task text is the same in every step. (ACT does not use it, but the dataset and the run log record it.)
 
-## 1. Collect (Real teleop, both cameras)
+## 1. Collect (Real teleop, three cameras)
 
 Checklist: Real mode on the tablet, leader arm and gripper powered, D435 on USB 3 (`lsusb -t` shows 5000M),
 both webcams on the gripper (`ls /dev/v4l/by-id` shows `usb-046d_0825_...` = wrist and `usb-046d_Brio_101_...`
@@ -45,7 +61,8 @@ python -m teleop --real --record --task "pick the green block and place it in th
 
 - Keys: `→` or `n` = save the episode / start the next; `←` or `r` = discard and redo; `Esc` or `q` = end
   the session (an episode in progress is discarded).
-- How to demonstrate: docs/data_rules.md ("How to demonstrate"). Round 1: 15 kept episodes.
+- How to demonstrate: docs/data_rules.md ("How to demonstrate"). Round 1: 50 kept episodes in sessions of
+  10-15 (docs/data_rules.md); check each session (`--check-only`, step 2) before the next one.
 - The session folder is printed at the end: `data/demos/real_<time>`.
 
 ## 2. Check and convert
