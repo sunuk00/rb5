@@ -50,10 +50,22 @@ class TestPolicyConfig(unittest.TestCase):
         p = problems_with(lambda d: d["run"].update(stop_stale_s=0.4))
         self.assertTrue(any("stop_stale_s" in x for x in p))
 
+    def test_real_run_settings(self):
+        # p3-c: python -m rb5_lerobot.run --real loads configs/real.yaml with the Real checks; its cameras are
+        # the recording's (the policy is given the same devices and fixed settings)
+        from teleop.cameras import camera_defs
+        from teleop.settings import load_settings
+        s, _ = load_settings(ROOT / "configs" / "real.yaml", real=True)
+        names = [d[0] for d in camera_defs(s.record, ["front", "wrist", "grip"])]
+        self.assertEqual(names, ["front", "wrist", "grip"])
+
 
 class TestTrainCommand(unittest.TestCase):
     def test_command_from_the_train_section(self):
-        cmd = train_command("p1", RAW["train"], "data/train/act_p1_x")
+        t = copy.deepcopy(RAW["train"])          # fixed values: the user may change configs/policy.yaml
+        t.update(batch_size=8, steps=20000, save_freq=5000)
+        t["act"].update(chunk_size=100, use_vae=True, optimizer_lr=1e-5)
+        cmd = train_command("p1", t, "data/train/act_p1_x")
         self.assertEqual(cmd[0], "lerobot-train")
         for part in ("--policy.type=act", "--dataset.repo_id=local/p1", "--dataset.root=data/lerobot/p1",
                      "--batch_size=8", "--steps=20000", "--save_freq=5000", "--output_dir=data/train/act_p1_x",

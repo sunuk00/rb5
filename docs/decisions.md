@@ -2959,6 +2959,21 @@ time limit refuses g; the policy process with fake cameras: no chunk while pause
 pause); rb5 tests OK (4 skipped), lerobot policy tests OK. The p1 model with fake cameras: first chunk 47-72 ms
 after go after 0.5-20 s paused (inference 43-69 ms right after a pause, then about 23 ms).
 
+## 2026-10-22 — p3-c: Real policy runs (python -m rb5_lerobot.run --real)
+
+**Decision (user, 2026-10-22):** the policy run may move the real arm: `--real` uses configs/real.yaml with
+load_settings(real=True) (the teleop's Real requirements and limits) and asks to type REAL after a note
+(collision detection Off, tool mass 0 kg, emergency stop within reach). The same checks as the teleop: Real
+mode reached, TCP offset equal to the expected value, the ready pose checked with calc_fk_tcp and the start
+checks before move_j (now also in Simulation), "clear the area" and a separate yes for large wrist turns;
+before the loop a reminder (hand on the emergency stop). The runner gives the policy the encoder joints
+(jnt_ang) as state, as the converter does for Real sessions. Log run_real_<time>; the JSON keeps the mode and
+the robot settings file. **Speed:** 100 % of the teleop's Real caps (user; a speed_scale 0.5 for the first
+runs was offered and declined). No controller setting changed. **Not done:** no Real run yet (the user runs
+it). **Checked:** tests (real.yaml loads with the Real checks and gives the recording's three cameras); rb5 and
+lerobot policy tests OK; `--help`. The train-command test no longer reads values from configs/policy.yaml
+(the user changes them: steps 30000 broke it).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

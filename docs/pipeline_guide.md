@@ -26,6 +26,7 @@ folder, the run section in the run JSON.
 | 3 train | lerobot | no |
 | 4 offline check | lerobot | no |
 | 5 Simulation run | lerobot | the Simulation robot and the real gripper |
+| 6 Real run (`--real`) | lerobot | **yes (Real)** |
 
 Where the files go (`data/` is not committed):
 
@@ -133,6 +134,28 @@ python -m rb5_lerobot.run $OUT --task "pick the green block and place it in the 
 - An action further than `run.max_jump_mm` (100 mm) from the target holds (safety). In Simulation the real
   arm does not move, so the image never changes: the robot goes to one point and stays.
 - Log: `data/policy/run_sim_<time>.csv` / `.json` (the JSON keeps the run settings and image sizes used).
+
+## 6. Real run (p3-c)
+
+**The real arm follows the policy on its own.** The controller has collision detection Off and tool mass
+0 kg. Do a Simulation run of the same checkpoint first.
+
+Checklist: tablet in Real mode allowed, nobody inside the reach of the arm, **hand on the emergency stop**,
+the real arm at the ready pose (or let the run move it there), block in the square, gripper powered and open,
+fingers clear, the cameras as in the recording (lighting as usual).
+
+```bash
+python -m rb5_lerobot.run $OUT --real
+```
+
+- Hardware from configs/real.yaml (`--robot-config` for another file) with the teleop's Real checks: Real
+  mode reached, TCP offset as expected, the ready pose checked with calc_fk_tcp before moving there, a
+  warning (own `yes`) for large wrist turns. Every target goes through the teleop's Real limits (speed,
+  acceleration, z_min 19 mm, joint limits): speed caps 100 % of the teleop.
+- Typed answers: `REAL` -> brightness (only if out of range) -> ready pose `yes` -> gripper start `yes` ->
+  first action distance `yes`; then `g` = run, `space` = hold, `q` = quit (Ctrl+C also stops).
+- The state given to the policy is the encoder joints (jnt_ang), as in the Real recordings.
+- Log: `data/policy/run_real_<time>.csv` / `.json`.
 
 ## What to redo after changing configs/policy.yaml
 

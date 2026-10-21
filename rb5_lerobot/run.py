@@ -1,7 +1,8 @@
-"""rec-6b: run a trained ACT policy on the RB5 in SIMULATION (rb5_lerobot/policy.py). Real is refused for now.
+"""rec-6b / p3-c: run a trained ACT policy on the RB5 (rb5_lerobot/policy.py), in Simulation or (--real) REAL.
 
-MOVES THE RB5 (Simulation mode) AND THE GRIPPER (the real gripper moves in Simulation too, as in the
-teleop; --no-gripper runs without it). The gripper follows the policy's gripper action at once while
+MOVES THE RB5 AND THE GRIPPER (the real gripper moves in Simulation too, as in the teleop; --no-gripper runs
+without it). --real moves the real arm on its own: the controller has collision detection Off and tool mass
+0 kg; keep the emergency stop within reach. The gripper follows the policy's gripper action at once while
 running (no catch: the dataset's gripper action is what the gripper did).
 
 Run in the `lerobot` conda env, from the repository root:
@@ -9,18 +10,21 @@ Run in the `lerobot` conda env, from the repository root:
     python -m rb5_lerobot.run data/train/act_<name>_<time>                     # its last checkpoint
     python -m rb5_lerobot.run data/train/act_<name>_<time>/checkpoints/005000  # a given checkpoint
     python -m rb5_lerobot.run <training folder> --config configs/<copy>.yaml   # other run settings
+    python -m rb5_lerobot.run <training folder> --real                         # REAL (configs/real.yaml; type REAL)
 
 Settings: the run section of configs/policy.yaml (time limit, holds, temporal ensembling weight, CPU cores);
-the hardware (cameras, robot, gripper, the teleop's limits) from configs/sim.yaml (--robot-config). The
+the hardware (cameras, robot, gripper, the teleop's limits) from configs/sim.yaml, with --real from
+configs/real.yaml with the teleop's Real checks (--robot-config for another file). The
 camera images are shrunk to the size the checkpoint was trained on (its config.json), with the converter's
 function (data_format.resize_image). The run JSON keeps the run section used.
 
 Steps:
-  1. settings (configs/sim.yaml); the cameras the policy expects (its config.json), opened in the policy
+  1. settings (sim.yaml / real.yaml; Real: type REAL); the cameras the policy expects (its config.json), opened in the policy
      process with the recording's fixed exposure / gain / white balance (read back) and the start
      brightness check (typed yes when outside record.brightness_ref +/- tolerance)
-  2. gripper read-only checks (before anything moves); Simulation mode and the teleop's checks; move_j to
-     the ready pose after a typed yes; the gripper start writes after a typed yes (rec-6c)
+  2. gripper read-only checks (before anything moves); Simulation / Real mode, the TCP offset and the
+     teleop's checks; the ready pose checked with calc_fk_tcp, then move_j after a typed yes (Real: clear the
+     area, large wrist turns need their own yes); the gripper start writes after a typed yes (rec-6c)
   3. one chunk at the ready pose: the first action's distance from the current TCP is shown, then the policy
      pauses (no inference until g); typed yes
   4. the 50 Hz loop (PolicyRunner): keys in this terminal: g = run (inference starts, the robot follows from
@@ -62,8 +66,8 @@ def to_keyboard_interrupt(signum, frame):
     raise KeyboardInterrupt
 
 
-def ask(prompt):
-    return input(prompt).strip() == "yes"
+def ask(prompt, answer="yes"):
+    return input(prompt).strip() == answer
 
 
 def main():
@@ -71,20 +75,27 @@ def main():
     ap.add_argument("checkpoint", help="training folder data/train/act_<name>_<time> (its last checkpoint) or a "
                                        "checkpoint folder")
     ap.add_argument("--config", default=str(DEFAULT), help="policy settings file (its run section)")
-    ap.add_argument("--robot-config", default=str(ROOT / "configs" / "sim.yaml"), help="hardware settings")
+    ap.add_argument("--robot-config", help="hardware settings (default configs/sim.yaml, with --real configs/real.yaml)")
     ap.add_argument("--task", help="task text (default record.task)")
     ap.add_argument("--no-gripper", action="store_true", help="without the gripper (its action is only logged)")
-    ap.add_argument("--real", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--real", action="store_true", help="REAL robot (asks to type REAL)")
     args = ap.parse_args()
-    if args.real:
-        raise SystemExit("Real is not allowed yet (rec-6b is Simulation only)")
+    real = args.real
+    mode = "REAL" if real else "Simulation"
+    robot_config = args.robot_config or str(ROOT / "configs" / ("real.yaml" if real else "sim.yaml"))
     np.set_printoptions(precision=1, suppress=True)
     try:
-        s, _ = load_settings(args.robot_config, real=False)
+        s, _ = load_settings(robot_config, real=real)
         pc, pc_raw = load_policy_config(args.config)
     except SettingsError as e:
         raise SystemExit(f"settings: {e}")
     rc = pc.run
+    print(f"Mode: {mode}   robot settings: {robot_config}")
+    if real:
+        print("REAL mode: the RB5 follows the policy on its own. Collision detection is Off and the tool mass is "
+              "0 kg on the controller.\nKeep the emergency stop within reach; space holds, q quits.")
+        if not ask("Type REAL to continue: ", "REAL"):
+            raise SystemExit("Cancelled.")
     task = args.task or s.record.task
     ckpt = resolve_checkpoint(args.checkpoint)
     sizes = policy_image_sizes(ckpt)
@@ -132,7 +143,7 @@ def main():
         client.close()
         raise SystemExit("Cancelled.")
 
-    # 2. Gripper (read only here), robot (Simulation) and the ready pose
+    # 2. Gripper (read only here), robot (Simulation / Real) and the ready pose
     motor = worker = grip_info = None   # grip_info: the gripper part of the run's JSON (None: off)
     if s.gripper.enabled and not args.no_gripper:
         motor, problems = open_gripper(s.gripper, s.leader.required_latency_timer_ms)
@@ -153,15 +164,17 @@ def main():
 
     from teleop.rb5 import RB5
     rb5 = RB5(s.robot.ip, s.servo)
-    rb5.set_mode(False, s.robot.speed_bar)
-    reached, waited = rb5.wait_for_mode(False)
-    problems = preflight.check_robot_mode(False, rb5.reports_simulation(), rb5.is_moving(), rb5.error_text())
+    rb5.set_mode(real, s.robot.speed_bar)
+    reached, waited = rb5.wait_for_mode(real)
+    print(f"Controller mode after the switch: {'Real' if not rb5.reports_simulation() else 'Simulation'}")
+    problems = preflight.check_robot_mode(real, rb5.reports_simulation(), rb5.is_moving(), rb5.error_text())
     if not reached:
-        problems.append("Simulation mode not reached within 3 s")
+        problems.append(f"{'Real' if real else 'Simulation'} mode not reached within 3 s")
+    offset, rot_offset = rb5.tcp_offset()
+    problems += preflight.check_tcp_offset(offset, rot_offset, s.tcp)
     if problems:
         close_all()
         raise SystemExit("NOT STARTING - robot:\n  " + "\n  ".join(problems))
-    offset, _ = rb5.tcp_offset()
     model, watch = RB5Model(offset), Watch(s.safety)
     q_now = np.array(rb5.sdata().jnt_ref, dtype=float)
     plan = preflight.plan_ready_move(q_now, s.ready_pose.joints_deg, s.safety.joint_limit_deg, s.ready_pose,
@@ -170,8 +183,23 @@ def main():
         close_all()
         raise SystemExit("NOT STARTING - ready pose:\n  " + "\n  ".join(plan["problems"]))
     if not plan["skip"]:
-        print(f"\nMove to the ready pose with move_j (Simulation, about {plan['expected_s']:.0f} s):")
+        # the ready pose must be a valid start before moving there (as the teleop)
+        tcp_ready = rb5.fk_tcp(plan["target"])
+        problems = (["calc_fk_tcp of the ready pose failed"] if tcp_ready is None
+                    else preflight.check_start_pose(tcp_ready, plan["target"], model, watch, s)[0])
+        if problems:
+            close_all()
+            raise SystemExit("NOT STARTING - the ready pose would not be a valid start (nothing moved):\n  "
+                             + "\n  ".join(problems))
+        print(f"\nMove to the ready pose with move_j ({mode}, about {plan['expected_s']:.0f} s):")
         print(f"  current {q_now}\n  target  {plan['target']}\n  change  {plan['change']}")
+        if real:
+            print("REAL: clear the area around the robot.")
+            for w in plan["wrist_warnings"]:
+                print(f"  WARNING: large wrist turn: {w}")
+            if plan["wrist_warnings"] and not ask("Wrist turns are large. Type yes to accept: "):
+                close_all()
+                raise SystemExit("Cancelled.")
         if not ask("Type yes to move: "):
             close_all()
             raise SystemExit("Cancelled.")
@@ -231,7 +259,9 @@ def main():
     print(f"\nStart TCP {tcp0[:3]} mm. The policy's first action {a0[:3]} mm, gripper {a0[3]:.2f}: "
           f"{np.linalg.norm(a0[:3] - tcp0[:3]):.0f} mm away (over {rc.max_jump_mm:.0f} mm holds). Inference {first[-1][2]:.0f} ms.")
     print(f"Keys here: g = run (inference starts; the robot follows from the first chunk), space = hold, q = quit. Speed caps 100 % of the teleop; time limit {rc.time_limit_s:.0f} s.")
-    if not ask("Type yes to start the loop (Simulation; nothing moves before g): "):
+    if real:
+        print("REAL: the arm follows the policy after g, at the teleop's speed caps. Hand on the emergency stop.")
+    if not ask(f"Type yes to start the loop ({mode}; nothing moves before g): "):
         reader.stop()
         close_all()
         raise SystemExit("Cancelled.")
@@ -239,7 +269,7 @@ def main():
     # 4. Loop
     keys = KeyReader(parse=parse_policy_keys)
     follower = TargetFollower(s, model, tcp0)
-    runner = PolicyRunner(s, rb5, reader, follower, client, keys, gripper=worker, real=False,
+    runner = PolicyRunner(s, rb5, reader, follower, client, keys, gripper=worker, real=real,
                           stale_s=rc.stale_s, stop_stale_s=rc.stop_stale_s, max_jump_mm=rc.max_jump_mm,
                           time_limit_s=rc.time_limit_s, coeff=rc.ensemble_coeff, event=lambda m: print(m, flush=True))
     for sig in (signal.SIGTERM, signal.SIGHUP):
@@ -279,11 +309,12 @@ def main():
     # 5. Log and summary
     out = ROOT / "data" / "policy"
     out.mkdir(parents=True, exist_ok=True)
-    stem = f"run_sim_{datetime.now():%Y%m%d_%H%M%S}"
+    stem = f"run_{'real' if real else 'sim'}_{datetime.now():%Y%m%d_%H%M%S}"
     with open(out / f"{stem}.csv", "w", newline="") as f:
         csv.writer(f).writerows([RUN_HEADER] + runner.rows)
     (out / f"{stem}.json").write_text(json.dumps({"checkpoint": str(ckpt), "task": task,
                                                   "policy_config": str(args.config), "run": pc_raw["run"],
+                                                  "mode": mode, "robot_config": robot_config,
                                                   "image_sizes": sizes, "cameras": cam_info,
                                                   "gripper": grip_info, "stop": stop_text,
                                                   "error": None if error is None else str(error)},
