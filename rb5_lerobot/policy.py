@@ -24,7 +24,8 @@ dropped.
 
 Holds (the target stays where it is; inference pauses) when: space, the newest chunk is older than stale_s,
 no chunk covers the time, the action is more than max_jump_mm from the current target, or the run reached
-time_limit_s (g is then refused). Stops when no chunk has come for stop_stale_s while inferring.
+time_limit_s of running since its g (each g starts a new attempt with its own time limit, p3-d). Stops when
+no chunk has come for stop_stale_s while inferring.
 
 Policies inside the process (spec dicts, so they can be pickled):
   {"kind": "replay", "actions": (N, 4) list, "fps": 30, "delay_s": 0.0}  dataset actions as chunks from
@@ -146,10 +147,14 @@ class ReplayPolicy:
 
 def resolve_checkpoint(path):
     """The pretrained_model folder for a training folder (data/train/act_<name>_<time>: its last checkpoint), a
-    checkpoint step folder (checkpoints/<step>) or a pretrained_model folder itself. SystemExit if none."""
+    checkpoint step folder (checkpoints/<step>) or a pretrained_model folder itself. SystemExit if none.
+    checkpoints/last is replaced by the step it points to: the logs name the step, and a training that goes on
+    in the same folder (--resume) moves last (Real 071457 ran step 40000 while the log said last, p3-d)."""
     path = Path(path)
     for p in (path, path / "pretrained_model", path / "checkpoints" / "last" / "pretrained_model"):
         if (p / "config.json").exists():
+            if p.parent.name == "last" and p.parent.is_symlink():
+                p = p.parent.parent / os.readlink(p.parent) / p.name
             return p
     raise SystemExit(f"no checkpoint in {path} (a training folder data/train/act_<name>_<time>, or "
                      f".../checkpoints/<step>/pretrained_model)")
@@ -429,7 +434,7 @@ class PolicyRunner:
         self.event, self.sleep, self.clock = event, sleep, clock
         self.running = False
         self.starting = None      # monotonic time of g while waiting for the first chunk
-        self.run_time = 0.0       # seconds spent running (time limit)
+        self.run_time = 0.0       # seconds spent running since the last g (time limit per attempt, p3-d)
         self.rows = []
         self.last_infer = (None, None)
 
@@ -474,13 +479,11 @@ class PolicyRunner:
                 if key == "hold":
                     self._hold("space key", t)
                 elif key == "run" and not self.running and self.starting is None:
-                    if self.run_time >= self.time_limit_s:
-                        self.event(f"[{t:7.2f} s] not running: time limit {self.time_limit_s:.0f} s reached")
-                    else:
-                        self.buffer.clear()
-                        self.client.go()
-                        self.starting = last_arrival = now
-                        self.event(f"[{t:7.2f} s] g: inference started")
+                    self.run_time = 0.0
+                    self.buffer.clear()
+                    self.client.go()
+                    self.starting = last_arrival = now
+                    self.event(f"[{t:7.2f} s] g: inference started (time limit {self.time_limit_s:.0f} s from here)")
             if self.starting is not None and self.buffer.newest_t() is not None:
                 self.running, self.starting = True, None
                 a0, _ = self.buffer.action_at(now)

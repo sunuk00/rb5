@@ -2974,6 +2974,22 @@ it). **Checked:** tests (real.yaml loads with the Real checks and gives the reco
 lerobot policy tests OK; `--help`. The train-command test no longer reads values from configs/policy.yaml
 (the user changes them: steps 30000 broke it).
 
+## 2026-10-22 — p3-d: time limit per g; checkpoints/last logged as its step
+
+**Context:** first Real run of p1 (data/policy/run_real_20261022_071457): four grasp attempts in 60 s (user: 3
+of 5 failed, and after a missed grasp the arm still went to the box). The time limit counted the whole program
+run, so every g after 60 s was refused. Grasp heights 25 / 19 / 34 / 64 mm vs 19 / 24 / 29 (p10 / 50 / 90) in
+the 51 demonstrations; the gripper state is 0.00 one second after closing in the demonstrations too (a grasp
+is not visible in it, test A); the demonstrations hold no missed grasp. Inference 60 ms p50 (Simulation: 22):
+a `lerobot-train --resume --steps=50000` was training in the same folder on the GPU; the run loaded
+checkpoints/last = 040000 but the log said only "last".
+**Decision (user: A):** each g starts an attempt with its own time limit (run_time reset at g); g is never
+refused for time. resolve_checkpoint replaces checkpoints/last by the step it points to (run and check print and
+log it). **Rejected:** a larger run.time_limit_s only (B: one long limit, no per-attempt guard).
+**Checked:** tests (two attempts of 2 s each in one run; last -> step); rb5 tests OK (4 skipped), lerobot policy
+tests OK. **Next (suggested):** recovery demonstrations (miss, reopen, grasp again), an evaluation per checkpoint
+with fixed block positions, runs without a training on the GPU.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

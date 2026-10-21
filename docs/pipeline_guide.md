@@ -129,8 +129,10 @@ python -m rb5_lerobot.run $OUT --task "pick the green block and place it in the 
 - Typed answers: brightness (only if out of range) -> ready pose `yes` -> gripper start `yes` -> first
   action distance `yes`; then `g` = run, `space` = hold, `q` = quit.
 - Inference runs only while running: `g` starts it and the robot follows from the first chunk (about one
-  inference later; the RUN line prints how far its first action is); every hold pauses it. After the time
-  limit `g` is refused (start the run again).
+  inference later; the RUN line prints how far its first action is); every hold pauses it. The time limit
+  counts from each `g`: one program run can hold several attempts (`space`, put the block back, `g`).
+- A training folder runs its `checkpoints/last`, printed and logged as its step (e.g. `checkpoints/040000`).
+  Do not run while a training (or `--resume`) uses the GPU: Real 071457 had 60 ms inference instead of 22 ms.
 - An action further than `run.max_jump_mm` (100 mm) from the target holds (safety). In Simulation the real
   arm does not move, so the image never changes: the robot goes to one point and stays.
 - Log: `data/policy/run_sim_<time>.csv` / `.json` (the JSON keeps the run settings and image sizes used).

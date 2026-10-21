@@ -70,8 +70,8 @@ class TestCheckpointFolders(unittest.TestCase):
         feats = {"observation.state": {"shape": [7]},
                  "observation.images.front": {"shape": [3, 240, 320]}, "observation.images.grip": {"shape": [3, 120, 160]}}
         (pm / "config.json").write_text(json.dumps({"input_features": feats}))
-        last = run / "checkpoints" / "last" / "pretrained_model"
-        self.assertEqual(resolve_checkpoint(run), last)
+        self.assertEqual(resolve_checkpoint(run), pm)                       # last -> its step (p3-d)
+        self.assertEqual(resolve_checkpoint(run / "checkpoints" / "last"), pm)
         self.assertEqual(resolve_checkpoint(run / "checkpoints" / "000200"), pm)
         self.assertEqual(resolve_checkpoint(pm), pm)
         with self.assertRaises(SystemExit):
@@ -300,15 +300,19 @@ class TestPolicyRunner(unittest.TestCase):
         self.assertTrue(all(r[IX["target_z"]] == rows[0][IX["target_z"]] for r in starting))
         self.assertGreater(follower.target[2] - p0[2], 5.0)
 
-    def test_time_limit_refuses_g(self):
+    def test_time_limit_per_g(self):
+        # p3-d: each g starts a new attempt with its own time limit
         clock = SimClock()
         p0 = FakeRB5(D, RB5Model(OFFSET)).pose()[:3]
-        acts = line_actions(p0, [0.0, 0.0, 10.0], 10.0)
-        runner, _, _, client, events = make(clock, acts, Keys({1: ["run"], 150: ["run"], 160: ["quit"]}),
+        acts = line_actions(p0, [0.0, 0.0, 10.0], 20.0)
+        runner, _, _, client, events = make(clock, acts, Keys({1: ["run"], 150: ["run"], 300: ["quit"]}),
                                             time_limit_s=2.0)
         run_for(runner, 1)
-        self.assertTrue(any("not running: time limit 2 s reached" in e for e in events))
-        self.assertEqual([c[0] for c in client.calls], ["go", "pause"])
+        holds = [e for e in events if "HOLD: time limit 2 s" in e]
+        self.assertEqual(len(holds), 2)                                       # both attempts ran their 2 s
+        self.assertEqual([c[0] for c in client.calls], ["go", "pause", "go", "pause"])
+        running = sum(r[IX["running"]] for r in runner.rows)
+        self.assertAlmostEqual(running * 0.02, 4.0, delta=0.1)
 
     def test_big_jump_holds(self):
         clock = SimClock()
