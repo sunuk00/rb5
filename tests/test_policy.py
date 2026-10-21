@@ -51,14 +51,11 @@ class TestChunkBuffer(unittest.TestCase):
         b.add(4.0, np.zeros((100, 2)))                                # older than the newest: ignored
         self.assertEqual(len(b.chunks), 1)
 
-    def test_keep_newest(self):
+    def test_clear(self):
         b = ChunkBuffer(FPS)
         b.add(0.0, np.zeros((100, 1)))
-        b.add(1.0 / FPS, np.ones((100, 1)))
-        b.keep_newest()
-        self.assertEqual(len(b.chunks), 1)
-        self.assertEqual(float(b.action_at(2.0 / FPS)[0][0]), 1.0)
-        ChunkBuffer(FPS).keep_newest()                                # empty: no error
+        b.clear()
+        self.assertIsNone(b.newest_t())
 
 class TestCheckpointFolders(unittest.TestCase):
     """p2-d: a training folder, a step folder or a pretrained_model folder; the trained image sizes."""
@@ -103,21 +100,32 @@ class SimClock:
 
 
 class StubClient:
-    """Replay chunks every 1/FPS of simulated time, arriving `delay` after their observation time;
-    stops producing after `until` seconds."""
+    """Replay chunks (the actions by time since the client was made) every 1/FPS of simulated time while going
+    (go / pause, as PolicyClient), arriving `delay` after their observation time; none after `until` seconds."""
 
     def __init__(self, clock, actions, delay=0.0, until=1e9, every=1):
         self.clock, self.actions, self.delay, self.until, self.every = clock, actions, delay, until, every
         self.t0 = clock()
         self.k, self.pending, self.published = 0, [], []
+        self.going, self.made, self.calls = False, 0, []
+
+    def go(self):
+        self.poll()     # observations before the go are not made
+        self.going = True
+        self.calls.append(("go", self.clock()))
+
+    def pause(self):
+        self.going, self.pending = False, []
+        self.calls.append(("pause", self.clock()))
 
     def poll(self):
         now = self.clock()
-        while self.t0 + self.k / FPS <= now and self.k / FPS < self.until:
+        while self.t0 + self.k / FPS <= now:
             t_obs = self.t0 + self.k / FPS
             idx = np.clip(np.arange(self.k, self.k + 100), 0, len(self.actions) - 1)
-            if self.k % self.every == 0:
+            if self.going and self.k / FPS < self.until and self.k % self.every == 0:
                 self.pending.append((t_obs + self.delay, (t_obs, self.actions[idx], 30.0, self.k)))
+                self.made += 1
             self.k += 1
         out = [c for ta, c in self.pending if ta <= now]
         self.pending = [(ta, c) for ta, c in self.pending if ta > now]
@@ -202,15 +210,17 @@ class TestPolicyRunner(unittest.TestCase):
             runner, robot, follower, _, _ = make(clock, acts, Keys({15: ["run"], 140: ["quit"]}), delay=delay,
                                                  every=every)   # g after the first (late) chunks arrived
             run_for(runner, 1)
-            paths.append([float(r[IX["target_z"]]) for r in runner.rows[30:120]])   # target z once moving
-        np.testing.assert_allclose(paths[1], paths[0], atol=0.5)        # a late chunk uses its own times
+            paths.append([float(r[IX["target_z"]]) for r in runner.rows[45:120]])   # once caught up (p3-b: the run
+        np.testing.assert_allclose(paths[1], paths[0], atol=0.5)        # starts 0.2 s later); a late chunk uses its own times
         np.testing.assert_allclose(paths[2], paths[0], atol=0.5)
 
     def test_holds_without_new_chunks_then_stops(self):
         clock = SimClock()
         p0 = FakeRB5(D, RB5Model(OFFSET)).pose()[:3]
         acts = line_actions(p0, [0.0, 0.0, 30.0], 10.0)
-        runner, _, follower, _, events = make(clock, acts, Keys({1: ["run"]}), until=1.0)
+        # chunks stop at 1 s: hold at 1.5 s (inference paused, no stop while paused); g at 4 s: no chunk -> stop at 7 s
+        runner, _, follower, client, events = make(clock, acts, Keys({1: ["run"], 200: ["run"], 1000: ["quit"]}),
+                                                   until=1.0)
         stop = run_for(runner, 1)
         self.assertEqual(stop, "no chunk from the policy for 3 s")
         holds = [e for e in events if "HOLD" in e]
@@ -218,6 +228,8 @@ class TestPolicyRunner(unittest.TestCase):
         self.assertIn("no chunk newer than 0.5 s", holds[0])
         t_hold = float(holds[0].split("]")[0].strip("[ s"))
         self.assertAlmostEqual(t_hold, 1.5, delta=0.1)
+        self.assertEqual([c[0] for c in client.calls], ["go", "pause", "go"])
+        self.assertAlmostEqual(float(runner.rows[-1][IX["t_s"]]), 7.0, delta=0.1)
 
     def test_space_holds_and_g_runs(self):
         clock = SimClock()
@@ -268,14 +280,35 @@ class TestPolicyRunner(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             runner.run()
 
-    def test_run_refused_before_the_first_chunk(self):
+    def test_no_inference_before_g_and_the_run_starts_with_the_first_chunk(self):
         clock = SimClock()
         p0 = FakeRB5(D, RB5Model(OFFSET)).pose()[:3]
-        acts = line_actions(p0, [0.0, 0.0, 30.0], 3.0)
-        runner, _, _, _, events = make(clock, acts, Keys({1: ["run"], 20: ["quit"]}), delay=0.2)
+        acts = line_actions(p0, [0.0, 0.0, 30.0], 5.0)
+        runner, _, follower, client, events = make(clock, acts, Keys({50: ["run"], 120: ["quit"]}), delay=0.2)
         run_for(runner, 1)
-        self.assertIn("not running: no recent chunk from the policy yet", events[0])
-        self.assertFalse(any("RUN:" in e for e in events))
+        self.assertEqual(client.calls[0][0], "go")
+        t_go = client.calls[0][1] - client.t0
+        self.assertAlmostEqual(t_go, 49 * 0.02, delta=0.001)                 # g in cycle 50
+        rows = runner.rows
+        self.assertTrue(all(r[IX["chunks_used"]] == 0 for r in rows[:49]))   # nothing before g
+        self.assertIn("g: inference started", events[0])
+        self.assertIn("RUN:", events[1])
+        t_run = float(events[1].split("]")[0].strip("[ s"))
+        self.assertAlmostEqual(t_run - t_go, 0.2, delta=0.05)               # the first chunk: one inference later
+        starting = [r for r in rows if r[IX["hold_reason"]] == "starting"]
+        self.assertTrue(10 <= len(starting) <= 13, len(starting))             # about 0.2 s waiting, the target held
+        self.assertTrue(all(r[IX["target_z"]] == rows[0][IX["target_z"]] for r in starting))
+        self.assertGreater(follower.target[2] - p0[2], 5.0)
+
+    def test_time_limit_refuses_g(self):
+        clock = SimClock()
+        p0 = FakeRB5(D, RB5Model(OFFSET)).pose()[:3]
+        acts = line_actions(p0, [0.0, 0.0, 10.0], 10.0)
+        runner, _, _, client, events = make(clock, acts, Keys({1: ["run"], 150: ["run"], 160: ["quit"]}),
+                                            time_limit_s=2.0)
+        run_for(runner, 1)
+        self.assertTrue(any("not running: time limit 2 s reached" in e for e in events))
+        self.assertEqual([c[0] for c in client.calls], ["go", "pause"])
 
     def test_big_jump_holds(self):
         clock = SimClock()
@@ -286,10 +319,9 @@ class TestPolicyRunner(unittest.TestCase):
         self.assertTrue(any("from the target (> 100)" in e for e in events))
         np.testing.assert_allclose(follower.target, p0, atol=1e-9)
 
-    def test_chunks_from_the_wait_are_dropped_at_g(self):
-        # every chunk plans 60 mm/s up from the current pose; the robot waits 3 s before g. The ensemble of the
-        # chunks from the wait would be far up (they planned motion that did not happen); after g only the
-        # newest chunk counts, so the run starts and follows.
+    def test_a_wait_before_g_does_not_hold(self):
+        # every chunk plans 60 mm/s up from the current pose; the robot waits 3 s before g. Chunks from the wait
+        # would put the ensemble far up (Simulation 034730, p3-a); with no inference before g the run follows.
         clock = SimClock()
         p0 = FakeRB5(D, RB5Model(OFFSET)).pose()[:3]
         plan = line_actions(p0, [0.0, 0.0, 60.0], 100 / FPS)
@@ -328,8 +360,10 @@ class TestGripper(unittest.TestCase):
         worker = FakeWorker()
         runner.gripper = worker
         run_for(runner, 1)
-        self.assertEqual(len(worker.fracs), 40)                            # cycles 20..59: running
-        t_run = np.array([float(r[IX["t_s"]]) for r in runner.rows[19:59]])
+        run = [r for r in runner.rows if r[IX["running"]] == 1]
+        self.assertEqual(len(worker.fracs), len(run))                      # set only while running
+        self.assertGreaterEqual(len(run), 37)                              # g in cycle 20 + the first chunk .. 59
+        t_run = np.array([float(r[IX["t_s"]]) for r in run])
         want = np.interp(t_run, np.arange(len(acts)) / FPS, acts[:, 3])
         np.testing.assert_allclose(worker.fracs, want, atol=0.02)          # the policy's gripper action
         gs = runner.s.gripper
@@ -382,6 +416,9 @@ class TestPolicyProcess(unittest.TestCase):
         self.addCleanup(client.close)
         self.assertEqual(client.open(), [])
         client.publish(time.monotonic(), [0.0] * 7)
+        time.sleep(0.3)
+        self.assertEqual(client.poll(), [])                              # paused after open: no inference
+        client.go()
         chunks, end = [], time.monotonic() + 1.5
         while time.monotonic() < end:
             chunks += client.poll()
@@ -393,6 +430,11 @@ class TestPolicyProcess(unittest.TestCase):
         self.assertTrue(all(c[2] >= 50.0 for c in chunks))               # inference time includes the delay
         ages = [time.monotonic() - c[0] for c in client.poll()]
         self.assertTrue(all(a < 0.5 for a in ages))
+        client.pause()
+        time.sleep(0.2)
+        client.poll()
+        time.sleep(0.3)
+        self.assertEqual(client.poll(), [])                              # paused again
 
     def test_unknown_policy_is_reported(self):
         client = PolicyClient({"kind": "nope"}, [], fake_cameras=True)

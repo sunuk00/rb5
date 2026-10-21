@@ -21,10 +21,12 @@ Steps:
      brightness check (typed yes when outside record.brightness_ref +/- tolerance)
   2. gripper read-only checks (before anything moves); Simulation mode and the teleop's checks; move_j to
      the ready pose after a typed yes; the gripper start writes after a typed yes (rec-6c)
-  3. the first chunks: the first action's distance from the current TCP is shown; typed yes
-  4. the 50 Hz loop (PolicyRunner): keys in this terminal: g = run, space = hold, q = quit. Holds on a chunk
-     older than run.stale_s, an action further than run.max_jump_mm from the target, the time limit; stops
-     when no chunk came for run.stop_stale_s. Every target goes through the teleop's limits (TargetFollower), speed caps 100 %.
+  3. one chunk at the ready pose: the first action's distance from the current TCP is shown, then the policy
+     pauses (no inference until g); typed yes
+  4. the 50 Hz loop (PolicyRunner): keys in this terminal: g = run (inference starts, the robot follows from
+     the first chunk), space = hold, q = quit. Holds (inference pauses) on a chunk older than run.stale_s, an
+     action further than run.max_jump_mm from the target, the time limit; stops when no chunk came for
+     run.stop_stale_s while inferring. Every target goes through the teleop's limits (TargetFollower), speed caps 100 %.
   5. normal stop (task_stop on errors); data/policy/run_<time>.csv (a row per cycle) and the summary:
      late cycles, chunk age, inference time, holds
 """
@@ -215,10 +217,12 @@ def main():
     if grip_info is not None:
         grip_info["start_frac"] = round(grip0, 3)   # the first observation's gripper state
     client.publish(time.monotonic(), list(q0) + [grip0])
+    client.go()
     first, t_end = [], time.monotonic() + 5.0
     while not first and time.monotonic() < t_end:
         first = client.poll()
         time.sleep(0.05)
+    client.pause()       # no inference until g (p3-b)
     if not first:
         reader.stop()
         close_all()
@@ -226,8 +230,8 @@ def main():
     a0 = first[-1][1][0]
     print(f"\nStart TCP {tcp0[:3]} mm. The policy's first action {a0[:3]} mm, gripper {a0[3]:.2f}: "
           f"{np.linalg.norm(a0[:3] - tcp0[:3]):.0f} mm away (over {rc.max_jump_mm:.0f} mm holds). Inference {first[-1][2]:.0f} ms.")
-    print(f"Keys here: g = run, space = hold, q = quit. Speed caps 100 % of the teleop; time limit {rc.time_limit_s:.0f} s.")
-    if not ask("Type yes to start the loop (Simulation; the policy moves only after g): "):
+    print(f"Keys here: g = run (inference starts; the robot follows from the first chunk), space = hold, q = quit. Speed caps 100 % of the teleop; time limit {rc.time_limit_s:.0f} s.")
+    if not ask("Type yes to start the loop (Simulation; nothing moves before g): "):
         reader.stop()
         close_all()
         raise SystemExit("Cancelled.")

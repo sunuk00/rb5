@@ -15,12 +15,16 @@ that covers the time gives its action, interpolated between its steps; weights e
 oldest, as ACT), passes the position through teleop.follow.TargetFollower (the teleop's limits) to
 move_servo_l and the gripper value to the gripper thread, and writes the state for the next observation.
 
-Starting (g, also after a hold) keeps only the newest chunk: the chunks predicted while held planned motion
-that did not happen (Simulation 034730: their ensemble was 117 mm away, every g held at once).
+Inference only while running (p3-b): after its warm-up the policy process waits. g sends "go": the buffer is
+emptied, the process predicts from the current images and state, and the run starts with the first chunk that
+arrives (about one inference later). Every hold sends "pause" and empties the buffer. Chunks predicted while the
+arm stood still planned motion that did not happen: ensembled, they put the action 117 mm away (Simulation
+034730, every g held at once; p3-a). Each go has its own number, so a chunk still in the queue from before is
+dropped.
 
-Holds (the target stays where it is) when: not running (start with g, hold with space), the newest
-chunk is older than stale_s, no chunk covers the time, the action is more than max_jump_mm from the
-current target, or the run reached time_limit_s; stops when no chunk has arrived for stop_stale_s.
+Holds (the target stays where it is; inference pauses) when: space, the newest chunk is older than stale_s,
+no chunk covers the time, the action is more than max_jump_mm from the current target, or the run reached
+time_limit_s (g is then refused). Stops when no chunk has come for stop_stale_s while inferring.
 
 Policies inside the process (spec dicts, so they can be pickled):
   {"kind": "replay", "actions": (N, 4) list, "fps": 30, "delay_s": 0.0}  dataset actions as chunks from
@@ -70,10 +74,8 @@ class ChunkBuffer:
     def newest_t(self):
         return self.chunks[-1][0] if self.chunks else None
 
-    def keep_newest(self):
-        """Drop every chunk but the newest. Chunks predicted while the robot was held planned motion that did
-        not happen: ensembled with them, the action at the start is where the arm should have been by now."""
-        self.chunks = self.chunks[-1:]
+    def clear(self):
+        self.chunks = []
 
     def action_at(self, t):
         """(action (D,), chunks used) or (None, 0) when no chunk covers t. Drops chunks that ended before t."""
@@ -274,13 +276,20 @@ def _policy_main(spec, cameras, fake_cameras, fps, state, out_q, cmd_q, reply_q)
     gc.freeze()
     reply_q.put(("ready", {"cameras": info}))
     period, n = 1.0 / fps, 0
+    go = None        # the number of the current "go"; None: paused (no inference)
     try:
         while True:
             try:
-                if cmd_q.get_nowait()[0] == "quit":
-                    break
+                cmd = cmd_q.get(timeout=period) if go is None else cmd_q.get_nowait()
             except queue.Empty:
-                pass
+                cmd = None
+            if cmd is not None:
+                if cmd[0] == "quit":
+                    break
+                go = cmd[1] if cmd[0] == "go" else None
+                continue        # the next command first (a go right after a pause)
+            if go is None:
+                continue
             t0 = time.monotonic()
             with state.get_lock():
                 s = np.array(state[:])
@@ -292,7 +301,7 @@ def _policy_main(spec, cameras, fake_cameras, fps, state, out_q, cmd_q, reply_q)
             infer_ms = (time.monotonic() - t0) * 1000.0
             n += 1
             try:
-                out_q.put_nowait((t_obs, np.asarray(actions, dtype=np.float32), infer_ms, n))
+                out_q.put_nowait((t_obs, np.asarray(actions, dtype=np.float32), infer_ms, n, go))
             except queue.Full:
                 pass        # the servo side is not reading: drop rather than wait
             rest = period - (time.monotonic() - t0)
@@ -305,7 +314,8 @@ def _policy_main(spec, cameras, fake_cameras, fps, state, out_q, cmd_q, reply_q)
 
 
 class PolicyClient:
-    """Servo side of the policy process: start(), publish(state), poll() -> new chunks, close()."""
+    """Servo side of the policy process: open(), publish(state), go() / pause() (inference on / off; off after
+    open), poll() -> new chunks of the current go, close()."""
 
     def __init__(self, spec, cameras, fps=30, fake_cameras=False):
         ctx = mp.get_context("spawn")
@@ -315,6 +325,7 @@ class PolicyClient:
                                 args=(spec, cameras, fake_cameras, fps, self.state, self.out_q, self.cmd_q,
                                       self.reply_q))
         self.info = {}
+        self.go_n = 0       # chunks of an earlier go (still in the queue) are dropped
 
     def open(self, timeout=60.0):
         """Start the process and wait until the policy and the cameras are ready. Returns a list of problems."""
@@ -338,14 +349,26 @@ class PolicyClient:
             self.state[0] = t_state
             self.state[1:1 + STATE_LEN] = list(state)
 
+    def go(self):
+        """Start inference from the current images and state."""
+        self.go_n += 1
+        self.cmd_q.put(("go", self.go_n))
+
+    def pause(self):
+        self.go_n += 1
+        self.cmd_q.put(("pause",))
+
     def poll(self):
-        """Chunks that arrived since the last call, without waiting: [(t_obs, actions, infer_ms, n), ...]."""
+        """Chunks of the current go that arrived since the last call, without waiting:
+        [(t_obs, actions, infer_ms, n), ...]."""
         out = []
         while True:
             try:
-                out.append(self.out_q.get_nowait())
+                *chunk, go = self.out_q.get_nowait()
             except queue.Empty:
                 return out
+            if go == self.go_n:
+                out.append(tuple(chunk))
 
     def alive(self):
         return self.proc.is_alive()
@@ -390,7 +413,7 @@ class PolicyRunner:
       rb5:      check_errors(), send_servo(xyz, rpy)
       reader:   latest() -> (tcp pose, jnt_ref [deg], age [s]); measured() -> jnt_ang [deg] (Real state)
       follower: teleop.follow.TargetFollower
-      client:   PolicyClient (publish, poll, alive)
+      client:   PolicyClient (publish, go, pause, poll, alive)
       keys:     object with keys() -> ["run" / "hold" / "quit"]
       gripper:  None or a started GripperWorker (set(frac), latest()); closed / open ticks for the state
     """
@@ -405,6 +428,7 @@ class PolicyRunner:
         self.max_jump_mm, self.time_limit_s = max_jump_mm, time_limit_s
         self.event, self.sleep, self.clock = event, sleep, clock
         self.running = False
+        self.starting = None      # monotonic time of g while waiting for the first chunk
         self.run_time = 0.0       # seconds spent running (time limit)
         self.rows = []
         self.last_infer = (None, None)
@@ -419,9 +443,11 @@ class PolicyRunner:
         return float(np.clip((g["position"] - gs.closed_ticks) / (gs.open_ticks - gs.closed_ticks), 0.0, 1.0))
 
     def _hold(self, reason, t):
-        if self.running:
+        if self.running or self.starting is not None:
             self.event(f"[{t:7.2f} s] HOLD: {reason} (g to run again)")
-        self.running = False
+            self.client.pause()
+            self.buffer.clear()
+        self.running, self.starting = False, None
         return reason
 
     def run(self):
@@ -440,23 +466,26 @@ class PolicyRunner:
                 self.buffer.add(t_obs, actions)
                 self.last_infer = (infer_ms, n)
                 last_arrival = now
-            if now - last_arrival > self.stop_stale_s:
+            if (self.running or self.starting is not None) and now - last_arrival > self.stop_stale_s:
                 raise StopRequest(f"no chunk from the policy for {self.stop_stale_s:.0f} s")
             for key in self.keys.keys():
                 if key == "quit":
                     raise StopRequest("quit key")
                 if key == "hold":
                     self._hold("space key", t)
-                elif key == "run" and not self.running:
-                    newest = self.buffer.newest_t()
-                    if newest is None or now - newest > self.stale_s:
-                        self.event(f"[{t:7.2f} s] not running: no recent chunk from the policy yet")
+                elif key == "run" and not self.running and self.starting is None:
+                    if self.run_time >= self.time_limit_s:
+                        self.event(f"[{t:7.2f} s] not running: time limit {self.time_limit_s:.0f} s reached")
                     else:
-                        self.buffer.keep_newest()
-                        self.running = True
-                        a0, _ = self.buffer.action_at(now)
-                        dist = "" if a0 is None else f", first action {np.linalg.norm(a0[:3] - self.follower.target):.0f} mm away"
-                        self.event(f"[{t:7.2f} s] RUN: following the policy (space holds){dist}")
+                        self.buffer.clear()
+                        self.client.go()
+                        self.starting = last_arrival = now
+                        self.event(f"[{t:7.2f} s] g: inference started")
+            if self.starting is not None and self.buffer.newest_t() is not None:
+                self.running, self.starting = True, None
+                a0, _ = self.buffer.action_at(now)
+                dist = "" if a0 is None else f", first action {np.linalg.norm(a0[:3] - self.follower.target):.0f} mm away"
+                self.event(f"[{t:7.2f} s] RUN: following the policy (space holds){dist}")
             if not self.client.alive():
                 raise StopRequest("policy process ended")
             # 2. robot state (the teleop's checks)
@@ -470,7 +499,7 @@ class PolicyRunner:
             newest = self.buffer.newest_t()
             chunk_age = None if newest is None else now - newest
             action, used = self.buffer.action_at(now)
-            hold_reason = "" if self.running else "not running"
+            hold_reason = "" if self.running else ("starting" if self.starting is not None else "not running")
             if self.running:
                 if chunk_age is None or chunk_age > self.stale_s:
                     hold_reason = self._hold(f"no chunk newer than {self.stale_s:.1f} s", t)

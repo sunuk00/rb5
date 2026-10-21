@@ -2942,6 +2942,23 @@ would come 20+ ms after g, and the stale check needs a recent chunk). **Checked:
 that plan 60 mm/s up and a 3 s wait: it held at 103 mm without the fix and moves with it; tests rb5 165 OK
 (4 skipped), lerobot policy tests 33 OK.
 
+## 2026-10-22 — p3-b: inference only while running (g starts it)
+
+**Context:** Simulation 035528 with p3-a: g started (first action 47 mm away), 60 s running, no late cycle,
+inference p50 22 ms; the arm went about 120 mm toward the block in 5 s and stayed (the real arm and the
+wrist cameras did not move: in Simulation the images never change). User: g should start the inference.
+**Decision:** after its warm-up (and the one chunk shown before the loop) the policy process is paused. g
+sends "go" (the buffer is emptied), the run starts with the first chunk that arrives (hold reason "starting"
+until then, the target held); every hold (space, stale chunk, jump, time limit) sends "pause" and empties the
+buffer. Each go has a number; queued chunks of an earlier go are dropped (PolicyClient.poll). The 3 s stop
+applies only while inferring; after the time limit g is refused. ChunkBuffer.keep_newest (p3-a) is replaced by
+clear(). **Rejected:** keep inferring while waiting and drop at g (p3-a: works, but the GPU runs for nothing
+and the first chunk may still come from before g). **Checked:** tests (no chunk before g; the run starts about
+one inference after g, target held while starting; hold pauses, g again goes; a 3 s stop while starting;
+time limit refuses g; the policy process with fake cameras: no chunk while paused, chunks after go, none after
+pause); rb5 tests OK (4 skipped), lerobot policy tests OK. The p1 model with fake cameras: first chunk 47-72 ms
+after go after 0.5-20 s paused (inference 43-69 ms right after a pause, then about 23 ms).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

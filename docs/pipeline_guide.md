@@ -127,8 +127,9 @@ python -m rb5_lerobot.run $OUT --task "pick the green block and place it in the 
   start; about 2 ms per camera), with the converter's function.
 - Typed answers: brightness (only if out of range) -> ready pose `yes` -> gripper start `yes` -> first
   action distance `yes`; then `g` = run, `space` = hold, `q` = quit.
-- `g` starts from the newest chunk only (chunks predicted while waiting planned motion that did not happen);
-  the RUN line prints how far its first action is.
+- Inference runs only while running: `g` starts it and the robot follows from the first chunk (about one
+  inference later; the RUN line prints how far its first action is); every hold pauses it. After the time
+  limit `g` is refused (start the run again).
 - An action further than `run.max_jump_mm` (100 mm) from the target holds (safety). In Simulation the real
   arm does not move, so the image never changes: the robot goes to one point and stays.
 - Log: `data/policy/run_sim_<time>.csv` / `.json` (the JSON keeps the run settings and image sizes used).
