@@ -113,6 +113,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-21 — cam-3: a saturated camera image refuses the start (red, no typed yes)](#2026-10-21--cam-3-a-saturated-camera-image-refuses-the-start-red-no-typed-yes)
 - [2026-10-21 — cam-4a: C270 webcam as the wrist camera (the D405 broke)](#2026-10-21--cam-4a-c270-webcam-as-the-wrist-camera-the-d405-broke)
 - [2026-10-21 — cam-4b: wrist webcam settings (8.3 ms, gain 78); settings written once the stream runs](#2026-10-21--cam-4b-wrist-webcam-settings-83-ms-gain-78-settings-written-once-the-stream-runs)
+- [2026-10-21 — cam-4c: webcam USB autosuspend off (udev rule)](#2026-10-21--cam-4c-webcam-usb-autosuspend-off-udev-rule)
 - [2026-10-21 — range.z_min_mm -50 -> 19 mm for the mounted gripper](#2026-10-21--rangez_min_mm--50---19-mm-for-the-mounted-gripper)
 - [2026-10-21 — rec-6 policy runner: decisions (two processes, temporal ensembling by time, 100 % speed, keyboard toggle)](#2026-10-21--rec-6-policy-runner-decisions-two-processes-temporal-ensembling-by-time-100--speed-keyboard-toggle)
 - [2026-10-21 — rec-6a: policy runner structure (teleop/policy.py) with a fake policy and robot](#2026-10-21--rec-6a-policy-runner-structure-teleoppolicypy-with-a-fake-policy-and-robot)
@@ -2765,6 +2766,20 @@ the webcam once in a new process, so without the fix every recording and run wou
 
 **Checked:** fresh processes 4 x 114.1-114.2; through the recorder process 114.1 / 0 %; tests pass. The read-
 back check could not have caught this: the brightness measurement at the start is what shows it.
+
+## 2026-10-21 — cam-4c: webcam USB autosuspend off (udev rule)
+
+**What happened:** while the cable test (script 30, rec_20261021_133925, cable shaken: 0 gaps, no USB error during
+the recording) was checked, the kernel log showed at every webcam open (5 of 5 since 13:34):
+`usb 1-7.4: reset high-speed USB device` and `uvcvideo 1-7.4:1.0: reset_resume error -5`. The webcam's
+`power/control` was `auto` (suspended 2 s after it is closed); the C270 does not wake from suspend properly
+and the kernel resets it. It came back every time, but a failed reset would stop the start.
+
+**Decision (user: cam-4c before the collection):** `assets/udev/99-rb-cobot-webcam.rules` sets
+`power/control` to `on` for 046d:0825 (all C270s: there is one; the serial would only matter with two).
+Installed by the user with sudo (docs/teleop_guide.md). Rejected: the kernel boot option
+`usbcore.autosuspend=-1` (turns it off for every USB device: a system-wide change for one camera);
+`usbcore.quirks=046d:0825:b` (reset-resume quirk: keeps the reset, only makes it expected).
 
 ## PENDING
 

@@ -61,6 +61,11 @@ Decisions and measurements behind them are in `docs/decisions.md`.
   (sensor timestamp, time of arrival) works.
 - The D405 has no separate RGB sensor: color comes from its stereo module (no auto_exposure_priority).
 - Measured (cam-1): see docs/decisions.md 2026-10-17.
+- **The D405 broke (2026-10-21).** Wrist camera since then: Logitech C270 webcam (046d:0825, serial 6E259540,
+  USB 2) on the gripper, `/dev/v4l/by-id/usb-046d_0825_6E259540-video-index0`; YUYV 640x480 @ 30 (29.8 fps
+  measured), no camera clock (kernel buffer time, about 33 ms before arrival). Settings with `v4l2-ctl`,
+  written once the stream runs (cam-4a, cam-4b). USB autosuspend off with `assets/udev/99-rb-cobot-webcam.rules`
+  (cam-4c).
 
 ## Gripper
 - 3D-printed parallel gripper (built by a team member, in progress), one Dynamixel MX-106T (TTL, 3-pin).

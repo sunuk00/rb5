@@ -19,6 +19,18 @@ python -m unittest discover -s tests     # must end with OK (and no "skipped")
 The PC talks to the RB5 control box at 10.0.2.6 (`configs/robot.yaml`): PC address 10.0.2.100/24 on
 the Ethernet adapter connected to the control box.
 
+### Wrist webcam: USB autosuspend off (udev rule)
+The C270 on the gripper failed to wake from USB autosuspend at every open (`reset_resume error -5` and a
+USB reset in `journalctl -k`); the rule keeps it powered (cam-4c).
+```
+sudo cp assets/udev/99-rb-cobot-webcam.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+```
+Unplug and replug the webcam, then check:
+```
+cat /sys/bus/usb/devices/$(basename $(dirname $(dirname $(readlink -f /sys/class/video4linux/$(basename $(readlink -f /dev/v4l/by-id/usb-046d_0825_6E259540-video-index0))/device))))/power/control   # -> on
+```
+
 ### Leader arm USB: 1 ms latency (udev rule)
 The leader arm's FTDI adapter needs `latency_timer = 1` (the default 16 ms makes each read about 16 ms,
 script 11); the teleop checks it and refuses otherwise. The rule also creates `/dev/rby1_leader_arm`.
