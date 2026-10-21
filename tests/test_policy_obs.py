@@ -8,8 +8,8 @@ Checked: keys and number of cameras, shapes, dtypes, value ranges before normali
 about 0.98; swapped channels give about -0.98), the state
 order and values (names, exact values, inside the dataset's range in degrees).
 
-Data: dataset local/pilot_front (front only, Real pilot 141929, episode 0), its session folder for the
-images as recorded, and the rec-5 checkpoint. Run: conda run -n lerobot python -m unittest tests.test_policy_obs
+Data (in data/archive/): dataset local/pilot_front (front only, Real pilot 141929, episode 0), its session
+folder for the images as recorded, and the rec-5 checkpoint. Run: conda run -n lerobot python -m unittest tests.test_policy_obs
 """
 import importlib.util
 import sys
@@ -21,13 +21,14 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-DATASET = ROOT / "data" / "lerobot" / "pilot_front"
-SESSION = ROOT / "data" / "demos" / "real_20261019_141929"
-CKPTS = sorted(ROOT.glob("data/train/act_pilot_front_*/checkpoints/last/pretrained_model"))
+ARCHIVE = ROOT / "data" / "archive"   # the pilot moved there before the p1 collection (2026-10-21)
+DATASET = ARCHIVE / "lerobot" / "pilot_front"
+SESSION = ARCHIVE / "demos" / "real_20261019_141929"
+CKPTS = sorted(ARCHIVE.glob("train/act_pilot_front_*/checkpoints/last/pretrained_model"))
 HAVE = importlib.util.find_spec("lerobot") is not None and DATASET.exists() and SESSION.exists() and CKPTS
 
 
-@unittest.skipUnless(HAVE, "needs env lerobot, data/lerobot/pilot_front, its session and a rec-5 checkpoint")
+@unittest.skipUnless(HAVE, "needs env lerobot, data/archive/lerobot/pilot_front, its session and a rec-5 checkpoint")
 class TestTrainRunObservation(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

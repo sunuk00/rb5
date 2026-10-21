@@ -20,10 +20,13 @@ Where the files go (`data/` is not committed):
 | `data/lerobot/NAME/` | the LeRobot dataset (parquet + AV1 videos) | step 2 |
 | `data/train/act_NAME_<time>/` | training output: checkpoints, train_config.json | step 3 |
 | `data/policy/` | Simulation run logs (CSV + JSON) | step 5 |
-| `data/archive/` | old test outputs (scripts 04-21, camera tests, earlier sessions and runs), moved 2026-10-21 | - |
+| `data/cameras/` | camera tests (scripts 30, 34) | - |
+| `data/archive/` | old outputs (scripts 04-21, camera tests, earlier sessions and runs), moved 2026-10-21 | - |
 
-Kept in place for the tests and for comparison: the pilot session `data/demos/real_20261019_141929`, its
-dataset `data/lerobot/pilot_front` and checkpoint `data/train/act_pilot_front_20261019_143936`.
+Before the p1 collection (2026-10-21) everything from the D405 time went to `data/archive/`, so `data/demos/`
+holds only this round's sessions (`data/demos/real_*` picks no old one). The pilot (session
+`archive/demos/real_20261019_141929`, dataset `archive/lerobot/pilot_front`, checkpoint
+`archive/train/act_pilot_front_20261019_143936`) stays there for `tests/test_policy_obs.py` and comparison.
 
 The task text is the same in every step. (ACT does not use it, but the dataset and the run log record it.)
 
