@@ -117,6 +117,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-21 — Grasp not visible in the gripper state (test A)](#2026-10-21--grasp-not-visible-in-the-gripper-state-test-a)
 - [2026-10-21 — cam-5a: three cameras (grip = Brio on the gripper); C270 in MJPG; missing-rows check](#2026-10-21--cam-5a-three-cameras-grip--brio-on-the-gripper-c270-in-mjpg-missing-rows-check)
 - [2026-10-21 — cam-5b: Brio autosuspend off; wrist gain 86, grip gain 152; teleop with three cameras](#2026-10-21--cam-5b-brio-autosuspend-off-wrist-gain-86-grip-gain-152-teleop-with-three-cameras)
+- [2026-10-21 — p2: learning code in rb5_lerobot/, its settings in configs/policy.yaml (p2-a: the move)](#2026-10-21--p2-learning-code-in-rb5_lerobot-its-settings-in-configspolicyyaml-p2-a-the-move)
 - [2026-10-21 — range.z_min_mm -50 -> 19 mm for the mounted gripper](#2026-10-21--rangez_min_mm--50---19-mm-for-the-mounted-gripper)
 - [2026-10-21 — rec-6 policy runner: decisions (two processes, temporal ensembling by time, 100 % speed, keyboard toggle)](#2026-10-21--rec-6-policy-runner-decisions-two-processes-temporal-ensembling-by-time-100--speed-keyboard-toggle)
 - [2026-10-21 — rec-6a: policy runner structure (teleop/policy.py) with a fake policy and robot](#2026-10-21--rec-6a-policy-runner-structure-teleoppolicypy-with-a-fake-policy-and-robot)
@@ -2853,6 +2854,30 @@ The 22 two-camera episodes go to data/archive.
   30.02, 0 gaps, 0 dropped, 0 missing rows. Loop: 0 late cycles in 1164, cycle interval max 20.4 ms, leader read
   p99 8.6 ms, gripper reads normal. Leader tool (trigger) read failures 1.4 % (16, longest 3 cycles); before
   the Brio (real_20261021_135405) 0.9 % (longest 26): not new, a short test.
+
+## 2026-10-21 — p2: learning code in rb5_lerobot/, its settings in configs/policy.yaml (p2-a: the move)
+
+**Why (user):** the learning settings were spread over four places (configs/*.yaml for the hardware,
+constants at the top of script 31 for the dataset format, lerobot-train options in docs/pipeline_guide.md plus
+LeRobot defaults for training, PolicyRunner defaults and script 35 options for runs), the state / action names
+were written twice, and scripts/ is meant for test scripts. The user wants to train, run and change parameters
+alone. Measured first (synthetic ACT on the RTX A1000 6 GB): three cameras at 640x480 run out of memory at
+batch 8 and infer in 50 ms (one camera: 17 ms); at 320x240 batch 8 takes 2.1 GB, 329 ms per step, 17 ms
+inference.
+
+**Decision (user, plan p2-a .. p2-e):** a package `rb5_lerobot/` (env lerobot) for convert / train / check / run,
+one settings file `configs/policy.yaml` (dataset, train, run), copies of the settings saved with each
+dataset, training and run. Not named `lerobot/`: at the repository root it would hide the installed LeRobot
+package. Hardware code stays in teleop/ (shared with the teleop). Recordings stay 640x480; datasets and runs
+use a smaller size (p2-b, p2-d).
+
+**p2-a (move only, no behavior change):** `git mv` scripts/31_convert_to_lerobot.py -> rb5_lerobot/convert.py,
+scripts/33_policy_check.py -> rb5_lerobot/check.py, scripts/35_run_policy.py -> rb5_lerobot/run.py,
+teleop/policy.py -> rb5_lerobot/policy.py (its relative camera imports now `teleop.cameras`). Run as
+`python -m rb5_lerobot.<convert|check|run>`. Tests, docs/pipeline_guide.md, docs/data_rules.md and
+scripts/README.md point to the new places (older entries in this file keep the old names).
+**Checked:** rb5 tests pass (4 skipped); lerobot: policy 22, convert 9, cameras 18 ok; the three modules start;
+`convert --check-only` on the three-camera Simulation session gives the same report as before.
 
 ## PENDING
 

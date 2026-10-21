@@ -1,4 +1,4 @@
-"""Tests for teleop.policy (rec-6a): ChunkBuffer (temporal ensembling by time), keys, PolicyRunner with a
+"""Tests for rb5_lerobot.policy (rec-6a): ChunkBuffer (temporal ensembling by time), keys, PolicyRunner with a
 fake robot and a stub policy on a simulated clock (follows like a direct replay, holds, stops), and the
 real policy process with the replay policy and fake cameras. Run: python -m unittest discover tests"""
 import sys
@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 from teleop.follow import TargetFollower  # noqa: E402
 from teleop.kinematics import RB5Model  # noqa: E402
-from teleop.policy import RUN_HEADER, ChunkBuffer, PolicyClient, PolicyRunner, StopRequest, parse_policy_keys  # noqa: E402
+from rb5_lerobot.policy import RUN_HEADER, ChunkBuffer, PolicyClient, PolicyRunner, StopRequest, parse_policy_keys  # noqa: E402
 from test_loop import D, OFFSET, FakeRB5, FakeReader, FakeWorker, settings  # noqa: E402
 
 FPS = 30
@@ -296,7 +296,7 @@ class TestGripper(unittest.TestCase):
 class TestStateLikeTheConverter(unittest.TestCase):
     def test_gripper_fraction_and_joint_source(self):
         import importlib.util
-        spec = importlib.util.spec_from_file_location("convert", ROOT / "scripts" / "31_convert_to_lerobot.py")
+        spec = importlib.util.spec_from_file_location("convert", ROOT / "rb5_lerobot" / "convert.py")
         cv = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cv)
         clock = SimClock()

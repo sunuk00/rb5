@@ -2,10 +2,10 @@
 
 Run in the `lerobot` conda env:
     conda activate lerobot
-    python scripts/31_convert_to_lerobot.py data/demos/real_20261020_100000 [more sessions ...]
-    python scripts/31_convert_to_lerobot.py data/demos/real_* --repo-id local/rb5_pick_place --cut-pauses 2.0
-    python scripts/31_convert_to_lerobot.py data/demos/sim_20261019_134705 --check-only
-    python scripts/31_convert_to_lerobot.py data/demos/real_20261019_141929 --cameras front --repo-id local/pilot_front
+    python -m rb5_lerobot.convert data/demos/real_20261020_100000 [more sessions ...]
+    python -m rb5_lerobot.convert data/demos/real_* --repo-id local/rb5_pick_place --cut-pauses 2.0
+    python -m rb5_lerobot.convert data/demos/sim_20261019_134705 --check-only
+    python -m rb5_lerobot.convert data/demos/real_20261019_141929 --cameras front --repo-id local/pilot_front
 
 The dataset is always built anew from the sessions (raw files stay as they are). Output:
 data/lerobot/<name of the repo id>/ (--overwrite replaces it).

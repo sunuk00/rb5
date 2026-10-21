@@ -98,7 +98,7 @@ class _Latest(threading.Thread):
         self.frame = None
 
     def run(self):
-        from .cameras import capture_delay_s
+        from teleop.cameras import capture_delay_s
         while not self.stop_event.is_set():
             got = self.cam.read()
             if got is None:
@@ -201,7 +201,7 @@ def make_policy(spec):
 def _policy_main(spec, cameras, fake_cameras, fps, state, out_q, cmd_q, reply_q):
     """cameras: list of (name, serial, settings or None[, format]). Sends ("ready", info) or ("error", text)
     first."""
-    from .cameras import image_level, level_info, open_camera
+    from teleop.cameras import image_level, level_info, open_camera
     if spec.get("cpu_cores"):
         first, last = spec["cpu_cores"]
         os.sched_setaffinity(0, set(range(int(first), int(last) + 1)))

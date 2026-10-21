@@ -1,4 +1,4 @@
-"""Tests for scripts/31_convert_to_lerobot.py (rec-4a) on a synthetic session: grid times, action and state
+"""Tests for rb5_lerobot/convert.py (rec-4a) on a synthetic session: grid times, action and state
 values, the gripper command before / after the catch, nearest camera frames, still episodes, pause cuts.
 Only the parts before the LeRobot writer (runs in env rb5 too). Run: python -m unittest discover tests"""
 import csv
@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from teleop.loop import CSV_HEADER  # noqa: E402
 
-spec = importlib.util.spec_from_file_location("convert", ROOT / "scripts" / "31_convert_to_lerobot.py")
+spec = importlib.util.spec_from_file_location("convert", ROOT / "rb5_lerobot" / "convert.py")
 cv = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cv)
 

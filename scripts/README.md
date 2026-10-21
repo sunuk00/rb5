@@ -53,11 +53,11 @@ default, Real with `--real` and typed confirmation; **leader** = writes torque t
 | 28 | `28_trigger_gripper.py` | Leader trigger (left by default) -> gripper alone (no RB5): released 0 closed, pulled 1000 open, catch at start, current-based position mode with a low force cap (grip-2; code in `teleop/gripper.py`, gripper thread, since grip-3a) | gripper (writes), leader arm (read only) | test |
 | 29 | `29_lerobot_dummy_dataset.py` | Dummy LeRobotDataset with the rec-1 format: write, discard, read back, ACT action chunk (env `lerobot`, rec-2) | - | test |
 | 30 | `30_camera_recorder_test.py` | Camera recorder process alone (teleop/cameras.py): episodes kept / discarded, fps, gaps, JPEG write time, MB/s, CPU, and a 50 Hz loop beside it (rec-3a) | - (cameras only) | tool |
-| 31 | `31_convert_to_lerobot.py` | Demonstration sessions (`--record`) -> one LeRobotDataset at 30 fps: kept episodes, still ones left out, optional pause cut, checks (env `lerobot`, rec-4a) | - (files only) | tool |
+| 31 | moved to `rb5_lerobot/convert.py` (p2-a) | Demonstration sessions (`--record`) -> one LeRobotDataset at 30 fps: kept episodes, still ones left out, optional pause cut, checks (env `lerobot`, rec-4a) | - (files only) | tool |
 | 32 | `32_replay_episode.py` | Replay one dataset episode's actions through the teleop limits (teleop/follow.py) and compare with the recorded joints (env `lerobot`, rec-4b) | RB5 (Sim only) | test |
-| 33 | `33_policy_check.py` | A trained policy offline: predicted chunks vs recorded actions, inference time GPU / CPU (env `lerobot`, rec-5) | - | tool |
+| 33 | moved to `rb5_lerobot/check.py` (p2-a) | A trained policy offline: predicted chunks vs recorded actions, inference time GPU / CPU (env `lerobot`, rec-5) | - | tool |
 | 34 | `34_camera_settings.py` | Fixed exposure / gain / white balance candidates for both cameras: gain matched to the auto brightness, noise, color balance, an image per setting; auto restored at the end (cam-2a) | - (cameras only, options changed temporarily) | tool |
-| 35 | `35_run_policy.py` | Run a trained ACT policy (teleop/policy.py): policy process with the cameras (fixed settings) + 50 Hz servo loop through the teleop limits; keys g / space / q (env `lerobot`, rec-6b) | RB5 (Sim only) | test |
+| 35 | moved to `rb5_lerobot/run.py` (p2-a) | Run a trained ACT policy (rb5_lerobot/policy.py): policy process with the cameras (fixed settings) + 50 Hz servo loop through the teleop limits; keys g / space / q (env `lerobot`, rec-6b) | RB5 (Sim only) | test |
 
 ## Usage per script
 
@@ -411,9 +411,9 @@ MB/s; the camera process CPU. Files: `data/cameras/rec_<time>/episode_<n>/`.
 ### 31 convert to LeRobot
 Env `lerobot`: `conda activate lerobot`.
 ```bash
-python scripts/31_convert_to_lerobot.py data/demos/sim_20261019_134705 --check-only     # report only
-python scripts/31_convert_to_lerobot.py data/demos/real_* --repo-id local/rb5_pick_place --overwrite
-python scripts/31_convert_to_lerobot.py data/demos/real_* --cut-pauses 2.0               # cut pauses > 2 s
+python -m rb5_lerobot.convert data/demos/sim_20261019_134705 --check-only     # report only
+python -m rb5_lerobot.convert data/demos/real_* --repo-id local/rb5_pick_place --overwrite
+python -m rb5_lerobot.convert data/demos/real_* --cut-pauses 2.0               # cut pauses > 2 s
 ```
 | option | default | meaning |
 |---|---|---|
@@ -444,8 +444,8 @@ target vs desired (what the limits changed), tcp_ref vs target, the end position
 ### 33 policy check (offline)
 Env `lerobot`. No robot.
 ```bash
-python scripts/33_policy_check.py data/train/<run>/checkpoints/last/pretrained_model --repo-id local/pilot_front --two-cameras
-python scripts/33_policy_check.py --endurance 5     # inference on the 30 Hz schedule for 5 min + GPU temperature / clock
+python -m rb5_lerobot.check data/train/<run>/checkpoints/last/pretrained_model --repo-id local/pilot_front --two-cameras
+python -m rb5_lerobot.check --endurance 5     # inference on the 30 Hz schedule for 5 min + GPU temperature / clock
 ```
 Loads the policy and its normalization from the checkpoint; on frames spread over the dataset compares
 the predicted chunk with the recorded actions (+1, +10, +30, +99 steps; training data, so it shows the
@@ -466,8 +466,8 @@ white balance back on at the end (a replug does too). Exposure units: D435 RGB 0
 ### 35 run a policy (Simulation)
 Env `lerobot`: `conda activate lerobot`. **Moves the RB5 in Simulation mode** (Real is refused).
 ```bash
-python scripts/35_run_policy.py data/train/<run>/checkpoints/last/pretrained_model [--time-limit 60]
-python scripts/35_run_policy.py <checkpoint> --servo-cores 0-5 --policy-cores 6-11 --torch-threads 4   # the defaults
+python -m rb5_lerobot.run data/train/<run>/checkpoints/last/pretrained_model [--time-limit 60]
+python -m rb5_lerobot.run <checkpoint> --servo-cores 0-5 --policy-cores 6-11 --torch-threads 4   # the defaults
 ```
 Opens the cameras the policy expects (its config.json) in the policy process with the recording's fixed
 settings and checks the brightness; Simulation mode and the teleop's checks; move_j to the ready pose

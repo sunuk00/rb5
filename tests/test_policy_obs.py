@@ -37,7 +37,7 @@ class TestTrainRunObservation(unittest.TestCase):
         from lerobot.configs.policies import PreTrainedConfig
         from lerobot.policies.factory import make_pre_post_processors
         from PIL import Image
-        from teleop.policy import STATE_NAMES, observation_batch, policy_inputs
+        from rb5_lerobot.policy import STATE_NAMES, observation_batch, policy_inputs
         cls.Image, cls.observation_batch, cls.STATE_NAMES = Image, staticmethod(observation_batch), STATE_NAMES
         cls.ds = LeRobotDataset("local/pilot_front", root=DATASET)
         cls.ckpt = CKPTS[-1]
@@ -48,7 +48,7 @@ class TestTrainRunObservation(unittest.TestCase):
                                               preprocessor_overrides={"device_processor": {"device": "cpu"}})
         cls.cameras, cls.state_len = policy_inputs(cls.ckpt)
         # the frames of episode 0 as the converter built them (same rules -> same JPEG per dataset frame)
-        spec = importlib.util.spec_from_file_location("convert", ROOT / "scripts" / "31_convert_to_lerobot.py")
+        spec = importlib.util.spec_from_file_location("convert", ROOT / "rb5_lerobot" / "convert.py")
         cv = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cv)
         s = cv.Session(SESSION)

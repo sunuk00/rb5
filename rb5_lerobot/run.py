@@ -1,4 +1,4 @@
-"""rec-6b: run a trained ACT policy on the RB5 in SIMULATION (teleop/policy.py). Real is refused for now.
+"""rec-6b: run a trained ACT policy on the RB5 in SIMULATION (rb5_lerobot/policy.py). Real is refused for now.
 
 MOVES THE RB5 (Simulation mode) AND THE GRIPPER (the real gripper moves in Simulation too, as in the
 teleop; --no-gripper runs without it). The gripper follows the policy's gripper action at once while
@@ -6,7 +6,7 @@ running (no catch: the dataset's gripper action is what the gripper did).
 
 Run in the `lerobot` conda env:
     conda activate lerobot
-    python scripts/35_run_policy.py data/train/<run>/checkpoints/last/pretrained_model [--time-limit 60]
+    python -m rb5_lerobot.run data/train/<run>/checkpoints/last/pretrained_model [--time-limit 60]
 
 Steps:
   1. settings (configs/sim.yaml); the cameras the policy expects (its config.json), opened in the policy
@@ -42,7 +42,7 @@ from teleop.episodes import KeyReader  # noqa: E402
 from teleop.follow import TargetFollower  # noqa: E402
 from teleop.gripper import MODE_AT_END, PRESENT_POSITION, open_gripper, start_lines, start_worker  # noqa: E402
 from teleop.kinematics import RB5Model  # noqa: E402
-from teleop.policy import RUN_HEADER, PolicyClient, PolicyRunner, StopRequest, parse_policy_keys, policy_inputs  # noqa: E402
+from rb5_lerobot.policy import RUN_HEADER, PolicyClient, PolicyRunner, StopRequest, parse_policy_keys, policy_inputs  # noqa: E402
 from teleop.safety import Watch  # noqa: E402
 from teleop.settings import SettingsError, load_settings  # noqa: E402
 

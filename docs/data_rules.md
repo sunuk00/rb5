@@ -27,7 +27,7 @@ changes the data (task, object, cameras, settings) starts a new dataset.
 ## Amount and sessions
 - **50 kept episodes**, in sessions of **10-15 episodes** (the robot CSV is written at the session end).
 - Same lighting for all sessions (blinds / lamps as on the first session; note the time of day).
-- After each session: `python scripts/31_convert_to_lerobot.py <session> --check-only` and look at the
+- After each session: `python -m rb5_lerobot.convert <session> --check-only` and look at the
   report (left-out episodes, image time error, gripper following, start pose spread) before the next one.
 
 ## Cameras

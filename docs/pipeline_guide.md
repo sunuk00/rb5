@@ -53,8 +53,8 @@ python -m teleop --real --record --task "pick the green block and place it in th
 ```bash
 conda activate lerobot
 S=$(ls -td data/demos/real_* | head -1); echo $S          # the newest session
-python scripts/31_convert_to_lerobot.py $S --check-only    # report only
-python scripts/31_convert_to_lerobot.py $S --repo-id local/NAME
+python -m rb5_lerobot.convert $S --check-only    # report only
+python -m rb5_lerobot.convert $S --repo-id local/NAME
 ```
 
 - Look at the report before converting: left-out episodes and why, image time error, frame coverage of
@@ -84,7 +84,7 @@ lerobot-train --policy.type=act --policy.device=cuda --policy.push_to_hub=false 
 ## 4. Offline check (no robot)
 
 ```bash
-python scripts/33_policy_check.py $OUT/checkpoints/last/pretrained_model --repo-id local/NAME
+python -m rb5_lerobot.check $OUT/checkpoints/last/pretrained_model --repo-id local/NAME
 ```
 
 - Prediction vs the recorded action on training frames (mm at +1 / +30 / +99 steps, gripper) and the
@@ -97,7 +97,7 @@ Checklist: tablet in Simulation mode, the **real arm at the ready pose** (the po
 front image), block in the square, gripper powered, fingers clear.
 
 ```bash
-python scripts/35_run_policy.py $OUT/checkpoints/last/pretrained_model --time-limit 30 \
+python -m rb5_lerobot.run $OUT/checkpoints/last/pretrained_model --time-limit 30 \
   --task "pick the green block and place it in the box"
 ```
 

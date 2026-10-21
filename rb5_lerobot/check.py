@@ -1,7 +1,7 @@
 """rec-5: check a trained policy offline (no robot): predictions on dataset frames and inference time.
 
 Run in the `lerobot` conda env:
-    python scripts/33_policy_check.py data/train/<run>/checkpoints/last/pretrained_model \
+    python -m rb5_lerobot.check data/train/<run>/checkpoints/last/pretrained_model \
         --repo-id local/pilot_front [--frames 200] [--two-cameras]
 
 1. Loads the policy and its pre / post processors (normalization) from the checkpoint.
