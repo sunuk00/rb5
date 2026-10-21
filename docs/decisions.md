@@ -112,6 +112,7 @@ Entries below are in date order; this list groups them by topic. Open items: [PE
 - [2026-10-21 — cam-2b: fixed camera settings in the teleop; brightness check at start](#2026-10-21--cam-2b-fixed-camera-settings-in-the-teleop-brightness-check-at-start)
 - [2026-10-21 — cam-3: a saturated camera image refuses the start (red, no typed yes)](#2026-10-21--cam-3-a-saturated-camera-image-refuses-the-start-red-no-typed-yes)
 - [2026-10-21 — cam-4a: C270 webcam as the wrist camera (the D405 broke)](#2026-10-21--cam-4a-c270-webcam-as-the-wrist-camera-the-d405-broke)
+- [2026-10-21 — cam-4b: wrist webcam settings (8.3 ms, gain 78); settings written once the stream runs](#2026-10-21--cam-4b-wrist-webcam-settings-83-ms-gain-78-settings-written-once-the-stream-runs)
 - [2026-10-21 — range.z_min_mm -50 -> 19 mm for the mounted gripper](#2026-10-21--rangez_min_mm--50---19-mm-for-the-mounted-gripper)
 - [2026-10-21 — rec-6 policy runner: decisions (two processes, temporal ensembling by time, 100 % speed, keyboard toggle)](#2026-10-21--rec-6-policy-runner-decisions-two-processes-temporal-ensembling-by-time-100--speed-keyboard-toggle)
 - [2026-10-21 — rec-6a: policy runner structure (teleop/policy.py) with a fake policy and robot](#2026-10-21--rec-6a-policy-runner-structure-teleoppolicypy-with-a-fake-policy-and-robot)
@@ -2745,6 +2746,26 @@ with gain 128 -> cam-4b.
 **Not done:** the webcam's own delay from exposure to the buffer time is not known (the buffer time is when the
 first USB data arrives); the D405 rule of thumb no longer applies. Fingers are not in the wrist view yet.
 
+## 2026-10-21 — cam-4b: wrist webcam settings (8.3 ms, gain 78); settings written once the stream runs
+
+**Script 34** now takes the cameras from the config (a /dev/ path = webcam), `--camera`, and `--target` (the
+mean to match instead of the auto one: the start check compares every camera with brightness_ref 114, and the
+webcam's auto gives about 135 on the white table). User run (settings_20261021_132305, wrist, target 114):
+auto 135.0; 8.3 ms needs gain 78 (114.6); 16.7 ms gain 12 (113). White balance 4000-5200 K hardly changes
+R/G and B/G (0.955-0.977). **Decision (user):** 8.3 ms (blur, as for the D405), gain 78, 4600 K.
+Rejected: 16.7 ms (less noise, twice the blur on the moving wrist).
+
+**Problem found with script 30** (rec_20261021_132555): the wrist came out at 127.5, not 114. Reproduced
+with fresh processes: the first open in a process gave 127 every time (8 of 8), a second open in the same
+process 114; the read-back values were the same in both, and all the v4l2 controls too. Pixel values were
+about 1.1 x (sensor side, the same ratio as 147.3 / 131.8 in cam-4a). Writing the settings after the stream
+had started gave 114 every time. **Fix:** `UVCCamera` reads `UVC_START_FRAMES` (5) frames before it writes
+the settings; no frame -> "gives no frames" refuses the start. The teleop and the policy process each open
+the webcam once in a new process, so without the fix every recording and run would have been at about 127.
+
+**Checked:** fresh processes 4 x 114.1-114.2; through the recorder process 114.1 / 0 %; tests pass. The read-
+back check could not have caught this: the brightness measurement at the start is what shows it.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
@@ -2765,7 +2786,7 @@ first USB data arrives); the D405 rule of thumb no longer applies. Fingers are n
   - **Demonstration recording for ACT / LeRobot (2026-10-19):** rec-1 .. rec-5 done (format, env lerobot,
     `--record`, converter, Simulation replay, ACT trial on the pilot). Open:
     - Hardware before the real collection (user): the D405 broke (2026-10-21); C270 webcam on the gripper
-      (cam-4a), its settings in cam-4b (script 34), then script 30 with both cameras while moving the gripper;
+      (cam-4a), its settings done (cam-4b: 8.3 ms, gain 78); left: script 30 with both cameras while moving the gripper;
       D435 position (the arm covers about 2/3 of its view).
     - Real collection: rules in docs/data_rules.md (2026-10-21); fixed camera settings done (cam-2b; the policy
       runner must open the cameras with the same code) and z_min 19 mm (2026-10-21). Left: the hardware

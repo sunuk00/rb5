@@ -54,6 +54,7 @@ SATURATED_MAX_FRAC = 0.25    # more saturated pixels than this at the start refu
 RED, RESET = "\033[1;31m", "\033[0m"
 STALL_S = 1.0                # no frame for this long = camera error (real-pilot 141929: the D405 dropped off
                              # USB and came back as USB 2; its pipeline only timed out, nothing was reported)
+UVC_START_FRAMES = 5         # frames read to start the webcam stream before its settings are written
 UVC_SETTLE_S = 0.5           # frames read after writing the webcam settings, before they are read back
 UVC_EXPOSURE_TOL = 10        # 0.1 ms steps: the C270 reports 5 more than written while it streams (cam-4a)
 
@@ -155,8 +156,8 @@ class UVCCamera:
     """Color stream of a UVC webcam (cam-4a: Logitech C270 on the gripper) found by its device path, e.g.
     /dev/v4l/by-id/usb-046d_0825_<serial>-video-index0 (the same after a replug). YUYV, converted to RGB
     (MJPG gave a corrupt-JPEG warning on almost every frame). Settings (optional): auto exposure, the variable
-    frame rate and auto white balance off, then exposure_us (0.1 ms steps), gain, white_balance_k, read back
-    while streaming (applied = what the camera reports). The webcam keeps them until it is unplugged, so they
+    frame rate and auto white balance off, then exposure_us (0.1 ms steps), gain, white_balance_k, written once
+    the stream runs and read back (applied = what the camera reports). The webcam keeps them until it is unplugged, so they
     are written at every open. Frame numbers count the frame periods between the buffer times, so a missed
     frame shows as a gap as on a RealSense."""
 
@@ -179,6 +180,11 @@ class UVCCamera:
             self.cap.release()
             raise RuntimeError(f"webcam {self.path} gives {size[0]}x{size[1]}, not {width}x{height}")
         self.period_ms, self.n, self.last_ts = 1000.0 / fps, 0, None
+        # The stream must run before the settings are written: written before the first frame, the C270
+        # read back the same values but gave images about 1.1 x brighter (127 instead of 114, cam-4b)
+        if not any([self.cap.read()[0] for _ in range(UVC_START_FRAMES)]):   # a list: all frames are read
+            self.cap.release()
+            raise RuntimeError(f"webcam {self.path} gives no frames")
         self.applied = None
         if settings is not None:
             try:
