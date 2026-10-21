@@ -54,12 +54,14 @@ python -m teleop --real --record --task "pick the green block and place it in th
 conda activate lerobot
 S=$(ls -td data/demos/real_* | head -1); echo $S          # the newest session
 python -m rb5_lerobot.convert $S --check-only    # report only
-python -m rb5_lerobot.convert $S --repo-id local/NAME
+python -m rb5_lerobot.convert $S --name NAME
 ```
 
 - Look at the report before converting: left-out episodes and why, image time error, frame coverage of
-  both cameras, gripper following.
-- Several sessions in one dataset: list them all (`... data/demos/real_A data/demos/real_B --repo-id ...`).
+  the cameras, gripper following.
+- Several sessions in one dataset: list them all (`... data/demos/real_A data/demos/real_B --name ...`).
+- Image size and which episodes are left out: `configs/policy.yaml` dataset (images 320x240; the recordings
+  stay 640x480). The dataset keeps a copy of the settings it was built with: `rb5_convert.yaml`.
 - Output: `data/lerobot/NAME`. Building it again: add `--overwrite`.
 - Time: about 1.1 x the recorded time per camera (15 episodes x 25 s x 2 cameras: about 15 min).
 

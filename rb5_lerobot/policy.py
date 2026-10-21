@@ -44,7 +44,8 @@ import time
 
 import numpy as np
 
-STATE_LEN = 7          # joints J1..J6 [deg] + gripper position 0..1 (rec-1 observation.state)
+from rb5_lerobot.data_format import ACTION_NAMES, STATE_LEN, STATE_NAMES
+
 CHUNK_QUEUE = 8
 
 
@@ -131,8 +132,6 @@ class ReplayPolicy:
         return self.actions[idx]
 
 
-STATE_NAMES = ["j1_deg", "j2_deg", "j3_deg", "j4_deg", "j5_deg", "j6_deg", "gripper_pos"]   # rec-1, converter
-ACTION_NAMES = ["x_mm", "y_mm", "z_mm", "gripper_open"]
 
 
 def policy_inputs(checkpoint):

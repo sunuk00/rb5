@@ -1,0 +1,48 @@
+# Learning and policy-run settings (p2): one file for the dataset, the training and the run.
+# The hardware and the recording (cameras, robot, teleop) stay in configs/sim.yaml / real.yaml.
+# Each command saves a copy of what it used next to its output (dataset, training run, run log).
+#
+#   python -m rb5_lerobot.convert <sessions ...> --name NAME     reads dataset
+#   python -m rb5_lerobot.train NAME                             reads train          (p2-c)
+#   python -m rb5_lerobot.run <training folder>                  reads run            (p2-d)
+#
+# Another file for a comparison: copy this one and pass --config configs/<copy>.yaml.
+# What to redo after a change: dataset -> convert and train again; train -> train again; run -> nothing.
+
+dataset:                        # python -m rb5_lerobot.convert
+  image_width: 320              # images in the dataset (the recordings stay 640x480). Three cameras at 640x480
+  image_height: 240             # ran out of memory at batch 8 on the 6 GB GPU and inferred in 50 ms (2026-10-21);
+                                # 320x240: 2.1 GB, 17 ms. The run shrinks the camera images to the checkpoint's size
+  min_clutch_s: 1.0             # an episode with less clutch-engaged time is left out (still)
+  min_path_mm: 30.0             # an episode whose target moved less is left out (still)
+  keep_still: false             # true keeps those still episodes
+  cut_pauses_s: 0.0             # cut stretches where the clutch was released for longer than this and the gripper
+                                # command did not change (the robot stands still); 0 = no cut
+
+train:                          # python -m rb5_lerobot.train (lerobot-train options)
+  batch_size: 8                 # frames per step; memory and step time grow with it (3 cameras 320x240: 2.1 GB)
+  steps: 20000                  # training steps (3 cameras 320x240, batch 8: about 330 ms each, 1.8 h)
+  save_freq: 5000               # a checkpoint every this many steps (about 600 MB each), and the last one
+  log_freq: 100                 # a log line every this many steps (loss, step time)
+  num_workers: 4                # data loader processes (decode the videos)
+  seed: 1000
+  device: cuda
+  act:                          # ACT model, passed as --policy.<name>=<value>; any ACT option of LeRobot can be added
+                                # (lerobot-train --policy.type=act --help lists them); not listed = LeRobot's default
+    chunk_size: 100             # actions predicted at once (at 30 fps: 3.3 s ahead)
+    n_action_steps: 100         # actions used per prediction in LeRobot's own loop (our run re-predicts every step)
+    vision_backbone: resnet18   # image encoder, one per camera image
+    dim_model: 512              # transformer width
+    use_vae: true               # the CVAE of ACT (a latent for the style of the demonstrations)
+    kl_weight: 10.0             # weight of the VAE's KL term in the loss
+    optimizer_lr: 1.0e-5        # learning rate
+
+run:                            # python -m rb5_lerobot.run
+  time_limit_s: 60              # seconds of running, then hold
+  max_jump_mm: 100              # an action further than this from the current target holds (safety)
+  stale_s: 0.5                  # a prediction older than this is not used (hold)
+  stop_stale_s: 3.0             # no new prediction for this long: stop
+  ensemble_coeff: 0.01          # temporal ensembling weight exp(-coeff * i), i = 0 the oldest prediction
+  servo_cores: [0, 5]           # CPU cores of the 50 Hz servo process (first, last)
+  policy_cores: [6, 11]         # CPU cores of the policy process (first, last)
+  torch_threads: 4              # PyTorch CPU threads in the policy process

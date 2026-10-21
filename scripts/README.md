@@ -409,25 +409,25 @@ cycles (> 5 ms). Prints per episode and camera: frames, fps, frame interval, JPE
 MB/s; the camera process CPU. Files: `data/cameras/rec_<time>/episode_<n>/`.
 
 ### 31 convert to LeRobot
-Env `lerobot`: `conda activate lerobot`.
+Moved to `rb5_lerobot/convert.py` (p2-a); settings in `configs/policy.yaml` dataset (p2-b). Env `lerobot`.
 ```bash
-python -m rb5_lerobot.convert data/demos/sim_20261019_134705 --check-only     # report only
-python -m rb5_lerobot.convert data/demos/real_* --repo-id local/rb5_pick_place --overwrite
-python -m rb5_lerobot.convert data/demos/real_* --cut-pauses 2.0               # cut pauses > 2 s
+python -m rb5_lerobot.convert data/demos/real_A --check-only                    # report only
+python -m rb5_lerobot.convert data/demos/real_A data/demos/real_B --name p1     # -> data/lerobot/p1
 ```
-| option | default | meaning |
-|---|---|---|
-| `--repo-id` | `local/rb5_demos` | dataset name; output `data/lerobot/<name>` (`--root` elsewhere) |
-| `--cut-pauses S` | 0 (off) | remove clutch-released stretches longer than S s with an unchanged gripper command |
-| `--min-clutch-s`, `--min-path-mm` | 1.0, 30 | episodes below either are still: left out (`--keep-still` keeps them) |
-| `--check-only` | | print the report, write nothing |
-| `--cameras` | `front,wrist` | e.g. `front` for a test dataset without the wrist camera |
+| option | meaning |
+|---|---|
+| `--name NAME` | output `data/lerobot/NAME`, repo id `local/NAME` (needed unless `--check-only`) |
+| `--config FILE` | another policy settings file (default `configs/policy.yaml`) |
+| `--overwrite` | replace an existing dataset |
+| `--check-only` | print the report, write nothing |
+| `--cameras` | e.g. `front` for a test dataset with some of the recorded cameras |
 
-Always builds the dataset anew from the sessions. Episodes whose camera frames do not cover them
-(none, a gap or missing start / end over 0.2 s) are left out with the reason. About 1.1 x real time per
-camera (JPEG decoding + AV1 encoding). Action / state / image rules: the docstring and
-docs/decisions.md (rec-4a). Prints per episode: duration, clutch time, path, image time error, lost
-camera frames, gripper following, start vs ready pose; at the end the 30 -> 50 Hz resampling error.
+Image size, still-episode limits and the pause cut: `configs/policy.yaml` dataset. Always builds the
+dataset anew from the sessions; writes `rb5_convert.yaml` (settings, sessions, cameras) into it. Episodes
+whose camera frames do not cover them (none, a gap or missing start / end over 0.2 s) are left out with the
+reason. Action / state / image rules: the docstring and docs/decisions.md (rec-4a). Prints per episode:
+duration, clutch time, path, image time error, lost camera frames, gripper following, start vs ready pose;
+at the end the 30 -> 50 Hz resampling error.
 
 ### 32 replay an episode (Simulation)
 Env `lerobot`: `conda activate lerobot`. **Moves the RB5 in Simulation mode** (Real is refused).

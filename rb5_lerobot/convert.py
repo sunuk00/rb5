@@ -1,14 +1,16 @@
-"""rec-4a: demonstration sessions (python -m teleop --record) -> one LeRobotDataset. No robot, no cameras.
+"""rec-4a / p2-b: demonstration sessions (python -m teleop --record) -> one LeRobotDataset. No robot, no cameras.
 
-Run in the `lerobot` conda env:
+Run in the `lerobot` conda env, from the repository root:
     conda activate lerobot
-    python -m rb5_lerobot.convert data/demos/real_20261020_100000 [more sessions ...]
-    python -m rb5_lerobot.convert data/demos/real_* --repo-id local/rb5_pick_place --cut-pauses 2.0
-    python -m rb5_lerobot.convert data/demos/sim_20261019_134705 --check-only
-    python -m rb5_lerobot.convert data/demos/real_20261019_141929 --cameras front --repo-id local/pilot_front
+    python -m rb5_lerobot.convert data/demos/real_A data/demos/real_B --name p1     # -> data/lerobot/p1
+    python -m rb5_lerobot.convert data/demos/real_A --check-only                    # report only
+    python -m rb5_lerobot.convert data/demos/real_A --name p1 --overwrite           # build p1 again
+    python -m rb5_lerobot.convert data/demos/real_A --name test --cameras front     # some cameras (tests)
 
-The dataset is always built anew from the sessions (raw files stay as they are). Output:
-data/lerobot/<name of the repo id>/ (--overwrite replaces it).
+Settings: the dataset section of configs/policy.yaml (--config another file): image size, which episodes are
+left out, pause cut. The dataset is always built anew from the sessions (raw files stay as they are). Output:
+data/lerobot/<name>/ (repo id local/<name>) with rb5_convert.yaml: the settings, sessions and cameras used.
+Images are shrunk to dataset.image_width x image_height (data_format.resize_image, the same function the run uses).
 
 Format (docs/decisions.md rec-1), 30 fps on a time grid from each kept episode's start (1/30 s steps):
 - action (4): x, y, z = the sent TCP target [mm, base frame], interpolated at the grid times (send time
@@ -22,8 +24,8 @@ Format (docs/decisions.md rec-1), 30 fps on a time grid from each kept episode's
   30 fps but are not synchronized with the grid: up to half a frame). All sessions must have the same cameras.
 
 Episodes left out (reported): discarded ones; ones whose camera frames do not cover them (none, or a
-gap / missing start or end of more than 0.2 s); still ones (clutch engaged < --min-clutch-s or target path <
---min-path-mm; --keep-still keeps them); --cut-pauses S removes stretches where the clutch was released
+gap / missing start or end of more than 0.2 s); still ones (clutch engaged < min_clutch_s or target path <
+min_path_mm; keep_still keeps them); cut_pauses_s S removes stretches where the clutch was released
 for more than S seconds and the gripper command did not change (the robot stands still there, so the
 cut is seamless; the still tail before the operator's key press is such a stretch).
 
@@ -38,25 +40,26 @@ import shutil
 import sys
 from pathlib import Path
 
+from datetime import datetime
+
 import numpy as np
 import yaml
 from PIL import Image
 
+from rb5_lerobot.config import DEFAULT, load_policy_config
+from rb5_lerobot.data_format import ACTION_NAMES, FPS, RECORDED_SIZE, STATE_NAMES, resize_image
+
 ROOT = Path(__file__).resolve().parent.parent
-FPS = 30
-H, W = 480, 640
 CAMERAS = ["front", "wrist"]   # for sessions that do not list their cameras (rec-1 tests)
-STATE_NAMES = ["j1_deg", "j2_deg", "j3_deg", "j4_deg", "j5_deg", "j6_deg", "gripper_pos"]
-ACTION_NAMES = ["x_mm", "y_mm", "z_mm", "gripper_open"]
 IMAGE_DT_WARN_MS = 25.0   # nearest frame further than this from the grid time (half a frame is 16.7 ms)
 CAMERA_GAP_S = 0.2        # a camera without frames this long inside an episode: the episode is left out
 
 
-def features(cameras=CAMERAS):
+def features(cameras=CAMERAS, width=RECORDED_SIZE[0], height=RECORDED_SIZE[1]):
     return {
-        "observation.state": {"dtype": "float32", "shape": (7,), "names": STATE_NAMES},
-        "action": {"dtype": "float32", "shape": (4,), "names": ACTION_NAMES},
-        **{f"observation.images.{c}": {"dtype": "video", "shape": (H, W, 3), "names": ["height", "width", "channels"],
+        "observation.state": {"dtype": "float32", "shape": (len(STATE_NAMES),), "names": STATE_NAMES},
+        "action": {"dtype": "float32", "shape": (len(ACTION_NAMES),), "names": ACTION_NAMES},
+        **{f"observation.images.{c}": {"dtype": "video", "shape": (height, width, 3), "names": ["height", "width", "channels"],
                                        "info": {"is_depth_map": False}} for c in cameras},
     }
 
@@ -244,17 +247,22 @@ def session_cameras(folder):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("sessions", nargs="+", help="session folders (data/demos/...)")
-    ap.add_argument("--repo-id", default="local/rb5_demos")
-    ap.add_argument("--root", help="output folder (default data/lerobot/<name of the repo id>)")
-    ap.add_argument("--overwrite", action="store_true")
-    ap.add_argument("--cut-pauses", type=float, default=0.0, metavar="S", help="cut clutch-released pauses > S s (0 = off)")
-    ap.add_argument("--min-clutch-s", type=float, default=1.0)
-    ap.add_argument("--min-path-mm", type=float, default=30.0)
-    ap.add_argument("--keep-still", action="store_true", help="keep episodes without motion")
+    ap.add_argument("--name", help="dataset name: data/lerobot/<name>, repo id local/<name> (needed unless --check-only)")
+    ap.add_argument("--config", default=str(DEFAULT), help="policy settings file (its dataset section)")
+    ap.add_argument("--overwrite", action="store_true", help="replace an existing data/lerobot/<name>")
     ap.add_argument("--check-only", action="store_true", help="report only, write nothing")
     ap.add_argument("--cameras", help="cameras in the dataset, e.g. front (tests only; default: all the sessions "
                                        "recorded)")
     args = ap.parse_args()
+    if not args.check_only and not args.name:
+        raise SystemExit("--name NAME: the dataset name (or --check-only)")
+    cfg, raw = load_policy_config(args.config)
+    ds_cfg = cfg.dataset
+    args.min_clutch_s, args.min_path_mm = ds_cfg.min_clutch_s, ds_cfg.min_path_mm
+    args.keep_still, args.cut_pauses = ds_cfg.keep_still, ds_cfg.cut_pauses_s
+    width, height = ds_cfg.image_width, ds_cfg.image_height
+    print(f"Settings: {args.config} (dataset: images {width}x{height}, min clutch {args.min_clutch_s} s, min path "
+          f"{args.min_path_mm} mm, keep still {args.keep_still}, cut pauses {args.cut_pauses} s)")
     recorded = [session_cameras(f) for f in args.sessions]
     if any(r != recorded[0] for r in recorded):
         raise SystemExit("sessions recorded different cameras: " + "; ".join(
@@ -269,7 +277,8 @@ def main():
             raise SystemExit(f"--cameras: use names from {recorded[0]}")
         print(f"Cameras: {', '.join(args.cameras)} only (a test dataset; the sessions have {', '.join(recorded[0])})")
 
-    root = Path(args.root) if args.root else ROOT / "data" / "lerobot" / args.repo_id.split("/")[-1]
+    repo_id = f"local/{args.name}"
+    root = ROOT / "data" / "lerobot" / str(args.name)
     episodes, errors, sources = [], [], set()
     for folder in args.sessions:
         s = Session(folder)
@@ -302,20 +311,24 @@ def main():
         if not args.overwrite:
             raise SystemExit(f"{root} exists; --overwrite replaces it")
         shutil.rmtree(root)
-    ds = LeRobotDataset.create(repo_id=args.repo_id, fps=FPS, features=features(args.cameras), root=root,
+    ds = LeRobotDataset.create(repo_id=repo_id, fps=FPS, features=features(args.cameras, width, height), root=root,
                                robot_type="rb5_850", use_videos=True)
     for i, frames in enumerate(episodes):
         for fr in frames:
             for c in args.cameras:
                 key = f"observation.images.{c}"
-                fr[key] = np.asarray(Image.open(fr[key]).convert("RGB"))
+                fr[key] = resize_image(np.asarray(Image.open(fr[key]).convert("RGB")), width, height)
             ds.add_frame(fr)
         ds.save_episode()
         print(f"  written episode {i} ({len(frames)} frames)")
     ds.finalize()
+    (root / "rb5_convert.yaml").write_text(yaml.safe_dump({
+        "made": datetime.now().isoformat(timespec="seconds"), "command": "python -m rb5_lerobot.convert " + " ".join(sys.argv[1:]),
+        "config_file": str(args.config), "dataset": raw["dataset"], "cameras": list(args.cameras),
+        "sessions": [str(Path(f)) for f in args.sessions], "episodes": len(episodes), "frames": n}, sort_keys=False))
     size = sum(f.stat().st_size for f in root.rglob("*") if f.is_file()) / 1e6
-    print(f"\ndataset {args.repo_id}: {root} ({size:.0f} MB)")
-    print(f"view: lerobot-dataset-viz --repo-id {args.repo_id} --root {root} --episode-index 0")
+    print(f"\ndataset {repo_id}: {root} ({size:.0f} MB; images {width}x{height}; settings copy rb5_convert.yaml)")
+    print(f"view: lerobot-dataset-viz --repo-id {repo_id} --root {root} --episode-index 0")
 
 
 if __name__ == "__main__":

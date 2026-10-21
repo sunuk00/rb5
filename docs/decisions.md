@@ -2879,6 +2879,20 @@ scripts/README.md point to the new places (older entries in this file keep the o
 **Checked:** rb5 tests pass (4 skipped); lerobot: policy 22, convert 9, cameras 18 ok; the three modules start;
 `convert --check-only` on the three-camera Simulation session gives the same report as before.
 
+**p2-b (settings file, shared format, converter):** `configs/policy.yaml` with sections dataset / train / run
+(every key commented: what it changes and what to redo); `rb5_lerobot/config.py` checks it with the teleop's
+checker (unknown and missing keys, ranges), except `train.act`, which passes any ACT option on to
+lerobot-train (`--policy.<name>`; lerobot-train rejects unknown names), checked for value types and
+n_action_steps <= chunk_size; run: core ranges must not overlap, stop_stale_s above stale_s.
+`rb5_lerobot/data_format.py`: FPS, the state and action names (were written in the converter and in
+policy.py) and `resize_image` (PIL bilinear, which averages when shrinking; the run will use the same function).
+The converter takes `--name` (data/lerobot/<name>, repo id local/<name>) and `--config`; its still-episode
+limits, pause cut and image size come from the dataset section (the options --repo-id, --root, --cut-pauses,
+--min-clutch-s, --min-path-mm, --keep-still are gone); it writes `rb5_convert.yaml` (settings, sessions,
+cameras, command) into the dataset. **Checked:** tests (rb5 160, 4 skipped; lerobot policy and convert); the
+three-camera Simulation session converted to data/lerobot/p2b_test: front / wrist / grip (3, 240, 320), state
+7, action 4, 342 frames. Until p2-d the run does not shrink camera images: a 320x240 checkpoint cannot run yet.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
