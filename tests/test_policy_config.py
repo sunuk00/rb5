@@ -77,6 +77,36 @@ class TestTrainCommand(unittest.TestCase):
         self.assertIn("--policy.dropout=0.2", cmd)
         self.assertIn("--policy.use_vae=false", cmd)
 
+    def test_fine_tune(self):
+        # p3-e: --from -> --policy.path (no --policy.type); only changed training options are passed
+        import json
+        import tempfile
+        from rb5_lerobot.train import fine_tune_problems
+        cmd = train_command("p2", {**RAW["train"], "act": {"optimizer_lr": 5e-6}}, "out", start="ck/pretrained_model")
+        self.assertIn("--policy.path=ck/pretrained_model", cmd)
+        self.assertFalse(any(c.startswith("--policy.type") for c in cmd))
+        self.assertIn("--policy.optimizer_lr=5e-06", cmd)
+        tmp = Path(tempfile.mkdtemp())
+        ck, ds = tmp / "ck", tmp / "ds"
+        (ds / "meta").mkdir(parents=True)
+        ck.mkdir()
+        cfg = {"input_features": {"observation.state": {"shape": [7]}, "observation.images.front": {"shape": [3, 240, 320]}},
+               "output_features": {"action": {"shape": [4]}}, "chunk_size": 100, "optimizer_lr": 1e-5, "kl_weight": 10.0}
+        (ck / "config.json").write_text(json.dumps(cfg))
+        feats = {"observation.state": {"shape": [7]}, "observation.images.front": {"shape": [240, 320, 3]},
+                 "action": {"shape": [4]}}
+        (ds / "meta" / "info.json").write_text(json.dumps({"features": feats}))
+        self.assertEqual(fine_tune_problems(ck, ds, {"chunk_size": 100, "optimizer_lr": 1e-5}), ([], {}))
+        self.assertEqual(fine_tune_problems(ck, ds, {"optimizer_lr": 5e-6}), ([], {"optimizer_lr": 5e-6}))
+        p, _ = fine_tune_problems(ck, ds, {"chunk_size": 50})
+        self.assertTrue(p[0].startswith("train.act.chunk_size: 50 in the settings, 100 in the checkpoint"))
+        feats["observation.images.front"]["shape"] = [480, 640, 3]
+        feats["observation.images.grip"] = {"shape": [240, 320, 3]}
+        (ds / "meta" / "info.json").write_text(json.dumps({"features": feats}))
+        p, _ = fine_tune_problems(ck, ds, {})
+        self.assertIn("observation.images.front: checkpoint [3, 240, 320], dataset [3, 480, 640]", p)
+        self.assertIn("the dataset has observation.images.grip, the checkpoint does not use them", p)
+
     def test_resume(self):
         self.assertEqual(resume_command("data/train/act_p1_x"), [
             "lerobot-train", "--config_path=data/train/act_p1_x/checkpoints/last/pretrained_model/train_config.json",

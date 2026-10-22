@@ -2990,6 +2990,22 @@ log it). **Rejected:** a larger run.time_limit_s only (B: one long limit, no per
 tests OK. **Next (suggested):** recovery demonstrations (miss, reopen, grasp again), an evaluation per checkpoint
 with fixed block positions, runs without a training on the GPU.
 
+## 2026-10-22 — p3-e: fine-tune from a trained policy (python -m rb5_lerobot.train NAME --from CHECKPOINT)
+
+**Decision:** more data is added by converting the old and the new sessions into one new dataset and either
+training anew or fine-tuning from a checkpoint (user asked how to continue from the current weights). `--from`
+runs lerobot-train with `--policy.path=<pretrained_model>` instead of `--policy.type=act`: LeRobot 0.6.1
+(scripts/lerobot_train.py) loads the weights and the policy config, and when not resuming replaces the
+normalizer / unnormalizer statistics with the new dataset's; the optimizer, scheduler and step start anew in a
+new folder. Before starting, the checkpoint's input / output features are compared with the dataset's
+(cameras, image C x H x W, state, action); train.act entries equal to the checkpoint's config are dropped,
+differing training options (n_action_steps, temporal_ensemble_coeff, dropout, kl_weight, optimizer_lr,
+optimizer_weight_decay, optimizer_lr_backbone) are passed, any other difference (structure) refuses.
+rb5_train.yaml records `from`. **Rejected:** `--resume` on a new dataset (keeps the old statistics, schedule
+and step); fine-tuning on the new sessions only (forgetting). **Checked:** tests (command, feature and option
+checks); `--dry-run`; a 20-step fine-tune of checkpoint 050000 on p1: loss 0.096 at step 5 (a new model starts
+at about 41), 0.25 s per step, 1.8 GB; the test folder was removed.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

@@ -103,6 +103,20 @@ OUT=data/train/act_NAME_<time>                # set it to the printed folder (fo
   `python -m rb5_lerobot.train --resume $OUT` (with the settings saved in the checkpoint, not policy.yaml).
 - GPU in use: `nvidia-smi` in another terminal.
 
+**More data (fine-tune, p3-e).** Convert the old and the new sessions together into a new dataset, then
+start from a trained checkpoint:
+```bash
+python -m rb5_lerobot.convert data/demos/real_A data/demos/real_NEW --name p2
+python -m rb5_lerobot.train p2 --from data/train/act_p1_<time>/checkpoints/050000   # new folder, step 0
+```
+- `--from` = lerobot-train `--policy.path`: the checkpoint's weights and ACT structure; the normalization
+  statistics come from the new dataset; a new optimizer and step count (`train.steps`, e.g. 10000-20000).
+- Refused when the dataset's cameras, image size, state or action differ from the checkpoint, or when
+  `train.act` changes the model structure (chunk_size, dim_model, ...). Changed training options (optimizer_lr,
+  kl_weight, dropout, n_action_steps, ...) are passed.
+- `--resume` is not for this: it continues the same training (same dataset, statistics and schedule).
+- Do not fine-tune on the new sessions alone: the policy forgets what the old ones taught.
+
 ## 4. Offline check (no robot)
 
 ```bash
