@@ -3014,7 +3014,8 @@ raw value already comes with every clutch read, bits 16-31), will turn the tool 
 `move_servo_l` with the TCP position fixed, so the controller turns mostly J6 and moves J1-J5 a little. Only
 while the clutch is held (A moves J1-J5 too, so it follows the position's rule), with a catch on every engage
 so a pulled trigger does not jump; the existing yaw speed limit and joint speed checks apply. Releasing the
-trigger turns the tool back to 0. The direction is chosen with the cables at j6-0. **Reason:** the DH model
+trigger turns the tool back to 0. Direction (user, 2026-10-28): the ready pose = 0, the tool turns "to the left" as
+the operator sees it (cables not judged); the sign in the base frame is a setting, fixed at j6-2 with a small first turn. **Reason:** the DH model
 (`tcp.expected_offset_mm` [0, -187, -40]) puts the TCP about 40 mm off the J6 axis: at the ready pose J6 alone
 +90 deg moves the TCP (67.2, -499.4) -> (107.8, -460.0) mm, 57 mm, so turning J6 alone would push the fingers
 off the block. **Rejected:** B, J6 alone (that sideways shift); a latch (the angle kept after release: needs a
