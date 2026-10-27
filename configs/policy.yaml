@@ -21,7 +21,7 @@ dataset:                        # python -m rb5_lerobot.convert
 
 train:                          # python -m rb5_lerobot.train (lerobot-train options)
   batch_size: 8                 # frames per step; memory and step time grow with it (3 cameras 320x240: 2.1 GB)
-  steps: 20000                  # training steps (3 cameras 320x240, batch 8: about 330 ms each, 1.8 h)
+  steps: 30000                  # training steps (3 cameras 320x240, batch 8: about 330 ms each, 2.8 h)
   save_freq: 5000               # a checkpoint every this many steps (about 600 MB each), and the last one
   log_freq: 100                 # a log line every this many steps (loss, step time)
   num_workers: 4                # data loader processes (decode the videos)
@@ -38,7 +38,7 @@ train:                          # python -m rb5_lerobot.train (lerobot-train opt
     optimizer_lr: 1.0e-5        # learning rate
 
 run:                            # python -m rb5_lerobot.run
-  time_limit_s: 60              # seconds of running, then hold
+  time_limit_s: 120             # seconds of running after each g, then hold
   max_jump_mm: 100              # an action further than this from the current target holds (safety)
   stale_s: 0.5                  # a prediction older than this is not used (hold)
   stop_stale_s: 3.0             # no new prediction for this long: stop

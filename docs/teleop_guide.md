@@ -117,13 +117,13 @@ x 1.5), `mapping.lock_azimuth: false` (left / right moves the robot sideways),
 
 ## 4b. Recording demonstrations (`--record`)
 ```bash
-python -m teleop --record                                   # Simulation; cameras front + wrist
+python -m teleop --record                                   # Simulation; cameras front, wrist, grip
 python -m teleop --real --record --task "pick the block and place it in the box"
 python -m teleop --record --no-cameras                      # robot data only (trying the keys)
 ```
-- The cameras (`record.front_serial` D435, `record.wrist_serial` D405) start before anything moves; a
-  missing camera refuses the start. Their exposure, gain and white balance are fixed (`record.front_*`,
-  `record.wrist_*`) and read back (a mismatch refuses the start). The mean brightness of each camera is
+- The cameras (`record.cameras`: `front` D435 by serial, `wrist` C270 and `grip` Brio 101 webcams by
+  `/dev/v4l/by-id` path) start before anything moves; a missing camera refuses the start. Their exposure,
+  gain and white balance are fixed and read back (a mismatch refuses the start). The mean brightness of each camera is
   checked against `record.brightness_ref` +/- `brightness_tolerance` (114 +/- 15 %): outside it, a typed
   yes is needed (fix the lighting first, docs/data_rules.md). Settings: the `record` section (task, 120 s episode limit, no
   automatic start).
@@ -145,7 +145,7 @@ python -m teleop --record --no-cameras                      # robot data only (t
   saved", "Episode discarded", "Camera error", "Stop recording".
 - Files: `data/demos/<sim|real>_<time>/`: `teleop.csv` (column `episode` = attempt number while
   recording), `gripper.csv`, `settings.yaml`, `episodes.json` (every attempt: kept / discarded, times,
-  start pose, camera frame counts), `episode_<attempt>/cam_front|cam_wrist/*.jpg` + `cam_*.csv`.
+  start pose, camera frame counts), `episode_<attempt>/cam_front|cam_wrist|cam_grip/*.jpg` + `cam_*.csv`.
 
 ## 5. Stop
 - **Ctrl+C**: normal stop (the target is held for 0.3 s, then speed 0, then wait until stopped).
@@ -169,7 +169,8 @@ python -m teleop --record --no-cameras                      # robot data only (t
 | `stopping: predicted ... < ...` | a singularity or joint limit was close; restart from the ready pose |
 | clutch released by itself | 3 failed handle reads in a row; check the handle cable |
 | the robot slows down near the base and the floor | joint limit watch (J3 margin below 15 deg); normal there |
-| `cameras: RealSense ... not found` | `--record`: a camera is unplugged or on another serial (`record.*_serial`) |
+| `RealSense ... not found` / `webcam ... not found` | `--record`: a camera is unplugged or has another serial / path (`record.cameras`) |
+| `webcam ... could not be opened` | another program uses it, or USB autosuspend (section 1) |
 | `CAMERA ERROR` | `--record`: a camera stopped (USB); the episode is discarded, restart the teleop |
 | `WARNING attempt ...: camera frames lost` | frames missed or dropped in a kept episode: consider ← in the reset |
 
