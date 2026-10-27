@@ -478,3 +478,14 @@ moves, start writes after a typed yes at the ready pose; it follows the policy's
 running (no catch); torque off / mode 3 at the end. **The real gripper moves in Simulation too**
 (`--no-gripper` runs without it). Log:
 `data/policy/run_sim_<time>.csv` (+ .json) and a summary (late cycles, chunk age, inference time).
+
+### 36 right trigger check (tool rotation, j6-0)
+Read-only (leader arm ping and read; no RB5, no gripper). Shows the right tool's button and trigger at 50 Hz, the
+0..90 deg angle the planned tool rotation would give (`--full`, default 1000), and the angle's spread over 1 s.
+```bash
+python scripts/36_right_trigger.py [--full 1000 --range-deg 90]
+```
+Try: hands off, full pulls, a slow full pull with the clutch button held, holding about 45 deg with the button
+held. Summary: rest value and noise, full value (suggested `trigger_full`), the largest trigger with the button
+held, clutch drops (button released with the trigger over 10 %), the steadiest partial 1 s. Log:
+`data/leader/right_trigger_<time>.csv`.

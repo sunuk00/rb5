@@ -3006,6 +3006,25 @@ and step); fine-tuning on the new sessions only (forgetting). **Checked:** tests
 checks); `--dry-run`; a 20-step fine-tune of checkpoint 050000 on p1: loss 0.096 at step 5 (a new model starts
 at about 41), 0.25 s per step, 1.8 GB; the test folder was removed.
 
+## 2026-10-28 — j6-0: tool rotation 0..90 deg with the right trigger (plan; trigger check script 36)
+
+**Decision (user):** the right leader trigger, free until now (the gripper uses the left one; the right tool's
+raw value already comes with every clutch read, bits 16-31), will turn the tool 0..90 deg, in proportion
+(released = 0, fully pulled = 90; like the gripper), added to the follow_base yaw, **about the TCP** (option A):
+`move_servo_l` with the TCP position fixed, so the controller turns mostly J6 and moves J1-J5 a little. Only
+while the clutch is held (A moves J1-J5 too, so it follows the position's rule), with a catch on every engage
+so a pulled trigger does not jump; the existing yaw speed limit and joint speed checks apply. Releasing the
+trigger turns the tool back to 0. The direction is chosen with the cables at j6-0. **Reason:** the DH model
+(`tcp.expected_offset_mm` [0, -187, -40]) puts the TCP about 40 mm off the J6 axis: at the ready pose J6 alone
++90 deg moves the TCP (67.2, -499.4) -> (107.8, -460.0) mm, 57 mm, so turning J6 alone would push the fingers
+off the block. **Rejected:** B, J6 alone (that sideways shift); a latch (the angle kept after release: needs a
+separate way back to 0, and the action would no longer follow the trigger). **Next:** j6-1 teleop (Sim), j6-2
+Real teleop test, j6-3 dataset rec-2 (action 5: x, y, z, rotation_deg, gripper; old sessions rotation 0),
+j6-4 policy run, j6-5 new task, training from scratch (a different action size cannot use `--from`).
+**Check first (script 36, read-only):** the right trigger's rest and full values, noise, and whether the right
+hand can hold the clutch button and set the trigger (reach with the button held, clutch drops, steadiness at
+about 45 deg). The TCP offset is provisional: A turns in place only as far as it matches the finger center.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
