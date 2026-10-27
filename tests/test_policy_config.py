@@ -56,8 +56,8 @@ class TestPolicyConfig(unittest.TestCase):
         from teleop.cameras import camera_defs
         from teleop.settings import load_settings
         s, _ = load_settings(ROOT / "configs" / "real.yaml", real=True)
-        names = [d[0] for d in camera_defs(s.record, ["front", "wrist", "grip"])]
-        self.assertEqual(names, ["front", "wrist", "grip"])
+        names = [d[0] for d in camera_defs(s.record, ["front", "top", "grip"])]
+        self.assertEqual(names, ["front", "top", "grip"])
 
 
 class TestTrainCommand(unittest.TestCase):

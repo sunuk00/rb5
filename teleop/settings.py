@@ -45,8 +45,8 @@ def _bool():
     return {"kind": "bool"}
 
 
-CAMERA_NAMES = ("front", "wrist", "grip")   # D435 above the workspace; C270 on the gripper (the block); Brio on
-                                            # the gripper (fingers and what they hold)
+CAMERA_NAMES = ("front", "top", "grip")   # D435 above the workspace; C270 fixed above the workspace (t2-a; was
+                                          # "wrist" on the gripper); Brio on the gripper (fingers and what they hold)
 _CAMERA = {
     "device": _str(),                       # RealSense serial number, or a webcam's /dev/v4l/by-id path
     "format": _str(("RGB", "YUYV", "MJPG")),   # RGB for a RealSense; a webcam: YUYV (uncompressed) or MJPG

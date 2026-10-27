@@ -71,6 +71,9 @@ Decisions and measurements behind them are in `docs/decisions.md`.
   1280x720 @ 5 YUYV / @ 30 MJPG). The C270 and the Brio share the USB 2 bus of the main controller: the C270
   runs in MJPG so that both fit (both YUYV: not enough bandwidth). Same v4l2 controls as the C270 (exposure
   0.5-250 ms in 0.1 ms steps, gain 0-255, white balance 2800-7500 K).
+- **t2-a (2026-10-28):** the C270 is off the gripper, fixed above the workspace (camera `top`); the Brio on its
+  own USB port (`1-2`), the C270 and the gripper U2D2 on the hub's USB 2 side (`1-7`), the D435 on the hub's
+  USB 3 side (main controller, 5000M): the two webcams no longer share 480 Mbit/s.
 
 ## Gripper
 - 3D-printed parallel gripper (built by a team member, in progress), one Dynamixel MX-106T (TTL, 3-pin).

@@ -136,7 +136,7 @@ class TestSettings(unittest.TestCase):
         self.assert_problem(d, "is not below r_max")
         d = raw(SIM); d["range"]["r_max_by_z"] = [[200.0]]
         self.assert_problem(d, "pairs")
-        d = raw(SIM); d["record"]["cameras"]["grip"]["device"] = d["record"]["cameras"]["wrist"]["device"]
+        d = raw(SIM); d["record"]["cameras"]["grip"]["device"] = d["record"]["cameras"]["top"]["device"]
         self.assert_problem(d, "two cameras have the same device")
         d = raw(SIM); d["record"]["cameras"]["front"]["format"] = "YUYV"
         self.assert_problem(d, "record.cameras.front.format: YUYV for a RealSense")

@@ -155,7 +155,7 @@ logging:
 
 record:                         # demonstrations: python -m teleop --record [--task "..."] (rec-3b, docs/decisions.md rec-1)
   dir: data/demos               # one folder per session: teleop.csv, episodes.json, episode_<n>/cam_*
-  task: "pick the block and place it in the box"
+  task: "put the carrot in the large hole, then the snack in the small hole of the meal box"   # t2-a (2026-10-28); rec-1 .. p3: "pick the block and place it in the box"
   episode_time_s: 120.0         # user, 2026-10-19: 2 minutes, then the episode ends and is kept
   reset_time_s: 0.0             # 0 = the next episode starts only with -> (no automatic start)
   # Cameras (cam-5a): device = RealSense serial number or a webcam's /dev/v4l/by-id path (the same after a
@@ -170,7 +170,9 @@ record:                         # demonstrations: python -m teleop --record [--t
       exposure_us: 16667.0      # fixed camera: 8.3 ms was too dark even at the maximum gain
       gain: 76
       white_balance_k: 4600
-    wrist:                      # C270 webcam on the gripper, sees the block (cam-4a; the D405 broke 2026-10-21)
+    top:                        # C270 webcam fixed above the workspace, sees the objects and the meal box (t2-a,
+                                # 2026-10-28; cam-4a .. p3: "wrist" on the gripper). Settings below: the wrist ones
+                                # until script 34 measures the new place (TBD)
       device: "/dev/v4l/by-id/usb-046d_0825_6E259540-video-index0"
       format: MJPG              # cam-5a: leaves the bus room for the Brio
       exposure_us: 8333.0       # moves with the gripper: short exposure, blur about 2 mm at 250 mm/s

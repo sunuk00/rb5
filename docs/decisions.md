@@ -3083,6 +3083,24 @@ still, the dataset format stays rec-1 (action x, y, z, gripper). The j6-0 .. j6-
 record; script 36 (read-only right trigger check) is kept like the other scripts. **Rejected:** keeping the
 code with `yaw.trigger: off` (unused code and settings in the frozen teleop).
 
+## 2026-10-28 — t2-a: meal box task (carrot first, then snack); C270 fixed above the workspace as `top`
+
+**Decision (user):** new task "put the carrot in the large hole, then the snack in the small hole of the meal
+box": both objects in every episode, **always the carrot first**, the meal box fixed, the objects anywhere
+the `top` camera sees (within the teleop range), 120 s limit (episode limit and `run.time_limit_s` were
+already 120). A new dataset (docs/data_rules.md rewritten); the format stays rec-1 (action x, y, z, gripper),
+the teleop is unchanged. The C270 is off the gripper, fixed above the workspace: the camera key is `top`
+(CAMERA_NAMES, configs); its settings are the wrist ones until script 34 measures the new place. **Reason:**
+order: with a free order the demonstrations give two right actions for the same scene and ACT plus our
+temporal ensembling average them (a path between the objects); a fixed order gives one. Camera: in the
+recorded episodes (real_20261022_102657 episode 0) the wrist C270 saw the block only before the approach and
+the empty table after it, while the front D435 is covered by the arm during the grasp; the grip Brio is the
+useful gripper view. A fixed camera from above sees the objects and the holes. The name follows the place
+so data and paper are not confusing. **Kept:** the old sessions convert as recorded (camera names come from
+each session's episodes.json); p1 / p2 checkpoints expect `wrist` and no longer run with these configs (they
+are for the old task and the old camera place). **Rejected:** keeping the key `wrist` (wrong place in the
+data); a free object order (see above).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

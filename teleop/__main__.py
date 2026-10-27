@@ -15,7 +15,7 @@ Steps:
      the gripper: torque off and operating mode 3 (a held object is dropped: put it down first)
   7. CSV, the gripper thread CSV and a copy of the settings saved in the log folder
 
-With --record (demonstrations, rec-3b): the cameras (record.cameras: front, wrist, grip) start before
+With --record (demonstrations, rec-3b): the cameras (record.cameras: front, top, grip) start before
 anything moves with their fixed exposure / gain / white balance read back (refused if one is missing or a
 value differs, or if a start image is saturated or has missing rows: cameras.refusal_problems, no typed
 yes); a mean

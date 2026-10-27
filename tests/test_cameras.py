@@ -214,7 +214,7 @@ class TestWebcam(unittest.TestCase):
     def test_camera_defs_from_the_config(self):
         r = load_settings(ROOT / "configs" / "sim.yaml")[0].record
         defs = camera_defs(r)
-        self.assertEqual([d[0] for d in defs], ["front", "wrist", "grip"])
+        self.assertEqual([d[0] for d in defs], ["front", "top", "grip"])
         self.assertEqual([d[3] for d in defs], ["RGB", "MJPG", "YUYV"])
         self.assertEqual(set(defs[0][2]), {"exposure_us", "gain", "white_balance_k"})
         self.assertEqual([d[0] for d in camera_defs(r, ["grip", "front"])], ["grip", "front"])   # policy order

@@ -1,6 +1,6 @@
 """cam-2a / cam-4b: find fixed exposure / gain / white balance for the cameras. Cameras only, no robot.
 
-The cameras are the ones of configs/sim.yaml record.cameras (cam-5a: front, wrist, grip): a RealSense by its
+The cameras are the ones of configs/sim.yaml record.cameras (t2-a: front, top, grip): a RealSense by its
 serial number, a UVC webcam by its /dev/ path in its configured format. For each, 640x480 RGB @ 30:
   1. auto exposure and auto white balance: mean brightness, frame-to-frame noise, a sample image. Its mean
      is the target, unless --target gives one (the start check compares every camera with brightness_ref)
@@ -18,7 +18,7 @@ webcam 0.1 ms steps; this script works in microseconds and converts.
 
 Usage (env rb5):
     python scripts/34_camera_settings.py
-    python scripts/34_camera_settings.py --camera wrist --target 114
+    python scripts/34_camera_settings.py --camera top --target 114
     python scripts/34_camera_settings.py --exposures-us 8333 16667 25000 --wb 4200 4600 5000
 Output: data/cameras/settings_<time>/ (PNG per setting) and the table printed.
 """

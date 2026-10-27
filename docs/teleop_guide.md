@@ -20,7 +20,7 @@ The PC talks to the RB5 control box at 10.0.2.6 (`configs/robot.yaml`): PC addre
 the Ethernet adapter connected to the control box.
 
 ### Gripper webcams: USB autosuspend off (udev rule)
-The C270 (wrist) and the Brio 101 (grip) on the gripper failed to wake from USB autosuspend at every open
+The C270 (`top`; on the gripper as `wrist` until t2-a) and the Brio 101 (grip) failed to wake from USB autosuspend at every open
 (`reset_resume error -5` and a USB reset in `journalctl -k`); the rule keeps them powered (cam-4c, cam-5b).
 ```
 sudo cp assets/udev/99-rb-cobot-webcam.rules /etc/udev/rules.d/
@@ -117,11 +117,11 @@ x 1.5), `mapping.lock_azimuth: false` (left / right moves the robot sideways),
 
 ## 4b. Recording demonstrations (`--record`)
 ```bash
-python -m teleop --record                                   # Simulation; cameras front, wrist, grip
+python -m teleop --record                                   # Simulation; cameras front, top, grip
 python -m teleop --real --record --task "pick the block and place it in the box"
 python -m teleop --record --no-cameras                      # robot data only (trying the keys)
 ```
-- The cameras (`record.cameras`: `front` D435 by serial, `wrist` C270 and `grip` Brio 101 webcams by
+- The cameras (`record.cameras`: `front` D435 by serial, `top` C270 and `grip` Brio 101 webcams by
   `/dev/v4l/by-id` path) start before anything moves; a missing camera refuses the start. Their exposure,
   gain and white balance are fixed and read back (a mismatch refuses the start). The mean brightness of each camera is
   checked against `record.brightness_ref` +/- `brightness_tolerance` (114 +/- 15 %): outside it, a typed
@@ -145,7 +145,7 @@ python -m teleop --record --no-cameras                      # robot data only (t
   saved", "Episode discarded", "Camera error", "Stop recording".
 - Files: `data/demos/<sim|real>_<time>/`: `teleop.csv` (column `episode` = attempt number while
   recording), `gripper.csv`, `settings.yaml`, `episodes.json` (every attempt: kept / discarded, times,
-  start pose, camera frame counts), `episode_<attempt>/cam_front|cam_wrist|cam_grip/*.jpg` + `cam_*.csv`.
+  start pose, camera frame counts), `episode_<attempt>/cam_front|cam_top|cam_grip/*.jpg` + `cam_*.csv`.
 
 ## 5. Stop
 - **Ctrl+C**: normal stop (the target is held for 0.3 s, then speed 0, then wait until stopped).
