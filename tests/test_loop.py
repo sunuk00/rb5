@@ -236,9 +236,9 @@ class TestLoop(unittest.TestCase):
         self.assertAlmostEqual(k6[-1] - k6[0], -(k1[-1] - k1[0]), delta=0.1)
 
     def test_trigger_rotation_turns_about_the_tcp(self):
-        # j6-1: right trigger fully pulled while engaged -> the tool turns 90 deg at 30 deg/s, the TCP stays
+        # j6-1: right trigger fully pulled (clutch released) -> the tool turns 90 deg at 30 deg/s, the TCP stays
         s = settings(yaw__mode="follow_base", yaw__trigger="right", yaw__speed_deg_s=30.0, mapping__max_lag_mm=0.0)
-        steps = [(0, [0, 0, 0], 0, 0)] * 3 + [(1, [0, 0, 0], 0, 0)] * 3 + [(1, [0, 0, 0], 0, 1000)] * 200
+        steps = [(0, [0, 0, 0], 0, 0)] * 6 + [(0, [0, 0, 0], 0, 1000)] * 200
         _, p0, p1, col, _ = run(steps, s)
         rot = col("rot_target_deg")
         self.assertLessEqual(np.diff(rot).max(), 0.6 + 1e-9)                       # 30 deg/s x 20 ms
@@ -253,22 +253,27 @@ class TestLoop(unittest.TestCase):
                                                 yaw__speed_deg_s=30.0, mapping__max_lag_mm=0.0))
         self.assertAlmostEqual(col_m("rot_target_deg")[-1], -90.0, places=6)
 
-    def test_trigger_rotation_catch_and_release(self):
+    def test_trigger_rotation_independent_of_the_clutch(self):
+        # j6-1b: like the gripper: the catch only at the start, then the trigger turns the tool with or without the clutch
         s = settings(yaw__mode="follow_base", yaw__trigger="right", yaw__speed_deg_s=30.0, mapping__max_lag_mm=0.0)
-        steps = ([(0, [0, 0, 0], 0, 1000)] * 3 + [(1, [0, 0, 0], 0, 1000)] * 30    # engaged with the trigger pulled
-                 + [(1, [0, 0, 0], 0, 0)] * 5 + [(1, [0, 0, 0], 0, 500)] * 100      # caught at 0, then to 45 deg
-                 + [(0, [0, 0, 0], 0, 0)] * 30                                      # released: holds, trigger ignored
-                 + [(1, [0, 0, 0], 0, 0)] * 30                                      # engaged at 0: catch waits at 45
-                 + [(1, [0, 0, 0], 0, 400)] * 5 + [(1, [0, 0, 0], 0, 600)] * 50)   # passes over 45 deg: follows to 54
-        _, _, _, col, _ = run(steps, s)
+        steps = ([(0, [0, 0, 0], 0, 1000)] * 30                                     # pulled at the start: catch waits
+                 + [(0, [0, 0, 0], 0, 0)] * 5 + [(0, [0, 0, 0], 0, 500)] * 100      # caught at 0, then 45 deg, released clutch
+                 + [(1, [0, 0, 0], 0, 500)] * 20                                    # pressing the clutch changes nothing
+                 + [(1, [0, 0, 0], 0, None)] * 2                                    # failed reads: holds
+                 + [(1, [0, 0, 0], 0, 0)] * 100                                     # released trigger, clutch held: back to 0
+                 + [(0, [0, 30.0, 0], 0, 0)] * 10)                                  # released clutch: the hand moves nothing
+        _, p0, p1, col, _ = run(steps, s)
         rot, fol = col("rot_target_deg"), col("rot_following")
-        self.assertEqual(rot[:33].max(), 0.0)                                      # no jump to 90
-        self.assertEqual(fol[3:33].max(), 0)
-        self.assertAlmostEqual(rot[137], 45.0, places=6)
-        np.testing.assert_allclose(rot[138:198], 45.0)                             # released, then waiting
-        self.assertEqual(fol[168:203].max(), 0)
-        self.assertAlmostEqual(rot[-1], 54.0, places=6)
-        self.assertTrue(np.isnan(col("rot_desired_deg")[140]))                     # released: no desired rotation
+        self.assertEqual(rot[:30].max(), 0.0)                                      # no jump to 90
+        self.assertEqual(fol[:30].max(), 0)
+        self.assertEqual(fol[30:].min(), 1)                                        # followed from then on, never caught again
+        self.assertAlmostEqual(rot[134], 45.0, places=6)
+        np.testing.assert_allclose(rot[135:157], 45.0)
+        self.assertTrue(np.isnan(col("rot_desired_deg")[156]))                     # failed read: no desired rotation
+        self.assertEqual(rot[-1], 0.0)
+        for a in "xyz":                                                            # the position target never moved
+            np.testing.assert_allclose(col(f"target_{a}"), col(f"target_{a}")[0])
+        np.testing.assert_allclose(p1[:3], p0[:3], atol=0.5)
 
     def test_trigger_rotation_released_trigger_changes_nothing(self):
         # a released trigger (0) gives exactly the targets of yaw.trigger off

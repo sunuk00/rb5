@@ -57,8 +57,8 @@ yaw:
   leader_deadband_deg: 0.15     # ignore leader J6 changes < 0.15 deg: one encoder tick (0.088) back and forth made
                                 # the RB5 J6 shake (run 141108); two ticks (0.176) pass
   # j6-1 (user, 2026-10-28; decisions j6-0): the right trigger turns the tool about the TCP, added to the follow_base
-  # yaw: released 0 .. fully pulled trigger_range_deg, in proportion, only while the clutch is held (a catch on every
-  # engage); speed_deg_s limits it (90 deg in 3 s). "off" = the tool never turns by itself (as before j6-1)
+  # yaw: released 0 .. fully pulled trigger_range_deg, in proportion, independent of the clutch like the gripper (user,
+  # j6-1b; a catch at the start); speed_deg_s limits it (90 deg in 3 s). "off" = no trigger rotation (as before j6-1)
   trigger: right                # the gripper uses the left one; the right tool's value comes with every clutch read
   trigger_full: 1000.0          # script 36 (2026-10-28): released 0, fully pulled 1000, no noise
   trigger_range_deg: 90.0       # user, 2026-10-28

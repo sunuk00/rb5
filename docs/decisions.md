@@ -3043,6 +3043,19 @@ exactly the targets of `trigger: off`; settings relations. At the real ready pos
 DH model): J6 +94.5, J1 -4.5, J2 -4.4, J3 +4.2, J4 +0.9, J5 +0.3 deg, TCP unchanged, 3.0 s, no joint speed or
 lead limit. With `trigger_sign` 1 J6 turns from -175.7 toward -81 deg.
 
+## 2026-10-28 — j6-1b: the trigger rotation is independent of the clutch (like the gripper)
+
+**Decision (user):** "holding the button to turn is inconvenient": the trigger turns the tool with or without
+the clutch, as the gripper. The catch is only at the start (a trigger already pulled does not jump); after
+that the rotation always follows the trigger, and letting the trigger go turns the tool back to 0. With the
+clutch released the loop plans only the rotation (`plan_step` with desired = the frozen target; the speed,
+joint speed, lead and watch checks and stops apply), and `Mapper.apply_rotation` takes only the yaw and the
+rotation (position target, leader references and acceleration state stay). **Rejected:** the j6-0 / j6-1 rule
+(only while the clutch is held, catch on every engage). **Note:** the clutch is no longer the only way to move
+the robot: the trigger alone turns J6 and moves J1-J3 a few degrees (TCP fixed); a released trigger means a
+turn back to 0. **Checked:** tests (171): catch at the start only, 45 deg with the clutch released, the
+clutch changes nothing, failed reads hold, back to 0 with the trigger let go, the position target never moves.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

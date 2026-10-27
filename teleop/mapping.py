@@ -22,8 +22,9 @@ Yaw mode follow_base (yaw.mode): the tool yaw follows the azimuth of the target 
 so the gripper turns with the arm and the RB5 wrist joints (J6) stay still when J1 turns; the leader J6
 is not used and the yaw speed / range limits do not apply (the position limits do).
 Trigger rotation (yaw.trigger, j6-1, follow_base only): a trigger turns the tool about the TCP on top of
-the azimuth, 0 (released) .. yaw.trigger_range_deg (fully pulled), only while the clutch is held, with a
-catch on every engage (TriggerRotation). Its step is limited by yaw.speed_deg_s (scaled like the position
+the azimuth, 0 (released) .. yaw.trigger_range_deg (fully pulled), independent of the clutch like the
+gripper (j6-1b; with the clutch released the position target stays and only the rotation is planned), with
+a catch at the start (TriggerRotation). Its step is limited by yaw.speed_deg_s (scaled like the position
 by the watches and the joint speed limit) and it waits when the robot's rotation lags by more than the yaw
 lead limit. The trigger is an absolute angle: nothing is dropped, the tool only lags.
 Per cycle (plan_step): range first (the excess outside the range is kept), then the speed limits
@@ -229,9 +230,9 @@ def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch, prev_ste
 
 class TriggerRotation:
     """Trigger -> tool rotation (j6-1): 0 (released) .. trigger_sign x trigger_range_deg (trigger_full), in
-    proportion, followed only while the clutch is held. After every engage it waits until the trigger points
-    within ROT_CATCH_FRAC of the range of the current rotation, or passes over it between two reads (catch,
-    as the gripper), so a trigger pulled while the clutch was released does not make the tool jump."""
+    proportion, independent of the clutch (j6-1b, as the gripper). At the start it waits until the trigger
+    points within ROT_CATCH_FRAC of the range of the current rotation, or passes over it between two reads
+    (catch, as the gripper), so a trigger already pulled at the start does not make the tool jump."""
 
     def __init__(self, s):
         y = s.yaw
@@ -242,11 +243,8 @@ class TriggerRotation:
     def angle(self, trigger):
         return self.sign * self.range_deg * min(max(trigger / self.full, 0.0), 1.0)
 
-    def desired(self, trigger, rot, engaged):
-        """The rotation to go to [deg], or None (hold): clutch released, failed read, or not caught yet."""
-        if not engaged:
-            self.following, self.prev = False, None
-            return None
+    def desired(self, trigger, rot):
+        """The rotation to go to [deg], or None (hold): failed read, or not caught yet."""
         if trigger is None:
             return None
         a = self.angle(trigger)
@@ -381,3 +379,7 @@ class Mapper:
         self.yaw_leader_start += plan.dropped_yaw
         self.yaw = plan.yaw
         self.rot = getattr(plan, "rot", self.rot)
+
+    def apply_rotation(self, plan):
+        """Clutch released (j6-1b): take only the trigger rotation; the position target and the leader references stay."""
+        self.yaw, self.rot = plan.yaw, plan.rot

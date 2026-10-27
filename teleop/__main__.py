@@ -295,7 +295,7 @@ def main():
           f"{'B' if s.mapping.max_lag_mm <= 0 else f'C {s.mapping.max_lag_mm:.0f} mm'}, "
           f"yaw {'on' if s.yaw.enabled else 'off'} ({s.yaw.mode}). Right handle: button = clutch"
           f"{', twist = yaw' if s.yaw.mode == 'leader_j6' else ''}; "
-          f"{'' if s.yaw.trigger == 'off' else f'{s.yaw.trigger} trigger = tool rotation 0..{s.yaw.trigger_range_deg:.0f} deg while the clutch is held (released = 0); '}"
+          f"{'' if s.yaw.trigger == 'off' else f'{s.yaw.trigger} trigger = tool rotation 0..{s.yaw.trigger_range_deg:.0f} deg (released = 0), independent of the clutch; '}"
           f"{grip_text}. Ctrl+C to stop.\n")
 
     # 6. Teleop loop

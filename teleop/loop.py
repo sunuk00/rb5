@@ -149,7 +149,7 @@ class TeleopLoop:
             f"{CLEAR_LINE}clutch {'ENGAGED ' if clutch.engaged else 'released'}"
             f"{(' ' + self.s.mapping.left_button.upper()) if mapper.left_active else ''}  "
             f"target-start {np.round(mapper.target - tcp0[:3], 1)} mm  yaw {mapper.yaw:6.1f}  "
-            f"{'' if self.rotation is None else f'rot {mapper.rot:5.1f}' + ('' if self.rotation.following or not clutch.engaged else ' catch') + '  '}"
+            f"{'' if self.rotation is None else f'rot {mapper.rot:5.1f}' + ('' if self.rotation.following else ' catch') + '  '}"
             f"J5 {singular_distance(q[4]):5.1f}  shoulder {self.model.shoulder_margin(q):5.0f} mm  "
             f"grip {self._grip_text(grip)}  "
             f"{'' if self.recorder is None else '| ' + self.recorder.status_text() + '  '}|  "
@@ -264,12 +264,11 @@ class TeleopLoop:
                 if left_event:
                     self.event(f"[{time.monotonic() - t_start:7.2f} s] {left_event}")
 
-            # 2c. Trigger rotation (j6-1): where the trigger points, only while engaged and caught
+            # 2c. Trigger rotation (j6-1): where the trigger points once caught, with or without the clutch (j6-1b)
             rot_desired = None
             if self.rotation is not None:
                 rot_raw = left_raw if rot_left else button_raw
-                rot_desired = self.rotation.desired(None if rot_raw is None else (rot_raw >> 16) & 0xFFFF,
-                                                    mapper.rot, clutch.engaged)
+                rot_desired = self.rotation.desired(None if rot_raw is None else (rot_raw >> 16) & 0xFFFF, mapper.rot)
 
             # 3. RB5 state and the 08 safety checks
             self.rb5.check_errors()
@@ -288,6 +287,7 @@ class TeleopLoop:
             #    the B / C shift are applied only after the gap check right before sending.
             t_plan0 = time.monotonic()
             desired = plan = yaw_desired = None
+            rotation_only = False   # clutch released: only the trigger rotation is planned (j6-1b)
             flags = {}
             j5_pred, sh_pred, el_pred = singular_distance(q[4]), self.model.shoulder_margin(q), singular_distance(q[2])
             jl_pred = joint_limit_margin(q, sf.joint_limit_deg)[0]
@@ -301,6 +301,14 @@ class TeleopLoop:
                                   "rot": mapper.rot, "rot_desired": rot_desired},
                                  self.lim, self.watch, mapper.prev_step,
                                  mapper.rotate_lag_mm() if mapper.rotating else None)
+            elif (not clutch.engaged and rot_desired is not None and rot_desired != mapper.rot
+                  and not late_early and not stale):
+                rotation_only = True   # the position target stays (desired = target): the tool turns about the TCP
+                plan = plan_step(mapper.target, mapper.target, tcp[:3], q, self.model, cyl,
+                                 {"target": mapper.yaw, "desired": None, "tcp": yaw_tcp, "base_az0": base_az0,
+                                  "rot": mapper.rot, "rot_desired": rot_desired},
+                                 self.lim, self.watch)
+            if plan is not None:
                 dropped, flags = plan.dropped, plan.flags
                 j5_pred, sh_pred, el_pred, jl_pred = plan.margins
                 max_dq, lag, yaw_lag = plan.max_dq, plan.lag, plan.lag_yaw
@@ -317,9 +325,9 @@ class TeleopLoop:
             if late:
                 self.event(f"[{time.monotonic() - t_start:7.2f} s] late: {gap * 1000:.0f} ms since last send, target frozen")
             elif plan is not None:
-                mapper.apply(plan)
+                mapper.apply_rotation(plan) if rotation_only else mapper.apply(plan)
                 self.rpy[2] = wrap_deg(rpy0[2] + mapper.yaw)
-            if late or plan is None:
+            if late or plan is None or rotation_only:
                 mapper.prev_step = np.zeros(3)   # the target did not move this cycle
             self.target = mapper.target
             for key, on in flags.items():
