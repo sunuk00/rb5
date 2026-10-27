@@ -56,15 +56,6 @@ yaw:
   max_lag_deg: 0.0              # B
   leader_deadband_deg: 0.15     # ignore leader J6 changes < 0.15 deg: one encoder tick (0.088) back and forth made
                                 # the RB5 J6 shake (run 141108); two ticks (0.176) pass
-  # j6-1 (user, 2026-10-28; decisions j6-0): the right trigger turns the tool about the TCP, added to the follow_base
-  # yaw: released 0 .. fully pulled trigger_range_deg, in proportion, independent of the clutch like the gripper (user,
-  # j6-1b; a catch at the start); speed_deg_s limits it (90 deg in 3 s). "off" = no trigger rotation (as before j6-1)
-  trigger: right                # the gripper uses the left one; the right tool's value comes with every clutch read
-  trigger_full: 1000.0          # script 36 (2026-10-28): released 0, fully pulled 1000, no noise
-  trigger_range_deg: 90.0       # user, 2026-10-28
-  trigger_sign: 1               # TBD at j6-2 (first small turn): the user wants "to the left" as the operator sees it
-  trigger_pivot: j6             # user, j6-1c: only J6 turns (easier to operate); the TCP circles the J6 axis (about
-                                # 40 mm off it: 57 mm at 90 deg). "tcp" = TCP fixed, J1-J3 turn a few degrees (j6-1)
 
 range:                          # absolute in the RB5 base frame (2026-10-16; before: relative to the start pose,
                                 # so every ready-pose change moved the range). Same space as before.

@@ -98,11 +98,6 @@ SCHEMA = {
         "range_deg": _num(0.0, 180.0),
         "max_lag_deg": _num(0.0, 30.0),
         "leader_deadband_deg": _num(0.0, 2.0),        # leader J6 changes smaller than this are ignored
-        "trigger": _str(("off", "left", "right")),    # j6-1: trigger -> tool rotation about the TCP (follow_base)
-        "trigger_full": _num(1.0, 65535.0),           # trigger value for trigger_range_deg
-        "trigger_range_deg": _num(0.0, 90.0),         # rotation at trigger_full [deg]
-        "trigger_sign": _num(-1.0, 1.0, integer=True),   # +1: positive rz (counterclockwise seen from above)
-        "trigger_pivot": _str(("j6", "tcp")),         # j6: only J6 turns (the TCP circles the J6 axis); tcp: TCP fixed
     },
     "range": {
         "r_min_mm": _num(150.0, 900.0),
@@ -316,14 +311,6 @@ def _check_relations(d, problems):
             for z in heights:
                 if cyl.r_min_at(z) >= cyl.r_max_at(z):
                     problems.append(f"range: r_min ({cyl.r_min_at(z):.0f}) is not below r_max ({cyl.r_max_at(z):.0f}) at z {z}")
-    y = d["yaw"]
-    if y["trigger"] != "off":
-        if y["mode"] != "follow_base":
-            problems.append(f"yaw.trigger: {y['trigger']} needs yaw.mode follow_base (got {y['mode']})")
-        if y["trigger"] == d["gripper"]["trigger"]:
-            problems.append(f"yaw.trigger: the {y['trigger']} trigger is the gripper's (gripper.trigger)")
-        if y["trigger_sign"] not in (-1, 1):
-            problems.append(f"yaw.trigger_sign: {y['trigger_sign']} (must be 1 or -1)")
     g = d["gripper"]
     if abs(g["open_ticks"] - g["closed_ticks"]) < GRIPPER_MIN_RANGE:
         problems.append(f"gripper: open_ticks ({g['open_ticks']}) and closed_ticks ({g['closed_ticks']}) must be at "

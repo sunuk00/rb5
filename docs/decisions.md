@@ -3074,6 +3074,15 @@ moves the arm with the tool turned. Ready pose with sim.yaml (fake robot, DH mod
 -85.7), J1 -0.05, J2 +0.09, J3 -0.30, J4 +0.92, J5 +0.22 deg (the J6 axis is 0.5 deg off vertical), the TCP 55.4 mm
 sideways, back to the start when the trigger is let go; no joint speed, lead or range limit.
 
+## 2026-10-28 — j6-2 (dropped): no tool rotation; the teleop back to before j6-1
+
+**Decision (user):** the tool rotation is dropped: operating the right trigger as well on the RB-Y1 leader arm
+is too hard. teleop/, tests/, configs/real.yaml, configs/sim.yaml and docs/teleop_guide.md are back to commit
+03e4246 (before j6-1): the right trigger is not used, the tool turns with J1 only (follow_base), RB5 J6 stays
+still, the dataset format stays rec-1 (action x, y, z, gripper). The j6-0 .. j6-1c entries above stay as the
+record; script 36 (read-only right trigger check) is kept like the other scripts. **Rejected:** keeping the
+code with `yaw.trigger: off` (unused code and settings in the frozen teleop).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

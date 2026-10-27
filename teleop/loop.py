@@ -21,7 +21,7 @@ import numpy as np
 
 from .kinematics import CylinderRange, wrap_deg
 from .leader import Clutch, LeaderFilter
-from .mapping import Limits, Mapper, TriggerRotation, plan_step
+from .mapping import Limits, Mapper, plan_step
 from .safety import Watch, joint_limit_margin, singular_distance
 
 STATUS_EVERY = 25
@@ -48,17 +48,15 @@ CSV_HEADER = (["t_s", "cycle_interval_ms", "button_raw", "clutch_engaged"]
               + [f"jnt_ang_{i}" for i in range(6)] + [f"meas_tcp_{a}" for a in "xyz"] + ["target_minus_meas_mm"]
               + [f"leader_used_{a}_mm" for a in "xyz"] + ["leader_j6_used_deg"]
               + ["left_button_raw", "left_mode_active", "accel_limited"]
-              + ["rot_desired_deg", "rot_target_deg", "rot_following"]   # trigger rotation (j6-1), blank when off
               + ["episode"])   # demonstration attempt number while recording (rec-3b), else blank
 
 
 def csv_row(t, interval, button_raw, engaged, leader_q, leader_p, desired, target, tcp, q, j5_pred, sh_pred,
             max_dq, flags, late, late_early, stale, state_age, t_leader, t_plan, t_send, t_work, send_interval,
             el_pred, lag, dropped, jl_pred, yaw_desired, yaw_target, yaw_tcp, yaw_lag, dropped_yaw, trigger, grip,
-            measured, used_p, used_j6, left_raw, left_active, rot=None, episode=""):
+            measured, used_p, used_j6, left_raw, left_active, episode=""):
     """One CSV row in the order of CSV_HEADER (times in s, written in ms where the header says ms). A tuple:
-    the Python garbage collector stops scanning tuples of strings, so a long session's rows cost it nothing.
-    rot: (desired or None, target, following) of the trigger rotation, None when it is off."""
+    the Python garbage collector stops scanning tuples of strings, so a long session's rows cost it nothing."""
     def f(v, fmt="{:.3f}"):
         return [fmt.format(x) for x in v]
     empty3 = [""] * 3
@@ -81,8 +79,6 @@ def csv_row(t, interval, button_raw, engaged, leader_q, leader_p, desired, targe
             + measured
             + ([f"{v:.3f}" for v in used_p] + [f"{used_j6:.3f}"] if used_p is not None else [""] * 4)
             + ["" if left_raw is None else left_raw, int(left_active), int(flags.get("accel", False))]
-            + (["" if rot[0] is None else f"{rot[0]:.3f}", f"{rot[1]:.3f}", int(rot[2])] if rot is not None
-               else [""] * 3)
             + [episode])
 
 
@@ -107,7 +103,6 @@ class TeleopLoop:
         self.clutch = Clutch()
         self.gripper = gripper
         self.recorder = recorder
-        self.rotation = TriggerRotation(s) if s.yaw.trigger != "off" else None   # j6-1
 
     def _measured_columns(self, q_meas, target):
         """Encoder joints, their TCP from the DH model (absolute about 2 mm off the controller, 17) and the
@@ -149,7 +144,6 @@ class TeleopLoop:
             f"{CLEAR_LINE}clutch {'ENGAGED ' if clutch.engaged else 'released'}"
             f"{(' ' + self.s.mapping.left_button.upper()) if mapper.left_active else ''}  "
             f"target-start {np.round(mapper.target - tcp0[:3], 1)} mm  yaw {mapper.yaw:6.1f}  "
-            f"{'' if self.rotation is None else f'rot {mapper.rot:5.1f}' + ('' if self.rotation.following else ' catch') + '  '}"
             f"J5 {singular_distance(q[4]):5.1f}  shoulder {self.model.shoulder_margin(q):5.0f} mm  "
             f"grip {self._grip_text(grip)}  "
             f"{'' if self.recorder is None else '| ' + self.recorder.status_text() + '  '}|  "
@@ -177,14 +171,11 @@ class TeleopLoop:
     def run(self):
         s, sf = self.s, self.s.safety
         period = s.servo.period_s
-        tcp0, q0, _ = self.reader.latest()
+        tcp0, _, _ = self.reader.latest()
         rpy0 = tcp0[3:].copy()
         base_az0 = (float(np.degrees(np.arctan2(tcp0[1], tcp0[0]))) if s.yaw.mode == "follow_base" else None)
         self.rpy = rpy0.copy()
         mapper = Mapper(s, tcp0[:3])
-        if self.rotation is not None and s.yaw.trigger_pivot == "j6":   # j6-1c: horizontal J6 axis -> TCP (DH model)
-            pivot = self.model.tcp(q0)[0] - self.model.flange(q0)[:3, 3]
-            mapper.pivot = np.array([pivot[0], pivot[1], 0.0])
         self.target = mapper.target
         cyl = CylinderRange.from_settings(s.range)
         labels = self.labels()
@@ -192,8 +183,7 @@ class TeleopLoop:
         left = Clutch()   # left button, same debounce as the clutch (a held button must be released once)
         left_on = s.mapping.left_button != "off"
         grip_left = s.gripper.trigger == "left"
-        rot_left = self.rotation is not None and s.yaw.trigger == "left"
-        read_left = left_on or grip_left or rot_left   # leader.open(left_tool=...) pings the left tool in these cases
+        read_left = left_on or grip_left   # leader.open(left_tool=...) pings the left tool in the same cases
         left_text = {"vertical": "vertical mode ON: x, y fixed, only z follows",
                      "rotate": "rotate mode ON: radius and z fixed, sideways hand motion turns J1"}
         leader_q = leader_p = None
@@ -267,12 +257,6 @@ class TeleopLoop:
                 if left_event:
                     self.event(f"[{time.monotonic() - t_start:7.2f} s] {left_event}")
 
-            # 2c. Trigger rotation (j6-1): where the trigger points once caught, with or without the clutch (j6-1b)
-            rot_desired = None
-            if self.rotation is not None:
-                rot_raw = left_raw if rot_left else button_raw
-                rot_desired = self.rotation.desired(None if rot_raw is None else (rot_raw >> 16) & 0xFFFF, mapper.rot)
-
             # 3. RB5 state and the 08 safety checks
             self.rb5.check_errors()
             tcp, q, state_age = self.reader.latest()
@@ -290,29 +274,18 @@ class TeleopLoop:
             #    the B / C shift are applied only after the gap check right before sending.
             t_plan0 = time.monotonic()
             desired = plan = yaw_desired = None
-            rotation_only = False   # clutch released: only the trigger rotation is planned (j6-1b)
             flags = {}
             j5_pred, sh_pred, el_pred = singular_distance(q[4]), self.model.shoulder_margin(q), singular_distance(q[2])
             jl_pred = joint_limit_margin(q, sf.joint_limit_deg)[0]
             max_dq = lag = yaw_lag = 0.0
             dropped = np.zeros(3)
             yaw_tcp = wrap_deg(tcp[5] - rpy0[2])
-            tcp_at = tcp[:3] - mapper.shift()   # the robot's TCP without the j6 pivot shift (what the targets are in)
             if clutch.engaged and q_l is not None and not late_early and not stale:
                 desired, yaw_desired = mapper.desired(used_p, used_j6)
-                plan = plan_step(mapper.target, desired, tcp_at, q, self.model, cyl,
-                                 {"target": mapper.yaw, "desired": yaw_desired, "tcp": yaw_tcp, "base_az0": base_az0,
-                                  "rot": mapper.rot, "rot_desired": rot_desired},
+                plan = plan_step(mapper.target, desired, tcp[:3], q, self.model, cyl,
+                                 {"target": mapper.yaw, "desired": yaw_desired, "tcp": yaw_tcp, "base_az0": base_az0},
                                  self.lim, self.watch, mapper.prev_step,
                                  mapper.rotate_lag_mm() if mapper.rotating else None)
-            elif (not clutch.engaged and rot_desired is not None and rot_desired != mapper.rot
-                  and not late_early and not stale):
-                rotation_only = True   # the position target stays (desired = target): the tool turns about the TCP
-                plan = plan_step(mapper.target, mapper.target, tcp_at, q, self.model, cyl,
-                                 {"target": mapper.yaw, "desired": None, "tcp": yaw_tcp, "base_az0": base_az0,
-                                  "rot": mapper.rot, "rot_desired": rot_desired},
-                                 self.lim, self.watch)
-            if plan is not None:
                 dropped, flags = plan.dropped, plan.flags
                 j5_pred, sh_pred, el_pred, jl_pred = plan.margins
                 max_dq, lag, yaw_lag = plan.max_dq, plan.lag, plan.lag_yaw
@@ -329,11 +302,11 @@ class TeleopLoop:
             if late:
                 self.event(f"[{time.monotonic() - t_start:7.2f} s] late: {gap * 1000:.0f} ms since last send, target frozen")
             elif plan is not None:
-                mapper.apply_rotation(plan) if rotation_only else mapper.apply(plan)
+                mapper.apply(plan)
                 self.rpy[2] = wrap_deg(rpy0[2] + mapper.yaw)
-            if late or plan is None or rotation_only:
+            if late or plan is None:
                 mapper.prev_step = np.zeros(3)   # the target did not move this cycle
-            self.target = mapper.sent()
+            self.target = mapper.target
             for key, on in flags.items():
                 if on and not flags_prev.get(key, False) and key in labels:   # accel: CSV only (switches often)
                     self.event(f"[{time.monotonic() - t_start:7.2f} s] {labels[key]}")
@@ -350,7 +323,7 @@ class TeleopLoop:
 
             # 6. Send every cycle (a released clutch sends the frozen target)
             t_send0 = time.monotonic()
-            self.rb5.send_servo(self.target, self.rpy)
+            self.rb5.send_servo(mapper.target, self.rpy)
             t_send_end = time.monotonic()
             send_interval = None if last_send is None else t_send0 - last_send
             last_send = t_send0
@@ -366,7 +339,7 @@ class TeleopLoop:
             grip_cols, grip = self._grip_columns()
             self.rows.append(csv_row(
                 t=t_cycle - t_start, interval=interval, button_raw=button_raw, engaged=clutch.engaged,
-                leader_q=leader_q, leader_p=leader_p, desired=desired, target=self.target, tcp=tcp, q=q,
+                leader_q=leader_q, leader_p=leader_p, desired=desired, target=mapper.target, tcp=tcp, q=q,
                 j5_pred=j5_pred, sh_pred=sh_pred, max_dq=max_dq, flags=flags, late=late, late_early=late_early,
                 stale=stale, state_age=state_age, t_leader=t_leader, t_plan=t_plan, t_send=t_send_end - t_send0,
                 t_work=t_send_end - t_cycle, send_interval=send_interval, el_pred=el_pred, lag=lag,
@@ -374,9 +347,8 @@ class TeleopLoop:
                 yaw_target=mapper.yaw, yaw_tcp=yaw_tcp, yaw_lag=yaw_lag,
                 dropped_yaw=abs(plan.dropped_yaw) if plan is not None and not late else 0.0, trigger=trigger,
                 grip=grip_cols,
-                measured=self._measured_columns(q_meas, self.target), used_p=used_p, used_j6=used_j6,
+                measured=self._measured_columns(q_meas, mapper.target), used_p=used_p, used_j6=used_j6,
                 left_raw=left_raw, left_active=mapper.left_active,
-                rot=None if self.rotation is None else (rot_desired, mapper.rot, self.rotation.following),
                 episode="" if self.recorder is None else self.recorder.column()))
 
             # 7. Status line

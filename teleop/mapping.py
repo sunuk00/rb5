@@ -21,18 +21,6 @@ Yaw:      desired = RB5 yaw at press + (leader J6 now - at press) [deg], about b
 Yaw mode follow_base (yaw.mode): the tool yaw follows the azimuth of the target about the base z axis,
 so the gripper turns with the arm and the RB5 wrist joints (J6) stay still when J1 turns; the leader J6
 is not used and the yaw speed / range limits do not apply (the position limits do).
-Trigger rotation (yaw.trigger, j6-1, follow_base only): a trigger turns the tool about the TCP on top of
-the azimuth, 0 (released) .. yaw.trigger_range_deg (fully pulled), independent of the clutch like the
-gripper (j6-1b; with the clutch released the position target stays and only the rotation is planned), with
-a catch at the start (TriggerRotation). Its step is limited by yaw.speed_deg_s (scaled like the position
-by the watches and the joint speed limit) and it waits when the robot's rotation lags by more than the yaw
-lead limit. The trigger is an absolute angle: nothing is dropped, the tool only lags.
-Pivot (yaw.trigger_pivot, j6-1c): "tcp" turns the tool about the TCP (J1-J3 move a few degrees); "j6" turns
-only J6: the target above stays the TCP at rotation 0 (what the hand moves and the checks use), and the
-TCP sent is that point turned about the J6 axis by the rotation (Mapper.shift; the J6 axis is vertical at
-the ready pose, J5 -90.5). The flange does not move, so the reach and the arm margins do not change, but the
-fingers circle the axis (about 40 mm off it with the current TCP offset) and may leave the range by that
-much; the joint prediction in plan_step stays the TCP-fixed one (J1-J3 a few hundredths of a degree per cycle).
 Per cycle (plan_step): range first (the excess outside the range is kept), then the speed limits
 scaled by the singularity / joint limit watches (sideways about the base z axis up to
 speed_tangential_mm_s, radial and vertical up to speed_mm_s: (t / T)^2 + (o / O)^2 <= 1), then the
@@ -68,7 +56,6 @@ class Limits:
         self.max_dq_deg = np.asarray(s.safety.joint_speed_deg_per_cycle, dtype=float)
 
 
-ROT_CATCH_FRAC = 0.05      # trigger rotation: follow once the trigger points within 5 % of the range (as gripper.catch_frac)
 CLAMP_FIT_ITERATIONS = 8   # bisection steps when the clamped step is over a limit (step kept to 1/256)
 
 
@@ -95,26 +82,21 @@ def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch, prev_ste
     """One cycle of the limits for the position and the yaw.
 
     yaw: dict with "target", "desired", "tcp" = yaw about base z relative to the start rz [deg], and
-    "base_az0" = the start azimuth [deg] when the yaw follows the base (follow_base), else None; with
-    follow_base also "rot" = the trigger rotation in the target and "rot_desired" = where the trigger
-    points (None: hold) [deg].
+    "base_az0" = the start azimuth [deg] when the yaw follows the base (follow_base), else None.
     prev_step: the position step of the previous cycle [mm] (zero after a release or a frozen cycle).
     max_lag_mm: the C lag for this cycle instead of lim.max_lag_mm (rotate mode); B stays B.
     Returns a SimpleNamespace: target (new position), yaw (new yaw), dropped (position vector),
-    dropped_yaw, flags, margins (J5, shoulder, elbow, joint limit), max_dq, lag, lag_yaw, stop, rot (new
-    trigger rotation).
+    dropped_yaw, flags, margins (J5, shoulder, elbow, joint limit), max_dq, lag, lag_yaw, stop.
     """
     flags = dict.fromkeys(("speed", "j5slow", "shslow", "elslow", "jlslow", "jspeed", "range", "lead",
                            "yspeed", "yrange", "ylead", "accel"), False)
     az0 = yaw.get("base_az0")
     follow = az0 is not None
     yaw_at = (lambda p: azimuth_from(p, az0)) if follow else None   # follow_base: yaw of a position
-    rot0, rdes = yaw.get("rot", 0.0), yaw.get("rot_desired")
-    rask = 0.0 if rdes is None or not follow else rdes - rot0       # the trigger rotation asked for this cycle
     desired_in = cyl.clamp(desired)
     flags["range"] = bool(np.any(desired_in != desired))
     if follow:
-        ydes_in = wrap_deg(yaw_at(desired_in) + (rot0 if rdes is None else rdes))
+        ydes_in = yaw_at(desired_in)
     else:
         ydes_in = float(np.clip(yaw["desired"], -lim.yaw_range_deg, lim.yaw_range_deg))
         flags["yrange"] = ydes_in != yaw["desired"]
@@ -126,18 +108,15 @@ def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch, prev_ste
 
     # Speed limits, scaled by the predicted singularity / joint limit margins of a full-size step
     full = clip_step(step, target, lim.max_step_mm, lim.max_tangential_step_mm)
-    rfull = float(np.clip(rask, -lim.max_yaw_step_deg, lim.max_yaw_step_deg))
-    yfull = (wrap_deg(yaw_at(target + full) + rot0 + rfull - yaw["target"]) if follow
+    yfull = (wrap_deg(yaw_at(target + full) - yaw["target"]) if follow
              else np.clip(ystep, -lim.max_yaw_step_deg, lim.max_yaw_step_deg))
     q_full = q + model.predict(q, lead_p + full, jac, lead_y + yfull)
     scale, slow = watch.speed_scale(q_full, model)
     flags.update(slow)
     limited = clip_step(step, target, lim.max_step_mm * scale, lim.max_tangential_step_mm * scale)
     flags["speed"] = np.linalg.norm(limited) < np.linalg.norm(step) - 1e-9
-    rlimited = float(np.clip(rask, -lim.max_yaw_step_deg * scale, lim.max_yaw_step_deg * scale))
     if follow:
-        flags["yspeed"] = abs(rlimited) < abs(rask) - 1e-9
-        ylimited = wrap_deg(yaw_at(target + limited) + rot0 + rlimited - yaw["target"])
+        ylimited = wrap_deg(yaw_at(target + limited) - yaw["target"])
     else:
         ylimited = float(np.clip(ystep, -lim.max_yaw_step_deg * scale, lim.max_yaw_step_deg * scale))
         flags["yspeed"] = abs(ylimited) < abs(ystep) - 1e-9
@@ -151,7 +130,7 @@ def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch, prev_ste
     over = dq_step > lim.max_dq_deg
     if np.any(over):
         f = float(np.min(lim.max_dq_deg[over] / dq_step[over]))
-        limited, ylimited, rlimited = limited * f, ylimited * f, rlimited * f
+        limited, ylimited = limited * f, ylimited * f
         flags["jspeed"] = True
 
     # Acceleration limit, last: change the step by at most max_dstep, and not faster than it can still stop
@@ -163,7 +142,7 @@ def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch, prev_ste
         flags["accel"] = bool(np.linalg.norm(smooth - limited) > 1e-9)
         limited = smooth
         if follow:
-            ylimited = wrap_deg(yaw_at(target + limited) + rot0 + rlimited - yaw["target"])
+            ylimited = wrap_deg(yaw_at(target + limited) - yaw["target"])
     new = target + limited
     clamped = cyl.clamp(new)   # a straight step between two inside points can cut the inner radius
     if np.any(clamped != new):
@@ -174,7 +153,7 @@ def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch, prev_ste
         def fits(f):
             c = cyl.clamp(target + f * limited)
             d = c - target
-            yd = wrap_deg(yaw_at(c) + rot0 + f * rlimited - yaw["target"]) if follow else f * ylimited
+            yd = wrap_deg(yaw_at(c) - yaw["target"]) if follow else f * ylimited
             speed_ok = np.linalg.norm(clip_step(d, target, lim.max_step_mm * scale, lim.max_tangential_step_mm * scale)
                                       - d) < 1e-6
             return speed_ok and bool(np.all(np.abs(model.predict(q, d, jac, yd)) <= lim.max_dq_deg + 1e-9)), c
@@ -188,22 +167,14 @@ def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch, prev_ste
                     lo, c = mid, c_mid
                 else:
                     hi = mid
-            limited, ylimited, rlimited = limited * lo, ylimited * lo, rlimited * lo
+            limited, ylimited = limited * lo, ylimited * lo
             flags["jspeed"] = True
         clamped = c
     if np.linalg.norm(clamped - tcp_pos) > lim.max_lead_mm:
         clamped = target.copy()
         flags["lead"] = True
     if follow:
-        # the trigger rotation waits while the robot's rotation lags by more than the lead limit (and the step
-        # would make it lag more)
-        rot_tcp = wrap_deg(yaw["tcp"] - yaw_at(tcp_pos))
-        lead_now, lead_new = abs(rot0 - rot_tcp), abs(rot0 + rlimited - rot_tcp)
-        if rlimited != 0.0 and lead_new > lim.max_yaw_lead_deg and lead_new > lead_now:
-            rlimited = 0.0
-            flags["ylead"] = True
-        # the azimuth of the new target (J1 turns, the wrist does not) + the trigger rotation
-        ynew = wrap_deg(yaw_at(clamped) + rot0 + rlimited)
+        ynew = yaw_at(clamped)   # exactly the azimuth of the new target: J1 turns, the wrist does not
     else:
         ynew = float(np.clip(yaw["target"] + ylimited, -lim.yaw_range_deg, lim.yaw_range_deg))
         if abs(ynew - yaw["tcp"]) > lim.max_yaw_lead_deg:
@@ -231,37 +202,7 @@ def plan_step(target, desired, tcp_pos, q, model, cyl, yaw, lim, watch, prev_ste
     stop = watch.stop_reason(margins) if moving else None
     return SimpleNamespace(target=clamped, yaw=ynew, dropped=dropped, dropped_yaw=ydropped, flags=flags,
                            margins=margins[:4], max_dq=np.abs(dq).max(), lag=lag_after, lag_yaw=ylag_after,
-                           stop=stop, rot=rot0 + rlimited if follow else rot0)
-
-
-class TriggerRotation:
-    """Trigger -> tool rotation (j6-1): 0 (released) .. trigger_sign x trigger_range_deg (trigger_full), in
-    proportion, independent of the clutch (j6-1b, as the gripper). At the start it waits until the trigger
-    points within ROT_CATCH_FRAC of the range of the current rotation, or passes over it between two reads
-    (catch, as the gripper), so a trigger already pulled at the start does not make the tool jump."""
-
-    def __init__(self, s):
-        y = s.yaw
-        self.full, self.range_deg, self.sign = y.trigger_full, y.trigger_range_deg, y.trigger_sign
-        self.following = False
-        self.prev = None   # trigger angle - rotation at the last read while catching
-
-    def angle(self, trigger):
-        return self.sign * self.range_deg * min(max(trigger / self.full, 0.0), 1.0)
-
-    def desired(self, trigger, rot):
-        """The rotation to go to [deg], or None (hold): failed read, or not caught yet."""
-        if trigger is None:
-            return None
-        a = self.angle(trigger)
-        if not self.following:
-            d = a - rot
-            passed = self.prev is not None and d * self.prev < 0
-            self.prev = d
-            if abs(d) > ROT_CATCH_FRAC * self.range_deg and not passed:
-                return None
-            self.following = True
-        return a
+                           stop=stop)
 
 
 def to_cyl(p):
@@ -299,8 +240,6 @@ class Mapper:
         self.yaw_enabled = s.yaw.enabled
         self.target = np.array(target0, dtype=float)   # RB5 TCP position target [mm]
         self.yaw = 0.0                                  # RB5 yaw relative to the start rz [deg]
-        self.rot = 0.0                                  # trigger rotation in it (follow_base, j6-1) [deg]
-        self.pivot = None                               # j6 pivot: horizontal J6 axis -> TCP at the start [mm]
         self.rb5_start = self.leader_start = None
         self.yaw_rb5_start = self.yaw_leader_start = None
 
@@ -385,20 +324,3 @@ class Mapper:
         self.target = new
         self.yaw_leader_start += plan.dropped_yaw
         self.yaw = plan.yaw
-        self.rot = getattr(plan, "rot", self.rot)
-
-    def shift(self):
-        """j6 pivot (j6-1c): sent TCP - target, the target turned about the J6 axis by the rotation [mm]. The axis ->
-        TCP vector turns with the follow_base yaw (yaw - rot); zero without a pivot or at rotation 0."""
-        if self.pivot is None or self.rot == 0.0:
-            return np.zeros(3)
-        v = rot_z(self.yaw - self.rot) @ self.pivot
-        return rot_z(self.rot) @ v - v
-
-    def sent(self):
-        """The TCP position sent to the robot."""
-        return self.target + self.shift()
-
-    def apply_rotation(self, plan):
-        """Clutch released (j6-1b): take only the trigger rotation; the position target and the leader references stay."""
-        self.yaw, self.rot = plan.yaw, plan.rot

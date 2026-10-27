@@ -122,12 +122,6 @@ class TestSettings(unittest.TestCase):
         self.assert_problem(d, "grasp_current")
         d = raw(SIM); d["gripper"]["goal_current"] = 400
         self.assert_problem(d, "goal_current")
-        d = raw(SIM); d["yaw"]["mode"] = "leader_j6"
-        self.assert_problem(d, "yaw.trigger: right needs yaw.mode follow_base")
-        d = raw(SIM); d["yaw"]["trigger"] = d["gripper"]["trigger"]
-        self.assert_problem(d, "the gripper's")
-        d = raw(SIM); d["yaw"]["trigger_sign"] = 0
-        self.assert_problem(d, "trigger_sign")
         d = raw(SIM); d["servo"]["t1_s"] = 0.01
         self.assert_problem(d, "t1_s")
         d = raw(SIM); d["range"]["r_max_by_z"] = [[300.0, 700.0], [250.0, 750.0]]
