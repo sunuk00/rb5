@@ -3026,6 +3026,23 @@ j6-4 policy run, j6-5 new task, training from scratch (a different action size c
 hand can hold the clutch button and set the trigger (reach with the button held, clutch drops, steadiness at
 about 45 deg). The TCP offset is provisional: A turns in place only as far as it matches the finger center.
 
+## 2026-10-28 — j6-1: trigger rotation in the teleop (Simulation)
+
+**Decision:** `yaw.trigger: right` (+ `trigger_full` 1000, `trigger_range_deg` 90, `trigger_sign` 1, TBD at j6-2) in
+real.yaml and sim.yaml. `plan_step` (follow_base) adds the trigger rotation to the target's azimuth: its step
+is clipped to `yaw.speed_deg_s` x period (0.6 deg) scaled by the watches, shrinks with the position under the
+joint speed limit and the clamp fit, and waits (`ylead`) while the robot's rotation (TCP yaw - TCP azimuth)
+lags by more than the yaw lead limit and the step would make it lag more. The trigger is absolute, so nothing
+is dropped. `TriggerRotation` follows only while the clutch is held, with a catch on every engage (within 5 %
+of the range, or passing over it). CSV: `rot_desired_deg`, `rot_target_deg`, `rot_following` (blank when off);
+the raw trigger is already in `button_raw`. Settings refuse the trigger with `yaw.mode` leader_j6, on the
+gripper's trigger, or a sign other than +/-1. **Reason:** decisions j6-0 (option A, user). The existing yaw
+speed limit (Real max 30 deg/s) is used instead of a new one. **Checked:** tests (171): 90 deg in 3 s at 0.6
+deg per cycle with the TCP within 0.5 mm; sign -1; catch, released clutch holds; a released trigger gives
+exactly the targets of `trigger: off`; settings relations. At the real ready pose with sim.yaml (fake robot,
+DH model): J6 +94.5, J1 -4.5, J2 -4.4, J3 +4.2, J4 +0.9, J5 +0.3 deg, TCP unchanged, 3.0 s, no joint speed or
+lead limit. With `trigger_sign` 1 J6 turns from -175.7 toward -81 deg.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

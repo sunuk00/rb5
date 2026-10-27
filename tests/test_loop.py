@@ -235,6 +235,51 @@ class TestLoop(unittest.TestCase):
         k1, k6 = col0("jnt_ref_0"), col0("jnt_ref_5")
         self.assertAlmostEqual(k6[-1] - k6[0], -(k1[-1] - k1[0]), delta=0.1)
 
+    def test_trigger_rotation_turns_about_the_tcp(self):
+        # j6-1: right trigger fully pulled while engaged -> the tool turns 90 deg at 30 deg/s, the TCP stays
+        s = settings(yaw__mode="follow_base", yaw__trigger="right", yaw__speed_deg_s=30.0, mapping__max_lag_mm=0.0)
+        steps = [(0, [0, 0, 0], 0, 0)] * 3 + [(1, [0, 0, 0], 0, 0)] * 3 + [(1, [0, 0, 0], 0, 1000)] * 200
+        _, p0, p1, col, _ = run(steps, s)
+        rot = col("rot_target_deg")
+        self.assertLessEqual(np.diff(rot).max(), 0.6 + 1e-9)                       # 30 deg/s x 20 ms
+        self.assertAlmostEqual(rot[-1], 90.0, places=6)
+        self.assertGreater(np.argmax(rot >= 90.0 - 1e-9), 150 - 1)                 # not sooner than 3 s
+        np.testing.assert_allclose(col("yaw_target_deg"), rot, atol=1e-6)          # the azimuth did not change
+        np.testing.assert_allclose(p1[:3], p0[:3], atol=0.5)                       # TCP in place (option A)
+        dq = np.abs([col(f"jnt_ref_{i}")[-1] - col(f"jnt_ref_{i}")[0] for i in range(6)])
+        self.assertGreater(dq[5], 80.0)                                            # mostly J6 (pose D: 85)
+        self.assertLess(dq[:5].max(), 6.0)                                         # J1-J3 keep the TCP (pose D: <5)
+        _, _, _, col_m, _ = run(steps, settings(yaw__mode="follow_base", yaw__trigger="right", yaw__trigger_sign=-1,
+                                                yaw__speed_deg_s=30.0, mapping__max_lag_mm=0.0))
+        self.assertAlmostEqual(col_m("rot_target_deg")[-1], -90.0, places=6)
+
+    def test_trigger_rotation_catch_and_release(self):
+        s = settings(yaw__mode="follow_base", yaw__trigger="right", yaw__speed_deg_s=30.0, mapping__max_lag_mm=0.0)
+        steps = ([(0, [0, 0, 0], 0, 1000)] * 3 + [(1, [0, 0, 0], 0, 1000)] * 30    # engaged with the trigger pulled
+                 + [(1, [0, 0, 0], 0, 0)] * 5 + [(1, [0, 0, 0], 0, 500)] * 100      # caught at 0, then to 45 deg
+                 + [(0, [0, 0, 0], 0, 0)] * 30                                      # released: holds, trigger ignored
+                 + [(1, [0, 0, 0], 0, 0)] * 30                                      # engaged at 0: catch waits at 45
+                 + [(1, [0, 0, 0], 0, 400)] * 5 + [(1, [0, 0, 0], 0, 600)] * 50)   # passes over 45 deg: follows to 54
+        _, _, _, col, _ = run(steps, s)
+        rot, fol = col("rot_target_deg"), col("rot_following")
+        self.assertEqual(rot[:33].max(), 0.0)                                      # no jump to 90
+        self.assertEqual(fol[3:33].max(), 0)
+        self.assertAlmostEqual(rot[137], 45.0, places=6)
+        np.testing.assert_allclose(rot[138:198], 45.0)                             # released, then waiting
+        self.assertEqual(fol[168:203].max(), 0)
+        self.assertAlmostEqual(rot[-1], 54.0, places=6)
+        self.assertTrue(np.isnan(col("rot_desired_deg")[140]))                     # released: no desired rotation
+
+    def test_trigger_rotation_released_trigger_changes_nothing(self):
+        # a released trigger (0) gives exactly the targets of yaw.trigger off
+        steps = ARM + [(1, [0, 2.0 * i, -1.0 * i], 0) for i in range(1, 41)] + [(1, [0, 80.0, -40.0], 0)] * 20
+        steps = [st + (0,) for st in steps]
+        on, *_ = run(steps, settings(yaw__mode="follow_base", yaw__trigger="right", mapping__max_lag_mm=0.0))
+        off, *_ = run(steps, settings(yaw__mode="follow_base", mapping__max_lag_mm=0.0))
+        cols = [IX[k] for k in ("target_x", "target_y", "target_z", "yaw_target_deg")]
+        self.assertEqual([[r[i] for i in cols] for r in on.rows], [[r[i] for i in cols] for r in off.rows])
+        self.assertEqual(off.rows[-1][IX["rot_target_deg"]], "")
+
     def test_tangential_speed(self):
         s = settings(mapping__speed_mm_s=200.0, mapping__speed_tangential_mm_s=300.0, mapping__max_lag_mm=0.0)
         p0 = RB5Model(OFFSET).tcp(D)[0]

@@ -99,7 +99,7 @@ What happens:
 | right button released | the RB5 holds its pose; move the hand freely, press again to continue |
 | twist the handle | not used: the gripper turns with J1, RB5 J6 stays still |
 | **left** trigger | gripper: released (0) = closed, fully pulled (1000) = fully open, in proportion; independent of the clutch. When an object stops the fingers it squeezes at the force cap (status `GRASP`) until the trigger opens back to the object |
-| right trigger | not used (logged when `gripper.trigger: right`) |
+| right trigger (with the right button held) | tool rotation about the TCP (j6-1): released = 0, fully pulled = 90 deg, in proportion, at most 30 deg/s (90 deg in 3 s); mostly J6 turns, J1-J3 a few degrees so the fingers stay in place. Released clutch: the rotation stays. After every press it waits until the trigger reaches the current angle (status `rot 45.0 catch`), so it never jumps. Direction: `yaw.trigger_sign` (to be checked at j6-2) |
 
 Speeds: radial / vertical up to 250 mm/s, sideways (turning J1) up to 360 mm/s, joints J1 75 / others
 60 deg/s, acceleration 2.5 m/s^2 (smooth starts and stops). If the hand is faster, the robot keeps up to
@@ -113,7 +113,8 @@ makes the robot jump.
 
 Other settings modes (not used now): `mapping.left_button: vertical` (left button = x, y fixed, only z,
 x 1.5), `mapping.lock_azimuth: false` (left / right moves the robot sideways),
-`yaw.mode: leader_j6` (twist the handle to turn the tool). Change real.yaml and sim.yaml together.
+`yaw.mode: leader_j6` (twist the handle to turn the tool), `yaw.trigger: off` (no trigger rotation). Change real.yaml
+and sim.yaml together.
 
 ## 4b. Recording demonstrations (`--record`)
 ```bash

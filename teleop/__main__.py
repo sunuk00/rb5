@@ -118,7 +118,8 @@ def main():
     # 2. Checks before moving
     latency = read_latency_timer(s.leader.port)
     leader = LeaderArm(s.leader.port)
-    open_problems = leader.open(left_tool=s.mapping.left_button != "off" or s.gripper.trigger == "left")
+    open_problems = leader.open(left_tool=s.mapping.left_button != "off" or s.gripper.trigger == "left"
+                                or s.yaw.trigger == "left")
     problems = preflight.check_leader(latency, s.leader.required_latency_timer_ms, open_problems)
     if problems:
         if not open_problems:
@@ -292,7 +293,9 @@ def main():
                  else "gripper off")
     print(f"Scale {s.mapping.scale}, {s.mapping.speed_mm_s} mm/s, "
           f"{'B' if s.mapping.max_lag_mm <= 0 else f'C {s.mapping.max_lag_mm:.0f} mm'}, "
-          f"yaw {'on' if s.yaw.enabled else 'off'}. Right handle: button = clutch, twist = yaw; "
+          f"yaw {'on' if s.yaw.enabled else 'off'} ({s.yaw.mode}). Right handle: button = clutch"
+          f"{', twist = yaw' if s.yaw.mode == 'leader_j6' else ''}; "
+          f"{'' if s.yaw.trigger == 'off' else f'{s.yaw.trigger} trigger = tool rotation 0..{s.yaw.trigger_range_deg:.0f} deg while the clutch is held (released = 0); '}"
           f"{grip_text}. Ctrl+C to stop.\n")
 
     # 6. Teleop loop

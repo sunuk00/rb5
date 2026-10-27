@@ -21,7 +21,7 @@ import numpy as np
 
 from .kinematics import CylinderRange, wrap_deg
 from .leader import Clutch, LeaderFilter
-from .mapping import Limits, Mapper, plan_step
+from .mapping import Limits, Mapper, TriggerRotation, plan_step
 from .safety import Watch, joint_limit_margin, singular_distance
 
 STATUS_EVERY = 25
@@ -48,15 +48,17 @@ CSV_HEADER = (["t_s", "cycle_interval_ms", "button_raw", "clutch_engaged"]
               + [f"jnt_ang_{i}" for i in range(6)] + [f"meas_tcp_{a}" for a in "xyz"] + ["target_minus_meas_mm"]
               + [f"leader_used_{a}_mm" for a in "xyz"] + ["leader_j6_used_deg"]
               + ["left_button_raw", "left_mode_active", "accel_limited"]
+              + ["rot_desired_deg", "rot_target_deg", "rot_following"]   # trigger rotation (j6-1), blank when off
               + ["episode"])   # demonstration attempt number while recording (rec-3b), else blank
 
 
 def csv_row(t, interval, button_raw, engaged, leader_q, leader_p, desired, target, tcp, q, j5_pred, sh_pred,
             max_dq, flags, late, late_early, stale, state_age, t_leader, t_plan, t_send, t_work, send_interval,
             el_pred, lag, dropped, jl_pred, yaw_desired, yaw_target, yaw_tcp, yaw_lag, dropped_yaw, trigger, grip,
-            measured, used_p, used_j6, left_raw, left_active, episode=""):
+            measured, used_p, used_j6, left_raw, left_active, rot=None, episode=""):
     """One CSV row in the order of CSV_HEADER (times in s, written in ms where the header says ms). A tuple:
-    the Python garbage collector stops scanning tuples of strings, so a long session's rows cost it nothing."""
+    the Python garbage collector stops scanning tuples of strings, so a long session's rows cost it nothing.
+    rot: (desired or None, target, following) of the trigger rotation, None when it is off."""
     def f(v, fmt="{:.3f}"):
         return [fmt.format(x) for x in v]
     empty3 = [""] * 3
@@ -79,6 +81,8 @@ def csv_row(t, interval, button_raw, engaged, leader_q, leader_p, desired, targe
             + measured
             + ([f"{v:.3f}" for v in used_p] + [f"{used_j6:.3f}"] if used_p is not None else [""] * 4)
             + ["" if left_raw is None else left_raw, int(left_active), int(flags.get("accel", False))]
+            + (["" if rot[0] is None else f"{rot[0]:.3f}", f"{rot[1]:.3f}", int(rot[2])] if rot is not None
+               else [""] * 3)
             + [episode])
 
 
@@ -103,6 +107,7 @@ class TeleopLoop:
         self.clutch = Clutch()
         self.gripper = gripper
         self.recorder = recorder
+        self.rotation = TriggerRotation(s) if s.yaw.trigger != "off" else None   # j6-1
 
     def _measured_columns(self, q_meas, target):
         """Encoder joints, their TCP from the DH model (absolute about 2 mm off the controller, 17) and the
@@ -144,6 +149,7 @@ class TeleopLoop:
             f"{CLEAR_LINE}clutch {'ENGAGED ' if clutch.engaged else 'released'}"
             f"{(' ' + self.s.mapping.left_button.upper()) if mapper.left_active else ''}  "
             f"target-start {np.round(mapper.target - tcp0[:3], 1)} mm  yaw {mapper.yaw:6.1f}  "
+            f"{'' if self.rotation is None else f'rot {mapper.rot:5.1f}' + ('' if self.rotation.following or not clutch.engaged else ' catch') + '  '}"
             f"J5 {singular_distance(q[4]):5.1f}  shoulder {self.model.shoulder_margin(q):5.0f} mm  "
             f"grip {self._grip_text(grip)}  "
             f"{'' if self.recorder is None else '| ' + self.recorder.status_text() + '  '}|  "
@@ -183,7 +189,8 @@ class TeleopLoop:
         left = Clutch()   # left button, same debounce as the clutch (a held button must be released once)
         left_on = s.mapping.left_button != "off"
         grip_left = s.gripper.trigger == "left"
-        read_left = left_on or grip_left   # leader.open(left_tool=...) pings the left tool in the same cases
+        rot_left = self.rotation is not None and s.yaw.trigger == "left"
+        read_left = left_on or grip_left or rot_left   # leader.open(left_tool=...) pings the left tool in these cases
         left_text = {"vertical": "vertical mode ON: x, y fixed, only z follows",
                      "rotate": "rotate mode ON: radius and z fixed, sideways hand motion turns J1"}
         leader_q = leader_p = None
@@ -257,6 +264,13 @@ class TeleopLoop:
                 if left_event:
                     self.event(f"[{time.monotonic() - t_start:7.2f} s] {left_event}")
 
+            # 2c. Trigger rotation (j6-1): where the trigger points, only while engaged and caught
+            rot_desired = None
+            if self.rotation is not None:
+                rot_raw = left_raw if rot_left else button_raw
+                rot_desired = self.rotation.desired(None if rot_raw is None else (rot_raw >> 16) & 0xFFFF,
+                                                    mapper.rot, clutch.engaged)
+
             # 3. RB5 state and the 08 safety checks
             self.rb5.check_errors()
             tcp, q, state_age = self.reader.latest()
@@ -283,7 +297,8 @@ class TeleopLoop:
             if clutch.engaged and q_l is not None and not late_early and not stale:
                 desired, yaw_desired = mapper.desired(used_p, used_j6)
                 plan = plan_step(mapper.target, desired, tcp[:3], q, self.model, cyl,
-                                 {"target": mapper.yaw, "desired": yaw_desired, "tcp": yaw_tcp, "base_az0": base_az0},
+                                 {"target": mapper.yaw, "desired": yaw_desired, "tcp": yaw_tcp, "base_az0": base_az0,
+                                  "rot": mapper.rot, "rot_desired": rot_desired},
                                  self.lim, self.watch, mapper.prev_step,
                                  mapper.rotate_lag_mm() if mapper.rotating else None)
                 dropped, flags = plan.dropped, plan.flags
@@ -349,6 +364,7 @@ class TeleopLoop:
                 grip=grip_cols,
                 measured=self._measured_columns(q_meas, mapper.target), used_p=used_p, used_j6=used_j6,
                 left_raw=left_raw, left_active=mapper.left_active,
+                rot=None if self.rotation is None else (rot_desired, mapper.rot, self.rotation.following),
                 episode="" if self.recorder is None else self.recorder.column()))
 
             # 7. Status line
