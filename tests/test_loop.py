@@ -237,7 +237,7 @@ class TestLoop(unittest.TestCase):
 
     def test_trigger_rotation_turns_about_the_tcp(self):
         # j6-1: right trigger fully pulled (clutch released) -> the tool turns 90 deg at 30 deg/s, the TCP stays
-        s = settings(yaw__mode="follow_base", yaw__trigger="right", yaw__speed_deg_s=30.0, mapping__max_lag_mm=0.0)
+        s = settings(yaw__mode="follow_base", yaw__trigger="right", yaw__trigger_pivot="tcp", yaw__speed_deg_s=30.0, mapping__max_lag_mm=0.0)
         steps = [(0, [0, 0, 0], 0, 0)] * 6 + [(0, [0, 0, 0], 0, 1000)] * 200
         _, p0, p1, col, _ = run(steps, s)
         rot = col("rot_target_deg")
@@ -249,13 +249,34 @@ class TestLoop(unittest.TestCase):
         dq = np.abs([col(f"jnt_ref_{i}")[-1] - col(f"jnt_ref_{i}")[0] for i in range(6)])
         self.assertGreater(dq[5], 80.0)                                            # mostly J6 (pose D: 85)
         self.assertLess(dq[:5].max(), 6.0)                                         # J1-J3 keep the TCP (pose D: <5)
-        _, _, _, col_m, _ = run(steps, settings(yaw__mode="follow_base", yaw__trigger="right", yaw__trigger_sign=-1,
+        _, _, _, col_m, _ = run(steps, settings(yaw__mode="follow_base", yaw__trigger="right", yaw__trigger_pivot="tcp", yaw__trigger_sign=-1,
                                                 yaw__speed_deg_s=30.0, mapping__max_lag_mm=0.0))
         self.assertAlmostEqual(col_m("rot_target_deg")[-1], -90.0, places=6)
 
+    def test_trigger_rotation_turns_only_j6(self):
+        # j6-1c: pivot j6: only J6 turns; the sent TCP circles the J6 axis, the target (rotation-0 TCP) stays
+        s = settings(yaw__mode="follow_base", yaw__trigger="right", yaw__trigger_pivot="j6", yaw__speed_deg_s=30.0,
+                     mapping__max_lag_mm=0.0)
+        steps = [(0, [0, 0, 0], 0, 0)] * 6 + [(0, [0, 0, 0], 0, 1000)] * 200
+        loop, p0, p1, col, _ = run(steps, s)
+        dq = np.abs([col(f"jnt_ref_{i}")[-1] - col(f"jnt_ref_{i}")[0] for i in range(6)])
+        self.assertAlmostEqual(dq[5], 90.0, delta=0.5)                             # J6 turns by the rotation
+        self.assertLess(dq[:5].max(), 0.2)                                         # the rest stays
+        model = RB5Model(OFFSET)
+        v = model.tcp(D)[0] - model.flange(D)[:3, 3]
+        r = np.hypot(v[0], v[1])                                                   # TCP off the J6 axis (pose D: 40 mm)
+        self.assertAlmostEqual(np.linalg.norm(p1[:3] - p0[:3]), 2 * r * np.sin(np.radians(45.0)), delta=1.0)
+        self.assertAlmostEqual(np.hypot(*(col("target_x")[-1] - p1[0], col("target_y")[-1] - p1[1])), 0.0, delta=0.5)
+        # then the hand moves the arm with the tool turned: J6 stays turned, the target follows the hand
+        steps2 = steps + [(0, [0, 0, 0], 0, 1000)] * 3 + [(1, [0, 0, 0], 0, 1000)] * 3
+        steps2 += [(1, [2.0 * i, 0, -1.0 * i], 0, 1000) for i in range(1, 21)] + [(1, [40.0, 0, -20.0], 0, 1000)] * 30
+        _, _, p2, col2, _ = run(steps2, s)
+        self.assertAlmostEqual(col2("rot_target_deg")[-1], 90.0, places=6)
+        self.assertLess(abs(p2[2] - p1[2] + 10.0), 1.0)                             # down 20 x scale 0.5
+
     def test_trigger_rotation_independent_of_the_clutch(self):
         # j6-1b: like the gripper: the catch only at the start, then the trigger turns the tool with or without the clutch
-        s = settings(yaw__mode="follow_base", yaw__trigger="right", yaw__speed_deg_s=30.0, mapping__max_lag_mm=0.0)
+        s = settings(yaw__mode="follow_base", yaw__trigger="right", yaw__trigger_pivot="tcp", yaw__speed_deg_s=30.0, mapping__max_lag_mm=0.0)
         steps = ([(0, [0, 0, 0], 0, 1000)] * 30                                     # pulled at the start: catch waits
                  + [(0, [0, 0, 0], 0, 0)] * 5 + [(0, [0, 0, 0], 0, 500)] * 100      # caught at 0, then 45 deg, released clutch
                  + [(1, [0, 0, 0], 0, 500)] * 20                                    # pressing the clutch changes nothing
@@ -279,7 +300,7 @@ class TestLoop(unittest.TestCase):
         # a released trigger (0) gives exactly the targets of yaw.trigger off
         steps = ARM + [(1, [0, 2.0 * i, -1.0 * i], 0) for i in range(1, 41)] + [(1, [0, 80.0, -40.0], 0)] * 20
         steps = [st + (0,) for st in steps]
-        on, *_ = run(steps, settings(yaw__mode="follow_base", yaw__trigger="right", mapping__max_lag_mm=0.0))
+        on, *_ = run(steps, settings(yaw__mode="follow_base", yaw__trigger="right", yaw__trigger_pivot="tcp", mapping__max_lag_mm=0.0))
         off, *_ = run(steps, settings(yaw__mode="follow_base", mapping__max_lag_mm=0.0))
         cols = [IX[k] for k in ("target_x", "target_y", "target_z", "yaw_target_deg")]
         self.assertEqual([[r[i] for i in cols] for r in on.rows], [[r[i] for i in cols] for r in off.rows])

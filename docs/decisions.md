@@ -3056,6 +3056,24 @@ the robot: the trigger alone turns J6 and moves J1-J3 a few degrees (TCP fixed);
 turn back to 0. **Checked:** tests (171): catch at the start only, 45 deg with the clutch released, the
 clutch changes nothing, failed reads hold, back to 0 with the trigger let go, the position target never moves.
 
+## 2026-10-28 — j6-1c: the trigger rotation turns only J6 (pivot j6)
+
+**Decision (user):** "easier for the operator if only J6 moves": `yaw.trigger_pivot: j6` (new; `tcp` keeps the
+j6-1 behavior). The target stays the TCP at rotation 0 (what the hand moves; range, speed, joint speed, lead
+and watch checks use it, with the robot's TCP minus the shift); the TCP sent is that point turned about the
+J6 axis by the rotation (`Mapper.shift`: the horizontal J6 axis -> TCP vector from the DH model at the start,
+turned with the follow_base yaw). `move_servo_l` cannot command J6 alone, so the J6-only motion is a TCP that
+circles the axis plus the same rz. CSV `target_*` = the TCP sent (the action of j6-3: TCP + rotation can be
+sent as it is). **Reason:** with the J6 axis vertical (ready pose J5 -90.5) the flange does not move: the arm
+stays, the reach and the margins do not change. **Cost:** the fingers circle the J6 axis, about 40 mm off it
+with the provisional TCP offset: 55 mm sideways at 90 deg; they can be up to that much outside the range
+(z unchanged). The plan's joint prediction stays the TCP-fixed one (a few hundredths of a degree per cycle on
+J1-J3). **Rejected:** fixing the TCP offset on the controller first (the user prefers J6-only either way).
+**Checked:** tests (172): pose D: J6 90 deg, the other joints < 0.2 deg, the TCP moves 2 r sin 45; then the hand
+moves the arm with the tool turned. Ready pose with sim.yaml (fake robot, DH model): J6 +90.05 (-175.7 ->
+-85.7), J1 -0.05, J2 +0.09, J3 -0.30, J4 +0.92, J5 +0.22 deg (the J6 axis is 0.5 deg off vertical), the TCP 55.4 mm
+sideways, back to the start when the trigger is let go; no joint speed, lead or range limit.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

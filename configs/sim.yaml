@@ -63,6 +63,8 @@ yaw:
   trigger_full: 1000.0          # script 36 (2026-10-28): released 0, fully pulled 1000, no noise
   trigger_range_deg: 90.0       # user, 2026-10-28
   trigger_sign: 1               # TBD at j6-2 (first small turn): the user wants "to the left" as the operator sees it
+  trigger_pivot: j6             # user, j6-1c: only J6 turns (easier to operate); the TCP circles the J6 axis (about
+                                # 40 mm off it: 57 mm at 90 deg). "tcp" = TCP fixed, J1-J3 turn a few degrees (j6-1)
 
 range:                          # absolute in the RB5 base frame (2026-10-16; before: relative to the start pose,
                                 # so every ready-pose change moved the range). Same space as before.

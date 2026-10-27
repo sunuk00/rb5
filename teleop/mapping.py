@@ -27,6 +27,12 @@ gripper (j6-1b; with the clutch released the position target stays and only the 
 a catch at the start (TriggerRotation). Its step is limited by yaw.speed_deg_s (scaled like the position
 by the watches and the joint speed limit) and it waits when the robot's rotation lags by more than the yaw
 lead limit. The trigger is an absolute angle: nothing is dropped, the tool only lags.
+Pivot (yaw.trigger_pivot, j6-1c): "tcp" turns the tool about the TCP (J1-J3 move a few degrees); "j6" turns
+only J6: the target above stays the TCP at rotation 0 (what the hand moves and the checks use), and the
+TCP sent is that point turned about the J6 axis by the rotation (Mapper.shift; the J6 axis is vertical at
+the ready pose, J5 -90.5). The flange does not move, so the reach and the arm margins do not change, but the
+fingers circle the axis (about 40 mm off it with the current TCP offset) and may leave the range by that
+much; the joint prediction in plan_step stays the TCP-fixed one (J1-J3 a few hundredths of a degree per cycle).
 Per cycle (plan_step): range first (the excess outside the range is kept), then the speed limits
 scaled by the singularity / joint limit watches (sideways about the base z axis up to
 speed_tangential_mm_s, radial and vertical up to speed_mm_s: (t / T)^2 + (o / O)^2 <= 1), then the
@@ -294,6 +300,7 @@ class Mapper:
         self.target = np.array(target0, dtype=float)   # RB5 TCP position target [mm]
         self.yaw = 0.0                                  # RB5 yaw relative to the start rz [deg]
         self.rot = 0.0                                  # trigger rotation in it (follow_base, j6-1) [deg]
+        self.pivot = None                               # j6 pivot: horizontal J6 axis -> TCP at the start [mm]
         self.rb5_start = self.leader_start = None
         self.yaw_rb5_start = self.yaw_leader_start = None
 
@@ -379,6 +386,18 @@ class Mapper:
         self.yaw_leader_start += plan.dropped_yaw
         self.yaw = plan.yaw
         self.rot = getattr(plan, "rot", self.rot)
+
+    def shift(self):
+        """j6 pivot (j6-1c): sent TCP - target, the target turned about the J6 axis by the rotation [mm]. The axis ->
+        TCP vector turns with the follow_base yaw (yaw - rot); zero without a pivot or at rotation 0."""
+        if self.pivot is None or self.rot == 0.0:
+            return np.zeros(3)
+        v = rot_z(self.yaw - self.rot) @ self.pivot
+        return rot_z(self.rot) @ v - v
+
+    def sent(self):
+        """The TCP position sent to the robot."""
+        return self.target + self.shift()
 
     def apply_rotation(self, plan):
         """Clutch released (j6-1b): take only the trigger rotation; the position target and the leader references stay."""

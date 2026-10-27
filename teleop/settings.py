@@ -102,6 +102,7 @@ SCHEMA = {
         "trigger_full": _num(1.0, 65535.0),           # trigger value for trigger_range_deg
         "trigger_range_deg": _num(0.0, 90.0),         # rotation at trigger_full [deg]
         "trigger_sign": _num(-1.0, 1.0, integer=True),   # +1: positive rz (counterclockwise seen from above)
+        "trigger_pivot": _str(("j6", "tcp")),         # j6: only J6 turns (the TCP circles the J6 axis); tcp: TCP fixed
     },
     "range": {
         "r_min_mm": _num(150.0, 900.0),
