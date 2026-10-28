@@ -19,6 +19,56 @@ from teleop.settings import load_settings  # noqa: E402
 CAMS = [("front", "1"), ("wrist", "2")]
 
 
+class TestPreview(unittest.TestCase):
+    """t2-c: the live preview page and streams; recording while a stream is read."""
+
+    def test_preview_page_streams_and_recording(self):
+        import urllib.request
+        rec = CameraRecorder([("front", "1"), ("top", "2")], width=64, height=48, fps=30, fake=True, preview_port=0)
+        self.addCleanup(rec.close)
+        self.assertEqual(rec.open(), [])
+        self.assertIsNone(rec.preview_problem)
+        self.assertTrue(rec.preview_url.startswith("http://localhost:"))
+        page = urllib.request.urlopen(rec.preview_url + "/", timeout=5).read().decode()
+        self.assertIn('src="/stream/front"', page)
+        self.assertIn('src="/stream/top"', page)
+        stream = urllib.request.urlopen(rec.preview_url + "/stream/top", timeout=5)
+        self.assertTrue(stream.headers["Content-Type"].startswith("multipart/x-mixed-replace"))
+        head = stream.read(200)
+        self.assertIn(b"Content-Type: image/jpeg", head)
+        self.assertIn(b"\xff\xd8", head)                              # a JPEG starts
+        with tempfile.TemporaryDirectory() as tmp:                   # the stream stays open while recording
+            ep = Path(tmp) / "episode_000"
+            rec.start_episode(ep)
+            time.sleep(0.5)
+            stream.read(2000)
+            rec.stop_episode(keep=True)
+            stats = rec.wait_stopped()
+            for name in ("front", "top"):
+                self.assertTrue(10 <= stats[name]["frames"] <= 18, stats[name])
+                self.assertEqual(stats[name]["dropped"], 0)
+        stream.close()
+        with self.assertRaises(Exception):
+            urllib.request.urlopen(rec.preview_url + "/stream/nope", timeout=5)
+
+    def test_no_preview_by_default_and_port_in_use(self):
+        import socket
+        busy = socket.socket()
+        busy.bind(("127.0.0.1", 0))
+        busy.listen()
+        self.addCleanup(busy.close)
+        rec = CameraRecorder([("front", "1")], width=64, height=48, fake=True, preview_port=busy.getsockname()[1])
+        self.addCleanup(rec.close)
+        self.assertEqual(rec.open(), [])                              # the recording starts anyway
+        self.assertIsNone(rec.preview_url)
+        self.assertIn("live preview not started", rec.preview_problem)
+        plain = CameraRecorder([("front", "1")], width=64, height=48, fake=True)
+        self.addCleanup(plain.close)
+        self.assertEqual(plain.open(), [])
+        self.assertIsNone(plain.preview_url)
+        self.assertIsNone(plain.preview_problem)
+
+
 class TestCameraRecorder(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

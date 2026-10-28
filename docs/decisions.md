@@ -3115,6 +3115,21 @@ on the table would give several right answers (as a free order); kinds in turn k
 ImageNet-pretrained ResNet18 per camera can tell a few kinds apart. **Rejected:** re-aiming top to include the
 meal box (not needed); renaming D435 `top` / `overview` (the names follow the view direction).
 
+## 2026-10-28 — t2-c: live camera preview while recording (`--preview`)
+
+**Decision (user asked to see the cameras while recording):** `python -m teleop --record --preview [PORT]`
+(default 8080): the camera process keeps each camera's latest frame (a reference set by the grab thread) and
+an HTTP server on 127.0.0.1 serves a page with one MJPEG stream per camera (every 2nd pixel = 320x240, JPEG 70,
+10 images/s). Each stream is a server thread that only reads the latest frame; a closed tab ends it; a busy
+port prints a warning and the recording goes on. Without `--preview` nothing changes. **Reason:** while the
+teleop records, the camera process holds the cameras (no other viewer can open them); the rb5 env has
+opencv-python-headless (no imshow window) and changing the env was not wanted; the browser shows MJPEG with
+no extra package. **Checked:** tests with fake cameras (page, a JPEG on a stream, an episode recorded while a
+stream is read: frames as usual, 0 dropped; busy port; no preview by default); encoding 0.62 ms per image
+(a grip frame), 3 cameras x 10/s = about 2 % of one core in the camera process. **Rejected:** an OpenCV window
+(env change); a separate viewer program (cannot open a camera in use); the policy run's preview (later if
+needed).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

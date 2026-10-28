@@ -120,6 +120,7 @@ x 1.5), `mapping.lock_azimuth: false` (left / right moves the robot sideways),
 python -m teleop --record                                   # Simulation; cameras front, top, grip
 python -m teleop --real --record --task "pick the block and place it in the box"
 python -m teleop --record --no-cameras                      # robot data only (trying the keys)
+python -m teleop --real --record --preview                  # + live camera preview: open http://localhost:8080
 ```
 - The cameras (`record.cameras`: `front` D435 by serial, `top` C270 and `grip` Brio 101 webcams by
   `/dev/v4l/by-id` path) start before anything moves; a missing camera refuses the start. Their exposure,
@@ -127,6 +128,9 @@ python -m teleop --record --no-cameras                      # robot data only (t
   checked against `record.brightness_ref` +/- `brightness_tolerance` (114 +/- 15 %): outside it, a typed
   yes is needed (fix the lighting first, docs/data_rules.md). Settings: the `record` section (task, 120 s episode limit, no
   automatic start).
+- `--preview [PORT]` (t2-c): the camera process serves the three cameras live at `http://localhost:8080` (this PC
+  only; 320x240, 10 images/s, about 0.1 s behind; a busy port prints a warning and the recording goes on). For
+  checking the views; operate by looking at the robot.
 - Keys, in the terminal running the teleop (as LeRobot's `lerobot-record`):
 
 | key | recording | reset (between episodes) |

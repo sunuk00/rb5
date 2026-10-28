@@ -29,8 +29,15 @@ minus the receive delay (PC wall clock at arrival - cam_ts_ms). The receive dela
 (cam-1 / 2026-10-19: D405 about 9.5 ms, D435 about 34 ms), so t_capture_s is the time to match on.
 A UVC webcam has no camera clock: cam_ts_ms is the kernel's buffer time (domain v4l2, time.monotonic() in
 ms), about 33 ms before the arrival; capture_delay_s() gives the delay for every domain.
+
+Live preview (t2-c, preview_port): the grab threads keep each camera's latest frame, and an HTTP server in the
+process (127.0.0.1 only) serves a page with one MJPEG stream per camera: every 2nd pixel (320x240), JPEG quality
+70, PREVIEW_FPS. Each stream runs in its own server thread and only reads the latest frame, so a slow browser
+never holds up the grab or writer threads (it only shares the process's GIL: about 1-2 ms of encoding per
+image). A server that cannot start (port in use) is reported and the recording goes on without it.
 """
 import csv
+import http.server
 import io
 import multiprocessing as mp
 import os
@@ -56,6 +63,8 @@ MISSING_ROWS_MAX_FRAC = 0.02  # more missing rows than this in a start image ref
 RED, RESET = "\033[1;31m", "\033[0m"
 STALL_S = 1.0                # no frame for this long = camera error (real-pilot 141929: the D405 dropped off
                              # USB and came back as USB 2; its pipeline only timed out, nothing was reported)
+PREVIEW_FPS = 10             # live preview images per second per camera (t2-c)
+PREVIEW_QUALITY = 70
 UVC_START_FRAMES = 5         # frames read to start the webcam stream before its settings are written
 UVC_SETTLE_S = 0.5           # frames read after writing the webcam settings, before they are read back
 UVC_EXPOSURE_TOL = 10        # 0.1 ms steps: the C270 reports 5 more than written while it streams (cam-4a)
@@ -299,7 +308,7 @@ class _Episode:
         self.csv_file.close()
 
 
-def _grab(cam, name, frames_q, recording, stats, stop, errors):
+def _grab(cam, name, frames_q, recording, stats, stop, errors, latest=None):
     last_fn = None
     last_frame_t, stalled = time.monotonic(), False
     while not stop.is_set():
@@ -315,6 +324,8 @@ def _grab(cam, name, frames_q, recording, stats, stop, errors):
             continue
         last_frame_t = time.monotonic()
         img, fn, cam_ts, domain, mono, wall_ms = got
+        if latest is not None:
+            latest[name] = img   # live preview: only a reference (the image is not changed after this)
         if recording.is_set():
             if last_fn is not None and fn - last_fn > 1:
                 stats["gaps"] += fn - last_fn - 1
@@ -406,9 +417,64 @@ def _brightness(cam):
     return level_info(levels)
 
 
-def _process_main(cameras, width, height, fps, quality, fake, cmd_q, reply_q):
+_PREVIEW_PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>Camera preview</title>
+<style>body{{margin:0;background:#111;color:#ddd;font:14px sans-serif}}div{{display:flex;flex-wrap:wrap;gap:8px;
+padding:8px}}figure{{margin:0}}img{{width:480px;max-width:100%;background:#000}}</style></head><body><div>{}</div>
+</body></html>"""
+
+
+def _start_preview(latest, names, port):
+    """HTTP server for the live preview on 127.0.0.1:port (0 = any free port), in daemon threads. Returns
+    (url, None) or (None, problem)."""
+    from PIL import Image
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *args):   # no request lines in the teleop terminal
+            pass
+
+        def do_GET(self):
+            if self.path == "/":
+                figures = "".join(f'<figure><img src="/stream/{n}"><figcaption>{n}</figcaption></figure>' for n in names)
+                body = _PREVIEW_PAGE.format(figures).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            name = self.path[len("/stream/"):] if self.path.startswith("/stream/") else None
+            if name not in names:
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            try:
+                while True:
+                    img = latest.get(name)
+                    if img is not None:
+                        buf = io.BytesIO()
+                        Image.fromarray(np.ascontiguousarray(img[::2, ::2])).save(buf, "JPEG", quality=PREVIEW_QUALITY)
+                        jpg = buf.getvalue()
+                        self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
+                                         + str(len(jpg)).encode() + b"\r\n\r\n" + jpg + b"\r\n")
+                    time.sleep(1.0 / PREVIEW_FPS)
+            except (BrokenPipeError, ConnectionResetError):   # the browser tab was closed
+                return
+
+    try:
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    except OSError as e:
+        return None, f"live preview not started (port {port}: {e})"
+    server.daemon_threads = True
+    threading.Thread(target=server.serve_forever, name="preview", daemon=True).start()
+    return f"http://localhost:{server.server_address[1]}", None
+
+
+def _process_main(cameras, width, height, fps, quality, fake, cmd_q, reply_q, preview_port=None):
     """cameras: list of (name, serial), (name, serial, settings) or (name, serial, settings, format). Runs
-    until ("quit",)."""
+    until ("quit",). preview_port: start the live preview there (None = no preview)."""
     opened, errors, stop = [], queue.Queue(), threading.Event()
     info = {}
     try:
@@ -430,16 +496,19 @@ def _process_main(cameras, width, height, fps, quality, fake, cmd_q, reply_q):
         reply_q.put(("error", f"camera start failed: {e}"))
         return
     recording = threading.Event()
+    latest = {} if preview_port is not None else None
+    preview = (None, None) if latest is None else _start_preview(latest, [n for n, _ in opened], preview_port)
     per_cam, threads = {}, []
     for name, cam in opened:
         st = {"gaps": 0, "dropped": 0, "write_ms_max": 0.0}
         fq, cq, done = queue.Queue(maxsize=WRITE_QUEUE), queue.Queue(), queue.Queue()
         per_cam[name] = (cq, st, done)
-        threads.append(threading.Thread(target=_grab, args=(cam, name, fq, recording, st, stop, errors), daemon=True))
+        threads.append(threading.Thread(target=_grab, args=(cam, name, fq, recording, st, stop, errors, latest),
+                                        daemon=True))
         threads.append(threading.Thread(target=_write, args=(name, fq, cq, done, quality, st), daemon=True))
     for t in threads:
         t.start()
-    reply_q.put(("ready", info))
+    reply_q.put(("ready", info, preview))
     ep_dir = None
     try:
         while True:
@@ -495,13 +564,15 @@ class CameraRecorder:
     None = auto), brightness, saturated_frac, missing_rows_frac}}.
     """
 
-    def __init__(self, cameras, width=640, height=480, fps=30, quality=95, fake=False):
+    def __init__(self, cameras, width=640, height=480, fps=30, quality=95, fake=False, preview_port=None):
         ctx = mp.get_context("spawn")   # not fork: the teleop process has threads (gripper)
         self.cmd_q, self.reply_q = ctx.Queue(), ctx.Queue()
         self.names = [c[0] for c in cameras]
         self.info = {}
         self.proc = ctx.Process(target=_process_main, name="cameras", daemon=True,
-                                args=(cameras, width, height, fps, quality, fake, self.cmd_q, self.reply_q))
+                                args=(cameras, width, height, fps, quality, fake, self.cmd_q, self.reply_q,
+                                      preview_port))
+        self.preview_url = self.preview_problem = None   # live preview (t2-c), after open()
         self.errors = []
         self._dead_reported = False
 
@@ -514,6 +585,7 @@ class CameraRecorder:
         if reply[0] == "error":
             return [reply[1]]
         self.info = reply[1]
+        self.preview_url, self.preview_problem = reply[2]
         return []
 
     def start_episode(self, ep_dir):

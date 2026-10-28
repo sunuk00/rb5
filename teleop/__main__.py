@@ -85,9 +85,13 @@ def main():
     parser.add_argument("--record", action="store_true", help="record demonstration episodes (keys in this terminal)")
     parser.add_argument("--task", help="task text of the episodes (default: record.task in the settings)")
     parser.add_argument("--no-cameras", action="store_true", help="with --record: robot data only, no cameras")
+    parser.add_argument("--preview", nargs="?", type=int, const=8080, metavar="PORT",
+                        help="with --record: live camera preview in a browser, http://localhost:PORT (default 8080)")
     args = parser.parse_args()
     if (args.task or args.no_cameras) and not args.record:
         parser.error("--task and --no-cameras need --record")
+    if args.preview is not None and (not args.record or args.no_cameras):
+        parser.error("--preview needs --record with cameras")
     np.set_printoptions(precision=2, suppress=True)
     real = args.real
     path = Path(args.config) if args.config else ROOT / "configs" / ("real.yaml" if real else "sim.yaml")
@@ -165,12 +169,16 @@ def main():
         else:
             from .cameras import CameraRecorder, brightness_problems, camera_defs, print_red, refusal_problems
             r = s.record
-            cameras = CameraRecorder(camera_defs(r), quality=r.jpeg_quality)
+            cameras = CameraRecorder(camera_defs(r), quality=r.jpeg_quality, preview_port=args.preview)
             problems = cameras.open()
             if problems:
                 close_ports()
                 refuse("cameras (python -m teleop --record --no-cameras records without them)", problems)
             print(f"Record: session {session.relative_to(ROOT)}, task '{task}'")
+            if cameras.preview_url:
+                print(f"  Live preview: {cameras.preview_url} (open it in a browser; about 0.1 s behind)")
+            elif cameras.preview_problem:
+                print(f"  WARNING: {cameras.preview_problem}; recording without it")
             for name, c in cameras.info.items():
                 st = c["settings"]
                 print(f"  {name} {c['serial']} ({c['format']}): exposure {st['exposure_us'] / 1000:.1f} ms, gain "
