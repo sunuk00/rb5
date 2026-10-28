@@ -3176,6 +3176,18 @@ analysis). Temporal ensembling stays as in ACT (m 0.01; chunk 100 = 3.3 s at 30 
 session added to t1 (a different snack now, and recovery tied to one session); carrying the empty gripper
 to the box in a demonstration (that is the failure).
 
+## 2026-10-29 — t3-b: normal data first, recovery demonstrations in a second stage
+
+**Decision (user):** stage 1: 48 normal episodes (3 sessions of 16, 24 Oreo + 24 RITZ) -> `t3n` -> train and
+evaluate; stage 2: the 16 recovery episodes (t3-a table) in 1-2 later sessions -> `t3r` (64) -> train anew,
+same evaluation. Natural re-grasps stay kept in stage 1 (noted `regrasp` in notes.txt). **Reason:** with the
+new snack the normal data may already grasp better: stage 1 shows whether and how much recovery data is needed;
+the paper reads as baseline -> observed failure -> recovery demonstrations -> change; both policies share the
+same 48 normal episodes, so the comparison is unchanged. The recovery sessions come later: cameras, lighting,
+box marks and placement habits are kept as in stage 1. **Rejected:** recovery mixed into every session from
+the start (t3-a: it kept recovery apart from session conditions, but commits to recovery data before the
+baseline is known).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

@@ -17,7 +17,7 @@ not part of the t3 dataset (t3-a).
   | Carrot | the big black box |
   | Oreo | the meal box, **large** hole |
   | RITZ | the meal box, **small** hole |
-- **Snack: Oreo and RITZ** (t3-a, 2026-10-29: Nutter Butter was too big), 32 kept episodes each. **One snack per episode** (with
+- **Snack: Oreo and RITZ** (t3-a, 2026-10-29: Nutter Butter was too big), alternating, as many of each. **One snack per episode** (with
   several on the table the policy could not know which one), the kinds in turn so that each has about the same
   number of kept episodes. The hole depends on the kind, which the cameras see: one right action, learned from
   the snack's look (a sorting task).
@@ -49,7 +49,7 @@ RITZ small) -> 14. lower a little -> 15. open -> 16. **lift about 5 cm and stop*
   the task, the robot jumps (clutch slip), a spoken "Camera error" or a frame-loss warning. The 120 s
   episode limit ends and keeps an episode: discard it if the task was not finished.
 
-## Recovery demonstrations (t3-a)
+## Recovery demonstrations (t3-a; recorded in stage 2 only, t3-b)
 The pilot policy (act_t1) closed beside an object, lifted the empty gripper, carried it to the box and
 opened it there: the gripper state is 0 (closed) with or without an object, so only the `grip` image shows
 an empty gripper, and no kept demonstration showed a miss. A recovery episode shows one:
@@ -58,7 +58,7 @@ an empty gripper, and no kept demonstration showed a miss. A recovery episode sh
 the object on the table; not over 2 s) -> 6. **open fully** -> 7. above the object again (where it is now,
 if the miss pushed it) -> 8. down, close, and the rest as a normal episode.
 - One miss per episode (the carrot or the snack). Never carry the empty gripper to a box.
-- 16 in all, 4 per session, one cell each of:
+- 16 in all (stage 2), one cell each of:
 
   | miss on | off direction (`top` view) | lift |
   |---|---|---|
@@ -68,9 +68,14 @@ if the miss pushed it) -> 8. down, close, and the rest as a normal episode.
   (2 objects x 4 directions x 2 lifts = 16), the snack kind alternating as in normal episodes.
 
 ## Amount and sessions
-- **64 kept episodes** in **4 sessions of 16**: each session 12 normal + 4 recovery, mixed (not a recovery
-  session apart: then recovery and the session's conditions would go together). In all 48 normal + 16
-  recovery; 32 Oreo, 32 RITZ.
+Two stages (t3-b, user, 2026-10-29):
+- **Stage 1, normal:** **48 kept normal episodes** (natural re-grasps included) in **3 sessions of 16**,
+  24 Oreo + 24 RITZ -> dataset `t3n` -> train -> evaluate (below), including what the policy does after a
+  missed grasp.
+- **Stage 2, recovery:** **16 recovery episodes** (the table above) in 1-2 sessions -> dataset `t3r` = the
+  stage 1 sessions + these (64) -> train anew with the same settings -> the same evaluation. Same cameras,
+  lighting, box marks and placement habits as stage 1 (the recovery sessions come later, so their
+  conditions must not differ).
 - **notes.txt** in every session folder (`data/demos/<session>/notes.txt`), one line per kept attempt:
   attempt number, snack kind, `normal` / `recovery <object> <direction> <lift>` / `regrasp` (natural).
   The dataset does not record it; it is needed to train without the recovery episodes and for the paper.
@@ -101,7 +106,7 @@ if the miss pushed it) -> 8. down, close, and the rest as a normal episode.
   (user, 2026-10-28; `run.time_limit_s` 120). Note also the carrot alone (first stage), the snack kind and a
   snack in the **wrong hole** (counted apart from a missed or dropped snack: it measures the sorting).
 - **After a missed grasp**, note what the policy does: opens and grasps again (recovery) or carries the empty
-  gripper on. Compared between a policy trained without (48) and with (64) the recovery episodes.
+  gripper on. Compared between `t3n` (48, stage 1) and `t3r` (64, stage 2).
 - Record every trial (`--record`), success / failure noted per trial.
 
 ## Before every session (in addition to docs/real_first_run_checklist.md)
