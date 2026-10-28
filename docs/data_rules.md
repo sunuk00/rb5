@@ -8,6 +8,9 @@ its sessions still convert as they were recorded (camera names come from each se
 ## Task
 - **Put the carrot in the large hole, then the snack in the small hole of the meal box.** Task text, exactly:
   `python -m teleop --real --record --task "put the carrot in the large hole, then the snack in the small hole of the meal box"` (the default `record.task`).
+- **Snack: one of 3 kinds** (Chips Ahoy, Nutter Butter, Oreo; user, 2026-10-28), **one snack per episode**
+  (with several on the table the policy could not know which one), the kinds in turn so that each has about
+  the same number of kept episodes.
 - Two objects in every episode, **always the carrot first** (user, 2026-10-28: a fixed order, one right
   action at every moment; a free order makes the policy average the two choices).
 - The meal box fixed in place (mark its corners on the table).
@@ -15,6 +18,7 @@ its sessions still convert as they were recorded (camera names come from each se
 ## Placement and start
 | | rule |
 |---|---|
+| Snack kind | rotate through the 3 kinds (e.g. Chips Ahoy, Nutter Butter, Oreo, Chips Ahoy, ...); the other two off the table |
 | Carrot and snack positions | random, **anywhere the `top` camera sees** (user, 2026-10-28), not on the meal box, inside the teleop range (a place the robot cannot reach is not used), the two not touching |
 | Object orientation | so that the fingers close across it **without turning the gripper** (the tool turns only with J1; no wrist rotation since j6-2) |
 | Robot start pose | in the reset phase, move with the teleop to a pose **within about 10 cm of the ready pose**, a different one each time; also start some at the ready pose itself |
@@ -32,7 +36,9 @@ little -> 15. open -> 16. **lift about 5 cm and stop** -> 17. `n`.
   discard it if the task was not finished.
 
 ## Amount and sessions
-- **50 kept episodes**, in sessions of **10-15 episodes** (the robot CSV is written at the session end).
+- **60 kept episodes** (about 20 per snack kind; more variety than one block needs more data), in sessions of
+  **10-15 episodes** (the robot CSV is written at the session end). Note the snack kind of each kept episode
+  (the session's episode list); the dataset does not record it.
 - Same lighting for all sessions (blinds / lamps as on the first session; note the time of day).
 - After each session: `python -m rb5_lerobot.convert <session> --check-only` and look at the
   report (left-out episodes, image time error, gripper following, start pose spread) before the next one.
@@ -40,12 +46,12 @@ little -> 15. open -> 16. **lift about 5 cm and stop** -> 17. `n`.
 ## Cameras
 - **D435 (`front`)**: fixed above the workspace. Mark its mount; it must not move between sessions.
 - **C270 webcam (`top`)**: **fixed above the workspace** (t2-a, 2026-10-28; was on the gripper as `wrist`),
-  the objects' area and the meal box in view. Mark its mount; it must not move between sessions.
+  looking straight down at the objects' area (the meal box: `front` sees it). Mark its mount; it must not move between sessions.
 - **Brio 101 webcam (`grip`)**: on the gripper, sees the fingers and what they hold (cam-5a).
 - The two webcams on **different USB ports** (2026-10-28: Brio on its own port, C270 on the hub): each has
   its own 480 Mbit/s. Formats unchanged (C270 MJPG, Brio YUYV). Cables strain-relieved.
 - **Exposure, gain and white balance fixed** (cam-2b, cam-5b, `record.cameras` in configs/*.yaml):
-  front 16.7 ms / gain 76, top TBD (script 34 at the new place), grip 8.3 ms / gain 152, all 4600 K. Set and
+  front 16.7 ms / gain 76, top 16.7 ms / gain 14 (t2-b), grip 8.3 ms / gain 152, all 4600 K. Set and
   read back every time the teleop opens the cameras.
 - **Brightness check at start**: each camera's mean brightness must be within 114 +/- 15 % (97..131);
   otherwise a typed yes is needed. Reference, measured value and settings go into episodes.json.
@@ -53,10 +59,11 @@ little -> 15. open -> 16. **lift about 5 cm and stop** -> 17. `n`.
 
 ## Evaluation (after training, the same for every policy)
 - **5 placements** of the carrot and the snack, chosen and marked before the first training (spread over the
-  `top` view, the same for every policy) x **4 trials** = 20 trials.
+  `top` view, the same for every policy) x **3 snack kinds** = 15 trials (+ the same 5 placements with a snack
+  kind not in the data, for generalization, when one is chosen).
 - Start at the ready pose, gripper open.
 - **Success**: the carrot in the large hole and the snack in the small hole, gripper open, within **120 s**
-  (user, 2026-10-28; `run.time_limit_s` 120). Note also the carrot alone (first stage).
+  (user, 2026-10-28; `run.time_limit_s` 120). Note also the carrot alone (first stage) and the snack kind.
 - Record every trial (`--record`), success / failure noted per trial.
 
 ## Before every session (in addition to docs/real_first_run_checklist.md)

@@ -166,14 +166,13 @@ record:                         # demonstrations: python -m teleop --record [--t
       exposure_us: 16667.0      # fixed camera: 8.3 ms was too dark even at the maximum gain
       gain: 76
       white_balance_k: 4600
-    top:                        # C270 webcam fixed above the workspace, sees the objects and the meal box (t2-a,
-                                # 2026-10-28; cam-4a .. p3: "wrist" on the gripper). Settings below: the wrist ones
-                                # until script 34 measures the new place (TBD)
+    top:                        # C270 webcam fixed above the workspace, looks straight down at the objects' area (the
+                                # meal box: front) (t2-a, 2026-10-28; cam-4a .. p3: "wrist" on the gripper)
       device: "/dev/v4l/by-id/usb-046d_0825_6E259540-video-index0"
-      format: MJPG              # cam-5a: leaves the bus room for the Brio
-      exposure_us: 8333.0       # moves with the gripper: short exposure, blur about 2 mm at 250 mm/s
-      gain: 86                  # MJPG, re-aimed: mean 114.1 at 8.3 ms (cam-5b, script 34, 2026-10-21 lab lighting)
-      white_balance_k: 4600
+      format: MJPG              # cam-5a; on its own USB port since 2026-10-28 (YUYV would fit, MJPG kept)
+      exposure_us: 16667.0      # t2-b: fixed camera, the less noisy candidate (gain 14 vs 78 at 8.3 ms)
+      gain: 14                  # mean 114.1 at 16.7 ms (script 34, settings_20261028_085542, lab lighting)
+      white_balance_k: 4600     # R/G 0.998, B/G 0.980 (4000: 0.990 / 0.991, 5200: 1.010 / 0.971); as the others
     grip:                       # Brio 101 webcam on the gripper, sees the fingers and what they hold (cam-5a)
       device: "/dev/v4l/by-id/usb-046d_Brio_101_2612APCBP7K8-video-index0"
       format: YUYV

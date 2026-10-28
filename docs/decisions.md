@@ -3101,6 +3101,20 @@ each session's episodes.json); p1 / p2 checkpoints expect `wrist` and no longer 
 are for the old task and the old camera place). **Rejected:** keeping the key `wrist` (wrong place in the
 data); a free object order (see above).
 
+## 2026-10-28 — t2-b: top camera settings; 3 snack kinds; camera names kept
+
+**Decision (user):** top (C270, fixed, looking straight down): **16.7 ms, gain 14, 4600 K** (script 34,
+settings_20261028_085542, target 114: mean 114.1; R/G 0.998, B/G 0.980; 8.3 ms needed gain 78). The top view
+does not need the meal box (front sees all of it; the box is fixed, so where to place is learned mostly from
+the position, and the grip camera sees the holes): the top view is for the objects' area. Snack: **3 kinds**
+(Chips Ahoy, Nutter Butter, Oreo), **one per episode**, in turn, about 20 kept episodes each: **60** in all.
+Evaluation 5 placements x 3 kinds (+ an unseen kind for generalization when chosen). Names stay: `front` =
+D435, oblique from the front (whole workspace and meal box); `top` = C270, straight down. **Reason:** 16.7 ms:
+lower gain, less noise, a fixed camera (blur only while the arm passes; front uses 16.7 ms too). Several snacks
+on the table would give several right answers (as a free order); kinds in turn keep the data balanced; the
+ImageNet-pretrained ResNet18 per camera can tell a few kinds apart. **Rejected:** re-aiming top to include the
+meal box (not needed); renaming D435 `top` / `overview` (the names follow the view direction).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
