@@ -1,25 +1,26 @@
-# Data rules: meal box dataset (t2, decided 2026-10-28)
+# Data rules: meal box dataset (t3, decided 2026-10-29)
 
 One page for every collection session. Change a rule only with a docs/decisions.md entry; a rule that
 changes the data (task, object, cameras, settings) starts a new dataset. The first dataset (green block ->
 paper box, p1 / p2, 2026-10-21 .. 22) used the rules of commit 03e4246 and the C270 on the gripper (`wrist`);
 its sessions still convert as they were recorded (camera names come from each session's episodes.json).
+The t2 sessions (Nutter Butter, dataset t1, checkpoint act_t1, 2026-10-28) are the pilot of this task and are
+not part of the t3 dataset (t3-a).
 
 ## Task
 - **Put the carrot in the black box, then the snack in its hole of the meal box** (t2-e, 2026-10-28; the
   carrot did not fit the meal box's large hole). Task text, exactly:
-  `python -m teleop --real --record --task "put the carrot in the black box, then the snack in its hole of the meal box (Nutter Butter large, Oreo small)"` (the default `record.task`).
+  `python -m teleop --real --record --task "put the carrot in the black box, then the snack in its hole of the meal box (Oreo large, RITZ small)"` (the default `record.task`).
 
   | Object | goes into |
   |---|---|
   | Carrot | the big black box |
-  | Nutter Butter | the meal box, **large** hole |
-  | Oreo | the meal box, **small** hole |
-- **Snack: Oreo and Nutter Butter**, 20 kept episodes each (user, 2026-10-28). **One snack per episode** (with
+  | Oreo | the meal box, **large** hole |
+  | RITZ | the meal box, **small** hole |
+- **Snack: Oreo and RITZ** (t3-a, 2026-10-29: Nutter Butter was too big), 32 kept episodes each. **One snack per episode** (with
   several on the table the policy could not know which one), the kinds in turn so that each has about the same
   number of kept episodes. The hole depends on the kind, which the cameras see: one right action, learned from
   the snack's look (a sorting task).
-- **Chips Ahoy: on hold** until it has a place of its own (t2-e).
 - Two objects in every episode, **always the carrot first** (user, 2026-10-28: a fixed order, one right
   action at every moment; a free order makes the policy average the two choices).
 - **The black box and the meal box fixed in place** (mark their corners on the table), inside the teleop
@@ -28,7 +29,7 @@ its sessions still convert as they were recorded (camera names come from each se
 ## Placement and start
 | | rule |
 |---|---|
-| Snack kind | alternate Oreo, Nutter Butter, Oreo, ... inside every session (not one kind per session: then the kind and the session's conditions would go together); the others off the table |
+| Snack kind | alternate Oreo, RITZ, Oreo, ... inside every session (not one kind per session: then the kind and the session's conditions would go together); the others off the table |
 | Carrot and snack positions | random, **anywhere the `top` camera sees** (user, 2026-10-28), not on either box, inside the teleop range (a place the robot cannot reach is not used), the two not touching |
 | Object orientation | so that the fingers close across it **without turning the gripper** (the tool turns only with J1; no wrist rotation since j6-2) |
 | Robot start pose | in the reset phase, move with the teleop to a pose **within about 10 cm of the ready pose**, a different one each time; also start some at the ready pose itself |
@@ -37,18 +38,42 @@ its sessions still convert as they were recorded (camera names come from each se
 ## How to demonstrate (one way, every time)
 1. Approach above the carrot -> 2. go straight down -> 3. close (trigger fully released) -> 4. lift ->
 5. move above the **black box** -> 6. lower a little -> 7. open -> 8. lift ->
-9. approach above the snack -> 10. down -> 11. close -> 12. lift -> 13. above **its hole** (Nutter Butter large,
-Oreo small) -> 14. lower a little -> 15. open -> 16. **lift about 5 cm and stop** -> 17. `n`.
+9. approach above the snack -> 10. down -> 11. close -> 12. lift -> 13. above **its hole** (Oreo large,
+RITZ small) -> 14. lower a little -> 15. open -> 16. **lift about 5 cm and stop** -> 17. `n`.
 - Steady, no hesitation, no exploring. Same order every time.
-- Discard (`r` while recording, or `r` in the reset right after `n`) when: an object slips, is missed or
-  lands outside its box or hole (a snack in the wrong hole too), anything is hit, a pause over about 2 s inside the task, the robot jumps (clutch
-  slip), a spoken "Camera error" or a frame-loss warning. The 120 s episode limit ends and keeps an episode:
-  discard it if the task was not finished.
+- **A natural re-grasp is kept** (t3-a; t2 discarded it): a missed or slipped grasp followed by a re-grasp,
+  when the episode still ends right (carrot in the box, snack in its hole) within 120 s, with nothing hit and
+  no pause over about 2 s. Note it in notes.txt.
+- Discard (`r` while recording, or `r` in the reset right after `n`) when: an object lands outside its box
+  or hole (a snack in the wrong hole too) or drops on the way, anything is hit, a pause over about 2 s inside
+  the task, the robot jumps (clutch slip), a spoken "Camera error" or a frame-loss warning. The 120 s
+  episode limit ends and keeps an episode: discard it if the task was not finished.
+
+## Recovery demonstrations (t3-a)
+The pilot policy (act_t1) closed beside an object, lifted the empty gripper, carried it to the box and
+opened it there: the gripper state is 0 (closed) with or without an object, so only the `grip` image shows
+an empty gripper, and no kept demonstration showed a miss. A recovery episode shows one:
+1. approach the object **deliberately 1-3 cm off** (direction from the table below) -> 2. down -> 3. close ->
+4. **lift empty**, 5 or 10 cm (table) -> 5. **stop 0.5-1 s** (the `grip` camera sees the empty fingers and
+the object on the table; not over 2 s) -> 6. **open fully** -> 7. above the object again (where it is now,
+if the miss pushed it) -> 8. down, close, and the rest as a normal episode.
+- One miss per episode (the carrot or the snack). Never carry the empty gripper to a box.
+- 16 in all, 4 per session, one cell each of:
+
+  | miss on | off direction (`top` view) | lift |
+  |---|---|---|
+  | carrot | up, down, left, right | 5 cm and 10 cm |
+  | snack | up, down, left, right | 5 cm and 10 cm |
+
+  (2 objects x 4 directions x 2 lifts = 16), the snack kind alternating as in normal episodes.
 
 ## Amount and sessions
-- **40 kept episodes** (20 Oreo, 20 Nutter Butter), in sessions of
-  **10-15 episodes** (the robot CSV is written at the session end). Note the snack kind of each kept episode
-  (the session's episode list); the dataset does not record it.
+- **64 kept episodes** in **4 sessions of 16**: each session 12 normal + 4 recovery, mixed (not a recovery
+  session apart: then recovery and the session's conditions would go together). In all 48 normal + 16
+  recovery; 32 Oreo, 32 RITZ.
+- **notes.txt** in every session folder (`data/demos/<session>/notes.txt`), one line per kept attempt:
+  attempt number, snack kind, `normal` / `recovery <object> <direction> <lift>` / `regrasp` (natural).
+  The dataset does not record it; it is needed to train without the recovery episodes and for the paper.
 - Same lighting for all sessions (blinds / lamps as on the first session; note the time of day).
 - After each session: `python -m rb5_lerobot.convert <session> --check-only` and look at the
   report (left-out episodes, image time error, gripper following, start pose spread) before the next one.
@@ -69,11 +94,14 @@ Oreo small) -> 14. lower a little -> 15. open -> 16. **lift about 5 cm and stop*
 
 ## Evaluation (after training, the same for every policy)
 - **5 placements** of the carrot and the snack, chosen and marked before the first training (spread over the
-  `top` view, the same for every policy) x the 2 snack kinds = 10 trials.
+  `top` view, the same for every policy) x the 2 snack kinds = 10 trials (x 2 repetitions = 20 for the
+  paper).
 - Start at the ready pose, gripper open.
 - **Success**: the carrot in the black box and the snack in **its** hole, gripper open, within **120 s**
   (user, 2026-10-28; `run.time_limit_s` 120). Note also the carrot alone (first stage), the snack kind and a
   snack in the **wrong hole** (counted apart from a missed or dropped snack: it measures the sorting).
+- **After a missed grasp**, note what the policy does: opens and grasps again (recovery) or carries the empty
+  gripper on. Compared between a policy trained without (48) and with (64) the recovery episodes.
 - Record every trial (`--record`), success / failure noted per trial.
 
 ## Before every session (in addition to docs/real_first_run_checklist.md)

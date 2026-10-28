@@ -3155,6 +3155,27 @@ gives a measure of its own (wrong-hole rate). **Rejected:** all three objects in
 layout are not used: real_20261028_112731 (3 kept: episodes 2, 4, 5; task text of t2-a) and the test
 real_20261028_091401.
 
+## 2026-10-29 — t3-a: RITZ instead of Nutter Butter; collect anew with recovery demonstrations
+
+**Decision (user):** Nutter Butter is too big: the snacks are now **Oreo (large hole) and RITZ (small hole)**;
+task text "put the carrot in the black box, then the snack in its hole of the meal box (Oreo large, RITZ
+small)". The data is collected anew: **64 kept episodes in 4 sessions of 16 (12 normal + 4 recovery each)**.
+A recovery episode: deliberately 1-3 cm off, close, lift empty 5 or 10 cm, stop 0.5-1 s, open, grasp again,
+then as usual; 16 = 2 objects x 4 directions x 2 lifts. Natural re-grasps are kept when the episode ends
+right (t2 discarded them). Each session gets a notes.txt (attempt, kind, normal / recovery / regrasp).
+**Reason:** the pilot act_t1 (t1: 51 Nutter Butter / Oreo episodes; Real runs 20261029_023402 / 024159)
+placed well but grasped poorly and did not recover: after a close beside the object it lifted, carried the
+empty gripper to the meal box and opened it (about 130 / 158 / 226 / 284 / 388 s of 024159). The gripper
+state cannot tell held from empty (an object or not, the fingers close to about the closed ticks: state 0 one
+second after every close in t1), and no kept demonstration showed a miss; only the `grip` image can show it,
+so demonstrations must show the empty gripper and what to do then. Recovery mixed into every session keeps
+it apart from session conditions; with notes.txt the same normal episodes can be trained without (48) and
+with (64) recovery: a comparison for the paper. **Kept:** t1, act_t1 and its runs as the pilot (failure
+analysis). Temporal ensembling stays as in ACT (m 0.01; chunk 100 = 3.3 s at 30 Hz, 2 s in the paper at
+50 Hz); a shorter ensembling window only if the recovery data does not fix it. **Rejected:** one recovery
+session added to t1 (a different snack now, and recovery tied to one session); carrying the empty gripper
+to the box in a demonstration (that is the failure).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

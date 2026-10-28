@@ -151,7 +151,7 @@ logging:
 
 record:                         # demonstrations: python -m teleop --record [--task "..."] (rec-3b, docs/decisions.md rec-1)
   dir: data/demos               # one folder per session: teleop.csv, episodes.json, episode_<n>/cam_*
-  task: "put the carrot in the black box, then the snack in its hole of the meal box (Nutter Butter large, Oreo small)"   # t2-e (2026-10-28); t2-a: carrot in the meal box large hole; rec-1 .. p3: "pick the block and place it in the box"
+  task: "put the carrot in the black box, then the snack in its hole of the meal box (Oreo large, RITZ small)"   # t3-a (2026-10-29); t2-e: Nutter Butter large, Oreo small; t2-a: carrot in the meal box large hole; rec-1 .. p3: "pick the block and place it in the box"
   episode_time_s: 120.0         # user, 2026-10-19: 2 minutes, then the episode ends and is kept
   reset_time_s: 0.0             # 0 = the next episode starts only with -> (no automatic start)
   # Cameras (cam-5a): device = RealSense serial number or a webcam's /dev/v4l/by-id path (the same after a
