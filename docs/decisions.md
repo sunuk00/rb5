@@ -3130,6 +3130,15 @@ stream is read: frames as usual, 0 dropped; busy port; no preview by default); e
 (env change); a separate viewer program (cannot open a camera in use); the policy run's preview (later if
 needed).
 
+## 2026-10-28 — t2-d: snacks in two stages (Oreo + Nutter Butter first, Chips Ahoy later)
+
+**Decision (user):** first 20 kept episodes with Oreo and 20 with Nutter Butter (40), train and try; if it works,
+add 20 with Chips Ahoy. The kinds alternate inside every session (one kind per session would tie the kind to
+the session's lighting and placement habits). Before Chips Ahoy is added, the first policy is evaluated on it
+too (an unseen kind: generalization). Adding it later: a new dataset of all sessions and a fine-tune with
+`--from` (same cameras and features), or training anew. The two test episodes real_20261028_091401 (three
+snacks on the table) are not used.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the
