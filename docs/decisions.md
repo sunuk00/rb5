@@ -3188,6 +3188,25 @@ box marks and placement habits are kept as in stage 1. **Rejected:** recovery mi
 the start (t3-a: it kept recovery apart from session conditions, but commits to recovery data before the
 baseline is known).
 
+## 2026-10-29 — t3-c: datasets u1 (normal) and u3 (normal + recovery); recovery episodes kept as recorded
+
+**Decision (user):** stage 1 was recorded in one session (real_20261029_042055: 83 attempts, 51 kept; the
+converter left out 51 and 52 for front camera gaps) -> **`u1`**, 49 episodes, 70550 frames (25 Oreo + 24 RITZ;
+9 natural re-grasps: 8 on the snack, 1 on the carrot). Stage 2: real_20261029_063325, 16 recovery episodes
+-> `u2`, merged with `u1` by `lerobot-edit-dataset` (merge, `--operation.roots` for our folders) ->
+**`u3`**, 65 episodes, 95412 frames (u1 = episodes 0-48, recovery 49-64). `u1` and `u3` are the `t3n` and
+`t3r` of t3-b. All 16 recovery episodes are kept although the off direction is right (robot +x) in 14 and
+left in 2, none up or down, 9-23 cm from the grasp that followed (planned 1-3 cm, 4 directions), and
+attempts 30 and 39 missed the snack twice (planned once). notes.txt written for both sessions from the
+recordings (kind from the top image and the hole; regrasp / miss from the gripper closes and the `grip`
+image); u3 got a hand-written rb5_convert.yaml (merge does not write one). **Reason:** every recovery
+episode shows what the policy has to learn (empty fingers seen -> stop, open, go to the object, grasp); the
+second misses also end in a correct re-grasp. Merge checked against u1 / u2: episode lengths, 5 frames
+(state, action, all images identical, including both sides of the join), continuous index, stats = the
+frame-weighted combination. **Rejected:** recording 8 more recovery episodes up / down / left now (wait for
+the u3 evaluation: add them only if the policy misses in those directions and does not recover);
+discarding 30 and 39; converting both sessions again in one run (same result; merge was 40 min faster).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

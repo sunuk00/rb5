@@ -66,6 +66,10 @@ if the miss pushed it) -> 8. down, close, and the rest as a normal episode.
   | snack | up, down, left, right | 5 cm and 10 cm |
 
   (2 objects x 4 directions x 2 lifts = 16), the snack kind alternating as in normal episodes.
+- **As recorded** (t3-c, session real_20261029_063325): objects, kinds and lifts as planned (8 carrot / 8 snack,
+  8 Oreo / 8 RITZ, lifts 5-9 cm and 18-23 cm), but the off direction is right in 14 and left in 2 (none up or
+  down), 9-23 cm from the grasp that followed; attempts 30 and 39 missed the snack twice. All 16 kept; more
+  directions only if the evaluation shows misses elsewhere that the policy does not recover from.
 
 ## Amount and sessions
 Two stages (t3-b, user, 2026-10-29):
@@ -76,6 +80,10 @@ Two stages (t3-b, user, 2026-10-29):
   stage 1 sessions + these (64) -> train anew with the same settings -> the same evaluation. Same cameras,
   lighting, box marks and placement habits as stage 1 (the recovery sessions come later, so their
   conditions must not differ).
+- **As collected** (t3-c, 2026-10-29): stage 1 in one session, real_20261029_042055 (51 kept, 49 converted:
+  25 Oreo + 24 RITZ, 9 natural re-grasps) -> dataset **`u1`** (= `t3n`); stage 2 in real_20261029_063325 (16)
+  -> `u2`, merged with `u1` (`lerobot-edit-dataset ... merge`) -> **`u3`** (= `t3r`, 65 episodes; recovery =
+  dataset episodes 49-64).
 - **notes.txt** in every session folder (`data/demos/<session>/notes.txt`), one line per kept attempt:
   attempt number, snack kind, `normal` / `recovery <object> <direction> <lift>` / `regrasp` (natural).
   The dataset does not record it; it is needed to train without the recovery episodes and for the paper.
@@ -106,7 +114,7 @@ Two stages (t3-b, user, 2026-10-29):
   (user, 2026-10-28; `run.time_limit_s` 120). Note also the carrot alone (first stage), the snack kind and a
   snack in the **wrong hole** (counted apart from a missed or dropped snack: it measures the sorting).
 - **After a missed grasp**, note what the policy does: opens and grasps again (recovery) or carries the empty
-  gripper on. Compared between `t3n` (48, stage 1) and `t3r` (64, stage 2).
+  gripper on. Compared between `t3n` / `u1` (49, stage 1) and `t3r` / `u3` (65, stage 2).
 - Record every trial (`--record`), success / failure noted per trial.
 
 ## Before every session (in addition to docs/real_first_run_checklist.md)
