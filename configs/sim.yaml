@@ -151,7 +151,7 @@ logging:
 
 record:                         # demonstrations: python -m teleop --record [--task "..."] (rec-3b, docs/decisions.md rec-1)
   dir: data/demos               # one folder per session: teleop.csv, episodes.json, episode_<n>/cam_*
-  task: "put the carrot in the large hole, then the snack in the small hole of the meal box"   # t2-a (2026-10-28); rec-1 .. p3: "pick the block and place it in the box"
+  task: "put the carrot in the black box, then the snack in its hole of the meal box (Nutter Butter large, Oreo small)"   # t2-e (2026-10-28); t2-a: carrot in the meal box large hole; rec-1 .. p3: "pick the block and place it in the box"
   episode_time_s: 120.0         # user, 2026-10-19: 2 minutes, then the episode ends and is kept
   reset_time_s: 0.0             # 0 = the next episode starts only with -> (no automatic start)
   # Cameras (cam-5a): device = RealSense serial number or a webcam's /dev/v4l/by-id path (the same after a
@@ -167,7 +167,7 @@ record:                         # demonstrations: python -m teleop --record [--t
       gain: 76
       white_balance_k: 4600
     top:                        # C270 webcam fixed above the workspace, looks straight down at the objects' area (the
-                                # meal box: front) (t2-a, 2026-10-28; cam-4a .. p3: "wrist" on the gripper)
+                                # boxes: front) (t2-a, 2026-10-28; cam-4a .. p3: "wrist" on the gripper)
       device: "/dev/v4l/by-id/usb-046d_0825_6E259540-video-index0"
       format: MJPG              # cam-5a; on its own USB port since 2026-10-28 (YUYV would fit, MJPG kept)
       exposure_us: 16667.0      # t2-b: fixed camera, the less noisy candidate (gain 14 vs 78 at 8.3 ms)

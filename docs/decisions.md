@@ -3139,6 +3139,22 @@ too (an unseen kind: generalization). Adding it later: a new dataset of all sess
 `--from` (same cameras and features), or training anew. The two test episodes real_20261028_091401 (three
 snacks on the table) are not used.
 
+## 2026-10-28 — t2-e: carrot into a black box; the snack's hole by its kind
+
+**Decision (user):** the carrot did not fit the meal box's large hole. New layout: the carrot goes into a big
+black box; in the meal box Nutter Butter goes into the large hole, Oreo into the small one. Still one snack per
+episode (Oreo and Nutter Butter in turn, 20 kept each), the carrot first. Task text "put the carrot in the black
+box, then the snack in its hole of the meal box (Nutter Butter large, Oreo small)" (`record.task`). Both boxes
+fixed and marked, inside the teleop range, seen by `front`. Evaluation 5 placements x 2 kinds; a snack in the
+wrong hole is counted apart. Chips Ahoy on hold until it has a place (it has no hole, so the unseen-kind test of
+t2-d has no right answer). **Reason:** failed carrot drops would make many demonstrations unusable (the policy
+is rarely better than its demonstrations). The hole by kind is still one right action per scene, because the
+kind is in the images (red long vs blue round, large in the grip view); it makes the task a sorting task and
+gives a measure of its own (wrong-hole rate). **Rejected:** all three objects in every episode in a fixed order
+(about 90 s an episode, more failure points, tight for 120 s, more room needed on the table). Sessions of the t2-a
+layout are not used: real_20261028_112731 (3 kept: episodes 2, 4, 5; task text of t2-a) and the test
+real_20261028_091401.
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

@@ -6,37 +6,47 @@ paper box, p1 / p2, 2026-10-21 .. 22) used the rules of commit 03e4246 and the C
 its sessions still convert as they were recorded (camera names come from each session's episodes.json).
 
 ## Task
-- **Put the carrot in the large hole, then the snack in the small hole of the meal box.** Task text, exactly:
-  `python -m teleop --real --record --task "put the carrot in the large hole, then the snack in the small hole of the meal box"` (the default `record.task`).
-- **Snack: Oreo and Nutter Butter first** (20 kept episodes each), **Chips Ahoy added later** if that works
-  (user, 2026-10-28). **One snack per episode** (with several on the table the policy could not know which
-  one), the kinds in turn so that each has about the same number of kept episodes.
+- **Put the carrot in the black box, then the snack in its hole of the meal box** (t2-e, 2026-10-28; the
+  carrot did not fit the meal box's large hole). Task text, exactly:
+  `python -m teleop --real --record --task "put the carrot in the black box, then the snack in its hole of the meal box (Nutter Butter large, Oreo small)"` (the default `record.task`).
+
+  | Object | goes into |
+  |---|---|
+  | Carrot | the big black box |
+  | Nutter Butter | the meal box, **large** hole |
+  | Oreo | the meal box, **small** hole |
+- **Snack: Oreo and Nutter Butter**, 20 kept episodes each (user, 2026-10-28). **One snack per episode** (with
+  several on the table the policy could not know which one), the kinds in turn so that each has about the same
+  number of kept episodes. The hole depends on the kind, which the cameras see: one right action, learned from
+  the snack's look (a sorting task).
+- **Chips Ahoy: on hold** until it has a place of its own (t2-e).
 - Two objects in every episode, **always the carrot first** (user, 2026-10-28: a fixed order, one right
   action at every moment; a free order makes the policy average the two choices).
-- The meal box fixed in place (mark its corners on the table).
+- **The black box and the meal box fixed in place** (mark their corners on the table), inside the teleop
+  range and seen by `front`.
 
 ## Placement and start
 | | rule |
 |---|---|
 | Snack kind | alternate Oreo, Nutter Butter, Oreo, ... inside every session (not one kind per session: then the kind and the session's conditions would go together); the others off the table |
-| Carrot and snack positions | random, **anywhere the `top` camera sees** (user, 2026-10-28), not on the meal box, inside the teleop range (a place the robot cannot reach is not used), the two not touching |
+| Carrot and snack positions | random, **anywhere the `top` camera sees** (user, 2026-10-28), not on either box, inside the teleop range (a place the robot cannot reach is not used), the two not touching |
 | Object orientation | so that the fingers close across it **without turning the gripper** (the tool turns only with J1; no wrist rotation since j6-2) |
 | Robot start pose | in the reset phase, move with the teleop to a pose **within about 10 cm of the ready pose**, a different one each time; also start some at the ready pose itself |
 | Gripper at start | **open**, trigger caught (status line not "catch") |
 
 ## How to demonstrate (one way, every time)
 1. Approach above the carrot -> 2. go straight down -> 3. close (trigger fully released) -> 4. lift ->
-5. move above the **large** hole -> 6. lower a little -> 7. open -> 8. lift ->
-9. approach above the snack -> 10. down -> 11. close -> 12. lift -> 13. above the **small** hole -> 14. lower a
-little -> 15. open -> 16. **lift about 5 cm and stop** -> 17. `n`.
+5. move above the **black box** -> 6. lower a little -> 7. open -> 8. lift ->
+9. approach above the snack -> 10. down -> 11. close -> 12. lift -> 13. above **its hole** (Nutter Butter large,
+Oreo small) -> 14. lower a little -> 15. open -> 16. **lift about 5 cm and stop** -> 17. `n`.
 - Steady, no hesitation, no exploring. Same order every time.
 - Discard (`r` while recording, or `r` in the reset right after `n`) when: an object slips, is missed or
-  lands outside its hole, anything is hit, a pause over about 2 s inside the task, the robot jumps (clutch
+  lands outside its box or hole (a snack in the wrong hole too), anything is hit, a pause over about 2 s inside the task, the robot jumps (clutch
   slip), a spoken "Camera error" or a frame-loss warning. The 120 s episode limit ends and keeps an episode:
   discard it if the task was not finished.
 
 ## Amount and sessions
-- **40 kept episodes** first (20 Oreo, 20 Nutter Butter; later +20 Chips Ahoy, then a fine-tune with `--from`), in sessions of
+- **40 kept episodes** (20 Oreo, 20 Nutter Butter), in sessions of
   **10-15 episodes** (the robot CSV is written at the session end). Note the snack kind of each kept episode
   (the session's episode list); the dataset does not record it.
 - Same lighting for all sessions (blinds / lamps as on the first session; note the time of day).
@@ -46,7 +56,7 @@ little -> 15. open -> 16. **lift about 5 cm and stop** -> 17. `n`.
 ## Cameras
 - **D435 (`front`)**: fixed above the workspace. Mark its mount; it must not move between sessions.
 - **C270 webcam (`top`)**: **fixed above the workspace** (t2-a, 2026-10-28; was on the gripper as `wrist`),
-  looking straight down at the objects' area (the meal box: `front` sees it). Mark its mount; it must not move between sessions.
+  looking straight down at the objects' area (the boxes: `front` sees them). Mark its mount; it must not move between sessions.
 - **Brio 101 webcam (`grip`)**: on the gripper, sees the fingers and what they hold (cam-5a).
 - The two webcams on **different USB ports** (2026-10-28: Brio on its own port, C270 on the hub): each has
   its own 480 Mbit/s. Formats unchanged (C270 MJPG, Brio YUYV). Cables strain-relieved.
@@ -59,11 +69,11 @@ little -> 15. open -> 16. **lift about 5 cm and stop** -> 17. `n`.
 
 ## Evaluation (after training, the same for every policy)
 - **5 placements** of the carrot and the snack, chosen and marked before the first training (spread over the
-  `top` view, the same for every policy) x the snack kinds in the data (+ the same 5 placements with a kind not
-  in the data: **Chips Ahoy before it is added** = a generalization test).
+  `top` view, the same for every policy) x the 2 snack kinds = 10 trials.
 - Start at the ready pose, gripper open.
-- **Success**: the carrot in the large hole and the snack in the small hole, gripper open, within **120 s**
-  (user, 2026-10-28; `run.time_limit_s` 120). Note also the carrot alone (first stage) and the snack kind.
+- **Success**: the carrot in the black box and the snack in **its** hole, gripper open, within **120 s**
+  (user, 2026-10-28; `run.time_limit_s` 120). Note also the carrot alone (first stage), the snack kind and a
+  snack in the **wrong hole** (counted apart from a missed or dropped snack: it measures the sorting).
 - Record every trial (`--record`), success / failure noted per trial.
 
 ## Before every session (in addition to docs/real_first_run_checklist.md)
@@ -76,7 +86,7 @@ little -> 15. open -> 16. **lift about 5 cm and stop** -> 17. `n`.
 - [ ] Gripper powered (12 V when available), fingers clear.
 - [x] `range.z_min_mm` 19 mm for the mounted gripper (2026-10-21). If the gripper, the table or its height
       changes, measure again (lowest allowed TCP z from `tcp_ref`).
-- [ ] Meal box at its marks.
+- [ ] Black box and meal box at their marks.
 
 ## Rules nobody sees in the data (keep them fixed)
 - Gripper orientation: rx, ry from the ready pose, rz follows the azimuth (`yaw.mode: follow_base`). The
