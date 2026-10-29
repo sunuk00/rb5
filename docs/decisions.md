@@ -3207,6 +3207,26 @@ frame-weighted combination. **Rejected:** recording 8 more recovery episodes up 
 the u3 evaluation: add them only if the policy misses in those directions and does not recover);
 discarding 30 and 39; converting both sessions again in one run (same result; merge was 40 min faster).
 
+## 2026-10-29 — t3-d: three objects in every episode (carrot -> Oreo -> RITZ); 50 normal + 24 recovery
+
+**Decision (user):** the task becomes "put the carrot in the black box, then the Oreo in the large hole and
+the RITZ in the small hole of the meal box": all three objects on the table, always in that order; an object
+not on the table is skipped. New collection: **50 normal + 24 recovery three-object episodes** (recovery: 3
+objects x 4 directions x 2 lifts, off by 1-3 cm from the edge, then straight above the object, no searching).
+Dataset `u4` = u3 (65, kept as is) + these 74 = 139, trained long (100k steps, overnight). Episode limit and
+policy run limit 120 -> 180 s (`record.episode_time_s`, `run.time_limit_s`). Evaluation: 5 three-object
+placements x 2 (then x 2 more). **Reason:** u3 (30k, run real_20261029_120825) with all three objects on the
+table did not know what to do after the carrot (a scene with both snacks was never demonstrated: one snack
+per episode until t3-c), and after a miss it opened and tried again (the recovery data worked) but closed
+5-7 cm further each time (10 tries in a row at 51-107 s, 7 at 249-302 s) instead of going to the object: the
+recovery demonstrations were 14 of 16 off to the right by 9-23 cm, and the policy is under-trained (training
+frames predicted p50 23 mm off at 30k steps, still falling). The old episodes fit the new rule as the cases
+with one snack missing (after the Oreo, a RITZ on the table means go on), so they stay; ACT does not read the
+task text. Two objects took 38-63 s; three with a recovery can pass 120 s. **Rejected:** one snack per
+episode kept and the three-object scene left out of the evaluation (user: the application packs all items);
+a free snack order (the policy would average the choices); collecting only more recovery data (does not
+teach the three-object scene); relabelling the old task text now (optional, `modify_tasks`, no effect on ACT).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

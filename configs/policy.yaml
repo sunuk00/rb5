@@ -38,7 +38,7 @@ train:                          # python -m rb5_lerobot.train (lerobot-train opt
     optimizer_lr: 1.0e-5        # learning rate
 
 run:                            # python -m rb5_lerobot.run
-  time_limit_s: 120             # seconds of running after each g, then hold
+  time_limit_s: 180             # seconds of running after each g, then hold (t3-d: 120 -> 180, three objects)
   max_jump_mm: 100              # an action further than this from the current target holds (safety)
   stale_s: 0.5                  # a prediction older than this is not used (hold)
   stop_stale_s: 3.0             # no new prediction for this long: stop
