@@ -111,6 +111,21 @@ class TestTrainCommand(unittest.TestCase):
         self.assertEqual(resume_command("data/train/act_p1_x"), [
             "lerobot-train", "--config_path=data/train/act_p1_x/checkpoints/last/pretrained_model/train_config.json",
             "--resume=true"])
+        self.assertEqual(resume_command("data/train/act_p1_x", 100000)[-1], "--steps=100000")
+
+    def test_wandb(self):
+        # t3-e: off -> only --wandb.enable=false; on -> project, no checkpoint upload, run named after the folder
+        t = copy.deepcopy(RAW["train"])
+        t["wandb"].update(enable=True, project="rb5-lunchbox", disable_artifact=True)
+        cmd = train_command("u4a", t, "data/train/act_u4a_x")
+        for part in ("--wandb.enable=true", "--wandb.project=rb5-lunchbox", "--wandb.disable_artifact=true",
+                     "--job_name=act_u4a_x"):
+            self.assertIn(part, cmd)
+        self.assertFalse(any(c.startswith("--policy.wandb") or c.startswith("--policy.enable") for c in cmd))
+        t["wandb"]["enable"] = False
+        self.assertEqual([c for c in train_command("u4a", t, "out") if "wandb" in c], ["--wandb.enable=false"])
+        self.assertTrue(problems_with(lambda d: d["train"].pop("wandb")))
+        self.assertTrue(problems_with(lambda d: d["train"]["wandb"].update(enable="yes")))
 
 
 class TestDataFormat(unittest.TestCase):

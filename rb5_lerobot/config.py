@@ -32,6 +32,11 @@ SCHEMA = {
         "num_workers": _num(0, 32, integer=True),
         "seed": _num(0, 2**31 - 1, integer=True),
         "device": _str(("cuda", "cpu")),
+        "wandb": {                          # t3-e: training curves on wandb.ai
+            "enable": _bool(),
+            "project": _str(),
+            "disable_artifact": _bool(),
+        },
         # "act": free (see the module doc), checked below
     },
     "run": {

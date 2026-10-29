@@ -27,6 +27,10 @@ train:                          # python -m rb5_lerobot.train (lerobot-train opt
   num_workers: 4                # data loader processes (decode the videos)
   seed: 1000
   device: cuda
+  wandb:                        # training curves on wandb.ai (t3-e); `train NAME --wandb` turns it on for one run
+    enable: false               # true: every training logs to WandB (once before: conda activate lerobot; wandb login)
+    project: rb5-lunchbox       # WandB project of the runs
+    disable_artifact: true      # true: no checkpoint upload (about 500 MB each), only the numbers and the settings
   act:                          # ACT model, passed as --policy.<name>=<value>; any ACT option of LeRobot can be added
                                 # (lerobot-train --policy.type=act --help lists them); not listed = LeRobot's default
     chunk_size: 100             # actions predicted at once (at 30 fps: 3.3 s ahead)

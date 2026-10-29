@@ -3227,6 +3227,25 @@ episode kept and the three-object scene left out of the evaluation (user: the ap
 a free snack order (the policy would average the choices); collecting only more recovery data (does not
 teach the three-object scene); relabelling the old task text now (optional, `modify_tasks`, no effect on ACT).
 
+## 2026-10-29 — t3-e: training curves on WandB (`--wandb`), `--steps` for one run or a resume
+
+**Decision (user):** `python -m rb5_lerobot.train NAME --steps 100000 --wandb`. New `train.wandb` section in
+`configs/policy.yaml` (`enable: false`, `project: rb5-lunchbox`, `disable_artifact: true`); `--wandb` turns it on
+for one run (lerobot-train `--wandb.enable/project/disable_artifact`, `--job_name` = the output folder, so the
+WandB run has the folder's name). `--steps N` replaces `train.steps` for one run; with `--resume` it passes
+`--steps=N` after `--config_path` (command-line options override the saved train_config.json) and must exceed
+the saved count. A resume keeps its checkpoint's WandB setting: LeRobot continues the same WandB run (run id
+saved in train_config.json); `--wandb` on a resume of a run without WandB is refused (the curve would start in
+the middle). Both refuse to start without a WandB key (`wandb login` once, ~/.netrc or WANDB_API_KEY).
+**Reason:** the loss was only printed in the terminal (lost when the terminal closes; read by hand for u3);
+the first 100k-step training (about 9 h, overnight) should be watched from anywhere. The default (5000 steps)
+upload of each checkpoint as an artifact would send about 500 MB x 20 = 10 GB per 100k run; only the numbers and
+the settings go out (no images, no dataset). The leader arm bus fails about 2 % of joint reads after the
+14:11 session (all IDs alike, 12 V steady; under repair), so the 51 normal three-object episodes are trained
+before the recovery ones (u3 + 51 = 116). **Rejected:** a local log file and a plot script (proposed earlier;
+WandB gives live curves and run comparison without new code to maintain); TensorBoard (LeRobot 0.6.1 logs
+only to WandB); editing `train.steps` in policy.yaml for each long run (easy to forget to set back).
+
 ## PENDING
 
 - **14: RB-Y1 self-collision check during teleop.** Example 35 blocks the arm command when the

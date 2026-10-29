@@ -90,8 +90,13 @@ python -m rb5_lerobot.convert $S --name NAME
 conda activate lerobot
 python -m rb5_lerobot.train NAME --dry-run    # the settings and the lerobot-train command, no training
 python -m rb5_lerobot.train NAME              # trains; prints the output folder data/train/act_NAME_<time>
+python -m rb5_lerobot.train NAME --steps 100000 --wandb   # this run only: 100k steps, curves on wandb.ai
 OUT=data/train/act_NAME_<time>                # set it to the printed folder (for steps 4 and 5)
 ```
+
+- WandB (t3-e): once before, `wandb login` (key from https://wandb.ai/authorize). `--wandb` logs loss, grad
+  norm, learning rate and step times to project `train.wandb.project`, run name = the output folder; no
+  checkpoint upload (`disable_artifact: true`). The terminal prints the run's address.
 
 - Settings: `configs/policy.yaml` train (batch size, steps, checkpoint interval, ACT options). Another file:
   `--config configs/<copy>.yaml`. The folder keeps `rb5_train.yaml`: the settings, the command and the dataset's
@@ -102,6 +107,8 @@ OUT=data/train/act_NAME_<time>                # set it to the printed folder (fo
 - Checkpoints: `$OUT/checkpoints/005000`, `010000`, ... and `last` (about 600 MB each).
 - Keep the laptop on power and awake. Ctrl+C stops it (the checkpoints so far stay). Continue:
   `python -m rb5_lerobot.train --resume $OUT` (with the settings saved in the checkpoint, not policy.yaml).
+  Train longer: `--resume $OUT --steps 100000` (the new total; constant learning rate, so the same as one run).
+  A resume continues the same WandB run if the training had `--wandb`.
 - GPU in use: `nvidia-smi` in another terminal.
 
 **More data (fine-tune, p3-e).** Convert the old and the new sessions together into a new dataset, then
@@ -182,6 +189,7 @@ python -m rb5_lerobot.run $OUT --real
 | `dataset.min_*`, `keep_still`, `cut_pauses_s` | convert, train | which episodes and stretches are in the dataset |
 | `train.batch_size` | train | memory and time per step |
 | `train.steps`, `save_freq` | train | training time, checkpoints |
+| `train.wandb.*` | train | whether and where the curves go (WandB) |
 | `train.act.*` | train | the model and how it learns |
 | `run.*` | nothing (the next run uses it) | the run only |
 
